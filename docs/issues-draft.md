@@ -61,6 +61,57 @@ be a one-command, repeatable operation producing an archived log.
 **Exit** — `python3 scripts/baseline_boot.py` produces an archived, hash-pinned
 boot log reaching the shell prompt, twice, identically.
 
+## P1 — GATE: performance spike, before the design is locked
+
+`phase-0` `gate` `perf`
+
+**A genuine stop point, and the first real work after #1.**
+
+Performance is a primary motivation (see PLAN.md, "Performance is a first-class
+goal"), and the plan currently *assumes* Rust wins on the MMIO path. That
+assumption must be tested before the architecture is committed, because a
+negative result changes what this project is.
+
+**The case to profile.** The firmware's LSI measurement spins on `TIM5->SR` up to
+500,000 times per edge across 130 edges — order 65M MMIO reads, ~30 ms on
+hardware, **~27 s under C# Renode**. Traced through the source, each poll goes:
+
+```
+STM32_Timer.cs:198  → cpu.SyncTime()
+TranslationCPU.cs   → TlibGetExecutedInstructions()   [P/Invoke, managed↔native]
+                    → ReportProgress(...)             [multithreaded TimeHandle
+                                                       state machine]
+```
+
+The sync is semantically required — the counter depends on elapsed virtual time,
+which only advances when the CPU reports progress. The question is entirely how
+much the *implementation* costs.
+
+**Tasks**
+- Profile C# Renode over the LSI boot (`perf` and/or `dotnet-trace`). Produce the
+  split: tlib execution vs managed boundary vs time framework vs address decode
+  vs register dispatch vs GC. **This number does not currently exist and every
+  performance claim in PLAN.md depends on it.**
+- Build a throwaway Rust prototype of just the MMIO path: tlib → Rust callback →
+  one peripheral → one register field. No DSL, no rules, no correctness — just
+  the hot path.
+- Microbenchmark both: N million reads of one timer register. Report
+  accesses/sec.
+- Compare the two D2 candidate layouts head to head in the prototype:
+  `Rc<RefCell<_>>` per field versus `Cell` in a contiguous arena. Measure, do not
+  assume — the claimed difference is cache behaviour and it should show up as one.
+- Establish the tracked metrics: MMIO accesses/sec, instructions/sec, and the
+  MMIO:instruction ratio.
+
+**Exit** — `docs/perf-spike.md` with the C# profile breakdown, the Rust
+prototype numbers, the D2 layout comparison, and a verdict.
+
+- **Pass** — the Rust MMIO path is materially faster and the profile identifies
+  where. Proceed; the numbers become the Phase-4 baseline.
+- **Fail** — the win is marginal. The performance motivation evaporates and this
+  becomes a safety-only project (still defensible on the two null-handling
+  defects, but a much weaker case). **That verdict must be allowed to stand.**
+
 ## 2 — Oracle tier 2: register access trace capture
 
 `phase-0` `oracle`
@@ -107,23 +158,38 @@ reads back correct register state.
 
 Written verdict required. See PLAN.md "The four declared deviations".
 
-The proposal is `Rc<RefCell<T>>` for the object graph with cycles leaked
-(correct: the machine is built once and the process exits), and one
-`Rc<RefCell<_>>` **per register field** rather than borrowing through the
-collection.
+Blocked by #P1 — this decision is made against the profile, not ahead of it.
 
-**The real work here is the borrow discipline.** `RefCell` panics on re-entrant
-borrow, and the exposure is peripheral → sysbus → peripheral (DMA reading memory
-through the bus while the DMA peripheral is itself borrowed). A panic there is
-not necessarily a C# bug — it may be legitimate re-entrancy C# tolerates.
+**D1 (coarse object graph)** — proposal is `Rc<RefCell<T>>` with cycles leaked
+(correct: the machine is built once and the process exits). One indirection and
+one borrow check per MMIO access, not per field. Keeps the translation literal.
+Cost: it makes a machine `!Send`, so N-instance test parallelism needs processes
+rather than threads.
+
+**D2 (register fields)** — proposal is **`Cell` in a contiguous arena with typed
+index handles**, *not* `Rc<RefCell<_>>` per field. Register fields are all `Copy`
+scalars (`ulong`, `bool`, small enums), which is exactly `Cell`'s use case. RCC
+alone defines ~240 fields; one heap allocation each, with 16 B of refcounts and
+an 8 B borrow flag apiece scattered across the heap, is the difference between a
+polling loop living in L1 and one missing cache on every read.
+
+This costs nothing in faithfulness — the DSL is the abstraction boundary, so
+translated peripheral code reads identically either way — and it removes the
+borrow-panic hazard entirely for the most numerous object in the system.
+
+**The remaining real work is the borrow discipline for D1.** `RefCell` panics on
+re-entrant borrow; the exposure is peripheral → sysbus → peripheral (DMA reading
+memory through the bus while the DMA peripheral is itself borrowed). A panic
+there is not necessarily a C# bug — it may be legitimate re-entrancy C# tolerates.
 
 **Tasks**
+- Take the D2 layout verdict from #P1's head-to-head measurement.
 - Enumerate the re-entrant paths in the F427 corpus by inspection: which
   peripherals call back into the bus, and from where.
 - Propose and write down the discipline (candidate: never hold a borrow across a
   bus call; bus calls take `&self` and re-borrow internally).
-- Record the rejected alternative (arena + index handles) as the named Stage-3
-  lift, #21.
+- Record the D1 arena lift (`PeripheralId` indices, machine becomes `Send`) as
+  the named Stage-3 successor, #23 — deferred, not rejected.
 
 **Exit** — `docs/decision-d1-d2.md` committed with the verdict, the enumerated
 re-entrant paths, and the discipline.
@@ -134,22 +200,40 @@ re-entrant paths, and the discipline.
 
 **The decision most worth challenging.** Written verdict required.
 
+Blocked by #P1.
+
 Renode is multithreaded: ~2k of the 6,277-line time framework is thread
 coordination (`TimeSourceBase` 1041, `TimeHandle` 935, plus the master/slave
-sources). The proposal is to port it **single-threaded**, on the grounds that
-(a) Renode's determinism contract already serialises it logically so it is
-unobservable in the emulated machine, (b) `Rc<RefCell<T>>` is not `Send` so D1
-and threading are incompatible, and (c) determinism is the actual product and is
-easier to guarantee without threads.
+sources) — and that machinery sits **on the hot path**, since `SyncTime` →
+`ReportProgress` walks it on every timer register poll.
 
-This is the one place the plan knowingly departs from "faithful". Reversal cost
-is an `Rc`→`Arc`/`Mutex` mechanical sweep — painful but bounded.
+The proposal is **single-threaded within one machine**, and the argument is now
+performance-led rather than simplicity-led:
+
+1. **Intra-instance parallelism does not pay for a single-core MCU.** There is
+   one CPU. Peripherals could tick on other threads, but every interaction point
+   needs synchronisation and a polling loop drives that rate through the roof.
+   QEMU's MTTCG parallelises *guest cores*, not guest peripherals, for exactly
+   this reason — and here there is one guest core.
+2. **Removing the thread coordination is itself an optimisation.**
+   Single-threaded, `ReportProgress` collapses to `virtual_time += delta` plus a
+   deadline comparison.
+3. Determinism is the product and is easier to guarantee without threads.
+
+**The parallelism that pays is N independent instances** — the CLI test suite
+across 16 cores. That needs the machine `Send` (which D1's `Rc` blocks and D2's
+arena permits) or process isolation. Processes work today; note the tension and
+do not close it off.
 
 **Tasks**
-- Establish what, if anything, in the F427 boot path actually depends on
-  concurrent execution rather than on interleaving the time framework already
+- Take the time-framework share of the profile from #P1. If it is small, this
+  decision matters less than assumed and should say so.
+- Establish what, if anything, in the F427 boot path depends on genuinely
+  concurrent execution rather than interleaving the time framework already
   serialises.
 - Check whether tlib's execution model imposes a threading requirement of its own.
+- Decide the N-instance story: threads (needs `Send`, implies the D1 arena) or
+  processes (works now).
 - Write the verdict, including what evidence would reverse it.
 
 **Exit** — `docs/decision-d3.md` committed.
@@ -466,6 +550,45 @@ Only against a clean differential record.
 D1's named successor. Start with register fields (D2), which are the most
 numerous and the most uniform. Representation change only — no algorithm change
 — with the `Rc<RefCell>` version as the differential baseline.
+
+## 25 — Scope out "the rest of Renode"
+
+`phase-5`
+
+Blocked by #12 (census) and #21 (tests passing). Not a commitment — a costing,
+written once the method is either proven or dead.
+
+The measured shape of what remains after F427, across the full 854-file
+peripheral tree (DSL-style = ≥5 `With*` per 100 lines):
+
+| Population | Files | Lines |
+|---|---:|---:|
+| DSL-style peripherals | 419 | 208,580 |
+| Legacy hand-written peripherals | 370 | 105,707 |
+| Reflection-dependent infrastructure | — | ~33,000 |
+
+**Two-thirds of the peripheral tree by line count is declarative**, sharing the
+same 20 combinators the F427 work already implements. That population should be
+mostly pipeline throughput rather than new design.
+
+The residue that translates by no rule, and is therefore hand-written whenever it
+happens: Migrant state save/restore (15,278 — optional, drop it and the residue
+nearly halves), monitor/`UserInterface` (8,253 — reflection-based command binding,
+needs a compile-time registry), `PlatformDescription` for `.repl`/`.resc`
+(5,188 — dynamic instantiation by reflection, replaceable with build-time codegen
+from the same files), and the Xwt `UI` (4,040 — drop entirely).
+
+**Tasks**
+- Cost each population against the actual Phase-2/3 throughput, not against
+  estimates.
+- Decide whether `.repl` parsing is worth building at all, or whether build-time
+  codegen from `.repl` files into compiled platforms is strictly better. (It
+  probably is: it keeps the reflection out and the platform data in.)
+- Decide whether save/restore is wanted. It is the single largest piece of the
+  non-scaling residue.
+
+**Exit** — `docs/beyond-f427.md` with a costed scope, or a recorded decision not
+to pursue it.
 
 ## 24 — Revisit D3, and the tlib question
 
