@@ -1,5 +1,23 @@
 # GitHub issue drafts
 
+## Scope, in one box
+
+**In: Renode's ARM-only C# subset.** Nothing else.
+
+| | |
+|---|---|
+| **Peripherals** | ~22 types, ~13k lines of C# — the F427 set |
+| **ARM core bindings** | `NVIC` 2292 + `CortexM` 1385 lines of **C#** |
+| **Core infrastructure** | register DSL, sysbus, GPIO, time framework — ~12–15k lines after cuts |
+| **Custom peripherals** | ~1.6k lines, the test harness |
+| **tlib (the CPU)** | **C. Untouched. Behind FFI. Not translated, not replaced.** |
+| **Everything else in Renode** | Out. No `.repl` parsing, no monitor, no plugins, no GUI, no save/restore, no non-ARM cores |
+
+Total Rust target ~25–30k lines. Issues tagged `deferred` are research logged so
+the evidence is not lost — **not work, and not scheduled.**
+
+---
+
 Draft only — nothing filed yet. Reviewed and approved text becomes the issue
 bodies verbatim. Ordering is the intended dependency order; `blocked by` is
 noted where it is not simply the previous issue.
@@ -111,6 +129,165 @@ prototype numbers, the D2 layout comparison, and a verdict.
 - **Fail** — the win is marginal. The performance motivation evaporates and this
   becomes a safety-only project (still defensible on the two null-handling
   defects, but a much weaker case). **That verdict must be allowed to stand.**
+
+## P2 — [deferred research] Replacing tlib: 2008-vintage QEMU with no tests
+
+`deferred` `research`
+
+> **Not scheduled. Does not block any phase. Nobody works on this during
+> Phases 0–4.** Logged so the evidence is not lost and the decision is not made
+> by default. The scoped project is Renode's **ARM-only C# subset**; tlib is C,
+> stays behind FFI, and is not in scope.
+
+Phase 1 FFIs to tlib unchanged, deliberately —
+keeping the CPU identical on both sides is what makes the tier-3 lockstep oracle
+exact. This issue exists because the long-term answer is probably different, and
+the decision should be evidence-led rather than inherited.
+
+### The evidence
+
+| | |
+|---|---|
+| Lineage | ARM translator carries Fabrice Bellard (2003, 2008), CodeSourcery (2005–2007) and OpenedHand (2007) copyrights — the QEMU 0.9/1.0-era TCG |
+| Size | 19,157 lines of ARM translation; 227,771 lines of C in tlib overall |
+| Tests | **One test file in the entire tree** — `hash-table-store-test.c`, which tests a hash table. There is no instruction-level test infrastructure at all |
+
+The structure is the problem, not just the age. TCG is a JIT: instruction
+semantics are expressed as code that *emits* host code. You cannot unit-test
+"does `UMLAL` set the flags correctly" without running generated machine code, so
+in practice nobody does, and the model's correctness rests on it having been
+exercised by real guests rather than on any test.
+
+### The decisive question, and it depends on #P1
+
+**Is instruction dispatch even on the critical path?**
+
+If #P1 shows the cost is dominated by the MMIO path — managed boundary, time
+sync, register dispatch — and not by instruction execution, then the JIT is
+buying very little and costing a great deal in opacity. Renode currently manages
+~50 MIPS *with* a JIT. A straightforward Thumb-2 interpreter in Rust is
+plausibly in the same range on a modern host for this ISA, because Cortex-M is
+small and regular.
+
+If that holds, the trade is: **give up JIT throughput that is not the bottleneck,
+and buy per-instruction testability** — one pure function per instruction, each
+directly unit-testable, which is the thing tlib structurally cannot offer.
+
+### Tasks
+
+- Take the instruction-dispatch share of the profile from #P1. If it is small,
+  say so plainly — that single number decides most of this.
+- Quantify the divergence from upstream QEMU: what has Renode's fork changed,
+  and what upstream TCG fixes since ~2010 has it never received? (Relevant to
+  correctness, not just tidiness.)
+- Survey the options, honestly and without assuming the answer:
+  - A hand-written Rust Thumb-2/Cortex-M interpreter — most testable, unknown
+    throughput, moderate build.
+  - Existing Rust ARM emulation crates — establish what actually exists and is
+    maintained rather than assuming.
+  - Unicorn Engine — note it is itself QEMU-derived, so it inherits the same
+    structural testability problem.
+  - **Generated from a formal spec** — ARM publishes a machine-readable
+    architecture specification (ASL), and Sail has been used to derive executable
+    ARM models from it. A generated model is testable *against the vendor's own
+    definition* rather than against someone's reading of the manual. Highest
+    ceiling, highest unknown; worth costing rather than dismissing.
+  - Rebasing onto modern upstream TCG — cheapest, fixes the age, fixes nothing
+    about testability.
+- **Design the validation strategy, which is unusually strong here.** We have the
+  physical STM32F427 and existing SWD tooling. Random-instruction differential
+  testing against real silicon — generate sequences, run on hardware, run on the
+  model, diff registers and flags — is the gold-standard CPU validation method,
+  and it is available to this project in a way it is not to most. This is worth
+  specifying **regardless of which CPU option wins**, including if the answer is
+  "keep tlib": it would be the first real test coverage tlib has ever had.
+
+### Exit
+
+`docs/cpu-options.md` with the #P1 dispatch share, the divergence assessment, a
+costed option comparison, and a recommendation. A recommendation of "keep tlib,
+but build the hardware-differential test harness" is a legitimate and possibly
+the correct outcome.
+
+## P3 — [deferred research] Running tlib through the linux-rs C→Rust pipeline
+
+`deferred` `research`
+
+> **Not scheduled. Does not block any phase.** Same status as #P2 — and note
+> this is C→Rust work, which does not reduce the C# surface and therefore does
+> not serve this project's stated motivation.
+
+Logged because the idea is sound and the reuse is real: `linux-rs` already has a
+working C→Rust pipeline and a hardened `awtoau/c2rust` fork, tlib is 227k lines
+of **C** (c2rust's actual domain, unlike the C# side), and translating it would
+remove the FFI boundary entirely.
+
+**Recommendation: not as the first target.** Reasoning below; the issue exists so
+the decision is recorded rather than assumed, and so the stepping-stone variant
+does not get lost.
+
+### Prior art (searched 2026-07-31, needs a fuller dig)
+
+- **`zevorn/tcg-rs`** — "Rust for QEMU TCG", Rust, 31★, active (updated
+  2026-07-22).
+- **`qemu-rs/qemu-rs`** — "QEMU for Rust, and Rust for QEMU", 103★, active
+  (2026-07-23).
+- **QEMU upstream has official Rust support** — `wiki.qemu.org/RustInQemu`,
+  `qemu.org/docs/master/devel/rust.html`. Hand-written Rust *device models*, not
+  translation: the exact Rust-for-Linux analogue, and the same "no translation by
+  policy" shape.
+- **No c2rust-on-QEMU work found** — `gh search repos "c2rust qemu"` returns
+  empty.
+
+So: partially done, actively moving, and the specific thing proposed here
+(mechanical translation) is unclaimed. **The fuller survey is a task below, not a
+settled result — 31 stars is not an assessment.**
+
+### Why not first
+
+1. **c2rust hits its hardest cases in TCG.** Computed goto for the dispatch loop,
+   `setjmp`/`longjmp` for `cpu_loop_exit` unwinding, inline asm, function-pointer
+   tables, and runtime host-code generation. `setjmp`/`longjmp` in particular has
+   no clean Rust equivalent and is a known c2rust weak point.
+2. **You would get a JIT, in Rust.** The generated-code path is irreducibly
+   `unsafe` — it emits bytes and jumps to them — so there is no safety win there,
+   and it stays untestable per-instruction. **That is precisely the complaint that
+   motivated #P2.** Translating the JIT preserves the defect.
+3. **It does not serve either stated motivation.** The C# maintenance burden is
+   unaffected — tlib is C, not C#. And if #P1 shows the CPU is not the
+   bottleneck, translating it buys nothing on performance either.
+4. **It does not test the project's central risk**, which is whether the rule
+   thesis holds for C#. Months spent here and a failed C# gate leaves a Rust QEMU
+   fork and no answer.
+
+### The variant that *is* attractive
+
+**c2rust tlib as a stepping stone to deleting it.** Translate faithfully → the
+build is now one language → then replace the JIT with a testable interpreter
+incrementally, function by function, using the c2rust output as the differential
+baseline. That is exactly the linux-rs method applied here, and it is coherent in
+a way "translate and stop" is not.
+
+This merges with #P2: they are the same decision. #P2 asks "what should the CPU
+be"; this asks "how do we get there". If the answer to #P2 is "a testable
+interpreter", this is one credible route to it.
+
+### Tasks
+
+- Do the proper prior-art dig: `zevorn/tcg-rs` (what does it actually cover —
+  the TCG IR, a backend, a whole emulator?), `qemu-rs`, QEMU's upstream Rust
+  effort, and search beyond GitHub (GitLab, Codeberg, sr.ht, grep.app).
+- Assess c2rust's actual behaviour on tlib's hard constructs — take `arch/arm`
+  and *try it*, using the `awtoau/c2rust` fork. A one-day experiment beats
+  argument, and any failures are useful upstream to `linux-rs` regardless.
+- Cost the stepping-stone variant against a from-scratch interpreter (#P2).
+- Feed any c2rust gaps found back to `awtoau/c2rust` as evidence-based issues —
+  that is the fork's stated purpose and the benefit compounds for `linux-rs`.
+
+### Exit
+
+Merged into `docs/cpu-options.md` (#P2) as a costed route, or recorded as
+rejected with reasons.
 
 ## 2 — Oracle tier 2: register access trace capture
 

@@ -225,8 +225,28 @@ This is the single most important scoping fact in the plan, and it cuts two ways
   peripheral bug, not a CPU bug.
 
 **Phase 1 decision: FFI to tlib, unchanged.** Renode reaches it through P/Invoke;
-Rust reaches it through `extern "C"`, which is strictly simpler. tlib translation
-is a separate, later, optional project.
+Rust reaches it through `extern "C"`, which is strictly simpler.
+
+**But tlib is not a good long-term answer, and that is tracked separately (#P2).**
+Its ARM translator carries Fabrice Bellard (2003, 2008), CodeSourcery (2005–2007)
+and OpenedHand (2007) copyrights — QEMU 0.9/1.0-era TCG — and the entire 227k-line
+tree contains **one test file**, which tests a hash table. There is no
+instruction-level test infrastructure at all, and TCG's structure is why: it is a
+JIT, so instruction semantics are code that *emits* host code, and you cannot
+unit-test an instruction without running generated machine code.
+
+The decisive question is whether instruction dispatch is even on the critical
+path. If the #P1 profile says the cost is the MMIO path rather than execution,
+then the JIT buys little and costs a great deal in opacity — and a plain Rust
+Thumb-2 interpreter, one testable pure function per instruction, becomes the
+better trade. Cortex-M is a small, regular ISA and Renode manages only ~50 MIPS
+with a JIT today.
+
+Also worth stating because it applies whichever way #P2 lands: we have the
+physical STM32F427 and SWD tooling, so **random-instruction differential testing
+against real silicon** is available to this project. That is the gold-standard
+way to validate a CPU model, and it would be the first real test coverage tlib
+has ever had.
 
 ### Other prior art
 
