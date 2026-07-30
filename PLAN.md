@@ -1,32 +1,30 @@
 # renode-rs — pattern-learning C#→Rust translation of Renode, ARM/STM32F427 first
 
-Plan drafted 2026-07-31. Method deliberately modelled on
-[`linux-rs`](/mnt/2tb/git/linux-rs/PLAN.md): faithful line-by-line translation
-first, optimisation as a separate later pass, and every manual fix generalised
-into a rule rather than landed as a one-off patch.
+Plan drafted 2026-07-31. Method deliberately modelled on `linux-rs` (a sibling
+project doing the same for C→Rust on the Linux kernel): faithful line-by-line
+translation first, optimisation as a separate later pass, and every manual fix
+generalised into a rule rather than landed as a one-off patch.
 
 ## End goal
 
-A Rust emulator that boots the **awto-l8 PDM firmware** (STM32F427VGT6,
-Cortex-M4F, hard-float) to an interactive shell and drives `cli_test` commands —
-i.e. reproduces what `/mnt/2tb/git/awto-l8/renode/` already achieves under C#
-Renode, but in Rust, with a differential oracle against the C# original at every
-step.
+A Rust emulator that boots a real **STM32F427VGT6 (Cortex-M4F, hard-float)
+firmware** to an interactive shell and drives its CLI test suite — i.e.
+reproduces what an existing C# Renode setup already achieves, but in Rust, with
+a differential oracle against the C# original at every step.
 
 That target is chosen because it is **already proven and already instrumented**.
-`awto-l8/renode/README.md` documents a full boot matching hardware in order
-(clock → CAN → RTC/LSI → shell UART → OTP identity → FreeRTOS → banner →
-`system_boot OK @ 287 ms` → prompt), a `help` driven through CPU hooks, and an
-`otp` command driven end-to-end over CAN ISO-TP. We are not chasing an unproven
-target; we are re-implementing a known-good one with a byte-exact reference to
-diff against.
+The reference setup documents a full boot matching hardware in order (clock →
+CAN → RTC/LSI → shell UART → OTP identity → FreeRTOS → banner → `system_boot OK`
+→ prompt), a `help` command driven through CPU hooks, and an `otp` command
+driven end-to-end over CAN ISO-TP. We are not chasing an unproven target; we are
+re-implementing a known-good one with a byte-exact reference to diff against.
 
 Scope is **ARM Cortex-M / STM32F427 only**. Every other architecture, board and
 peripheral in Renode is out of corpus.
 
 ## Thesis
 
-Renode is not 486k lines of unique logic. Measured on this tree (v1.16.1,
+Renode is not 486k lines of unique logic. Measured on the current tree (v1.16.1,
 `dc52b24c`, 1,968 `.cs` files, 485,893 lines), the F427-reachable subset is
 **~13k lines of peripheral code over ~22 types**, and most of that is
 *declarative register description* expressed through one fluent DSL with a
@@ -40,9 +38,8 @@ So the leverage is not "translate 13k lines". It is:
    `WithChangeCallback`, the `*Many`/`*s` plural forms, and the
    `ConditionallyWritable` variants). Get those right in Rust and a large
    fraction of every peripheral file translates by rule, not by hand.
-2. **Learn rules, not files.** Same discipline as linux-rs: a solved construct
-   becomes a general pattern→Rust rule validated against *all* structurally
-   equivalent occurrences in the corpus.
+2. **Learn rules, not files.** A solved construct becomes a general pattern→Rust
+   rule validated against *all* structurally equivalent occurrences in the corpus.
 3. **The rule DB is the product.** The F427 emulator is the proof it works.
 
 ### The measurement that makes this credible
@@ -67,23 +64,23 @@ The corpus splits into two populations, and the split is the plan:
 - **DSL-style peripherals** — high rule leverage, translate near-mechanically.
 - **Legacy hand-written peripherals** — `STMCAN` is the outlier, 1957 lines with
   a single DSL call. It is also, not coincidentally, where two of the four
-  documented Renode bugs live. Low leverage, high care, human review.
+  defects below live. Low leverage, high care, human review.
 
 ## The case for doing this at all
 
-Four Renode defects blocked the PDM boot outright, all documented with
-file/line evidence in `awto-l8/renode/README.md`:
+Four Renode defects blocked the target firmware's boot outright, each traced to
+an exact file and line during the C# Renode bring-up:
 
 | Defect | Class |
 |---|---|
-| `STM32_CRC.UpdateCRC` throws `NullReferenceException` on first `CRC_DR` write — `reverseInputData` assigned only when `ReversibleIO` is true, which F4 is not; dereferenced unguarded at line 156 while its siblings use `?.` | **Null-handling. Eliminated by construction in Rust** — `Option<T>` cannot be silently `.Value`'d. |
+| `STM32_CRC.UpdateCRC` throws `NullReferenceException` on first `CRC_DR` write — `reverseInputData` is assigned only when `ReversibleIO` is true, which F4 is not; dereferenced unguarded at line 156 while its siblings use `?.` | **Null-handling. Eliminated by construction in Rust** — `Option<T>` cannot be silently `.Value`'d. |
 | `STMCAN` fabricates a bus error whenever `FrameSent == null` (no hub attached), and drives SCE as a level rather than latching through `MSR.ERRI` — interrupt storm, no task ever runs | **Null-as-sentinel + state-machine error.** The null half is a typestate problem Rust's `Option`/enum modelling makes explicit. |
-| `STMCAN` never sets `MSR.INAK` — model requires `InitRequest && !SleepRequest`, real silicon gives INRQ priority | Logic error. Translates as-is; found by differential test against silicon, not by the port. |
+| `STMCAN` never sets `MSR.INAK` — the model requires `InitRequest && !SleepRequest`, real silicon gives INRQ priority | Logic error. Translates as-is; found by comparison against silicon, not by the port. |
 | `STM32F4_FlashController` cannot address bank 2 — sector table stops at 11, `SNB` defined 4 bits where F42x/43x is 5 | Wrong constant. Translates as-is. |
 
 Two of four are null-handling defects that the Rust type system forecloses.
 That is a concrete, evidenced argument — not a theoretical one — and it is the
-honest headline: the port does not fix logic bugs, it fixes a *class* of bug.
+accurate headline: the port does not fix logic bugs, it fixes a *class* of bug.
 
 ## Prior art, and the c2rust question answered
 
@@ -137,32 +134,31 @@ own serialised IR. That is a build, not a fork.
 ### tlib is C — and that is the real c2rust opportunity
 
 Renode does **not** interpret ARM itself. The CPU is `tlib`, a C fork of QEMU's
-TCG, vendored at `src/Infrastructure/src/Emulator/Cores/tlib`: **227,771 lines
+TCG, vendored under `src/Infrastructure/src/Emulator/Cores/tlib`: **227,771 lines
 of C** total, of which the ARM-relevant slice is `arch/arm` (31,727) + core
 (5,827) + `tcg` (14,440) ≈ **52k lines**.
 
 This is the single most important scoping fact in the plan, and it cuts two ways:
 
-- **c2rust is exactly the right tool for tlib** — it is C, and there is already
-  an `awtoau/c2rust` fork with kernel-hardening fixes from linux-rs.
-- **But we should not translate tlib in Phase 1 anyway.** TCG is a JIT; c2rust-ing
-  a JIT yields a Rust program that still JITs through the same machinery, with
-  none of the safety benefit and all of the review cost. More importantly,
-  *keeping tlib byte-identical is what makes the differential oracle exact* — if
-  the CPU is the same code on both sides, every state divergence is a peripheral
-  bug, not a CPU bug.
+- **c2rust is exactly the right tool for tlib** — it is C, and there is already a
+  hardened fork at [`awtoau/c2rust`](https://github.com/awtoau/c2rust).
+- **But we should not translate tlib in Phase 1 anyway.** TCG is a JIT;
+  c2rust-ing a JIT yields a Rust program that still JITs through the same
+  machinery, with none of the safety benefit and all of the review cost. More
+  importantly, *keeping tlib byte-identical is what makes the differential oracle
+  exact* — if the CPU is the same code on both sides, every state divergence is a
+  peripheral bug, not a CPU bug.
 
 **Phase 1 decision: FFI to tlib, unchanged.** Renode reaches it through P/Invoke;
 Rust reaches it through `extern "C"`, which is strictly simpler. tlib translation
-is a separate, later, optional project (and the one place `awtoau/c2rust` would
-be reused as-is).
+is a separate, later, optional project.
 
 ### Other prior art
 
 | Project | Relevance |
 |---|---|
 | **c2rust** (Immunant) | Architecture and `WithStmts`; the transpiler itself is for tlib only, not C# |
-| **`awtoau/c2rust`** | Existing fork from linux-rs — reusable for tlib if that phase ever runs |
+| **`awtoau/c2rust`** | Existing hardened fork — reusable for tlib if that phase ever runs |
 | **Roslyn** | The frontend. `IOperation` is the IR we would otherwise have to build |
 | **`syn` / `quote` / `prettyplease`** | Rust AST construction and emission; replaces `c2rust-ast-printer` |
 | **linux-rs** | The method: faithful-first, rule-learning, layered oracle, mixed system that works at every step |
@@ -173,9 +169,6 @@ translator beyond toy scale, and whether any Rust deterministic-emulator
 framework is worth building on rather than porting onto.
 
 ## Translation discipline: faithful, not clever
-
-Adopted verbatim from linux-rs, because the user's stated preference is exactly
-this: **convert line by line first, get it running, optimise afterwards.**
 
 - **The oracle certifies equivalence, never improvement.** Every tier compares
   Rust against C# Renode running the same firmware.
@@ -197,10 +190,10 @@ front, with the reasoning recorded.
 
 Every C# reference-typed field becomes `Rc<RefCell<T>>` (or
 `Option<Rc<RefCell<T>>>` where C# permits null). Renode's graph is cyclic by
-construction — the machine owns peripherals, peripherals hold `IMachine` back-
-references, GPIO cross-links both ways — so reference cycles are unavoidable and
-**leaking them is correct**: the machine is built once and lives for the process,
-which then exits.
+construction — the machine owns peripherals, peripherals hold `IMachine`
+back-references, GPIO cross-links both ways — so reference cycles are
+unavoidable and **leaking them is correct**: the machine is built once and lives
+for the process, which then exits.
 
 *Rejected alternative:* arena + index handles. Better in every way except
 faithfulness, and it is a whole-program refactor. It is the **named Stage-3
@@ -221,14 +214,14 @@ its own `Rc<RefCell<_>>` — rather than borrowing through the collection — is
 the faithful mapping and the one that avoids D1's re-entrancy trap, since a
 write callback that touches another field never needs the collection borrowed.
 
-This is the highest-value single rule in the DB: it covers every `out`-parameter
+This is the highest-value single rule in the DB: it covers every `out` parameter
 in every `With*` call across the entire corpus.
 
 ### D3 — Threading: single-threaded
 
 Renode is multithreaded — `TimeSourceBase` (1041 lines), `TimeHandle` (935),
-`SlaveTimeSource`, `MasterTimeSource`, ~2k lines of the 6,277-line time framework
-is thread-coordination machinery.
+`SlaveTimeSource`, `MasterTimeSource`; roughly 2k lines of the 6,277-line time
+framework is thread-coordination machinery.
 
 **Recommendation: port the time framework single-threaded.** Justification:
 (a) Renode's determinism contract already means the threading is logically
@@ -247,8 +240,8 @@ starts.**
 Renode's `RecoverableException` / `ConstructionException` become
 `Result<T, RenodeError>` threaded with `?`. What C# treats as fatal
 (`NullReferenceException` and friends) becomes a panic. Note that the
-`STM32_CRC` bug *is* a fatal C# exception that aborts the emulator process —
-in Rust that construct does not compile, which is the point.
+`STM32_CRC` defect above *is* a fatal C# exception that aborts the emulator
+process — in Rust that construct does not compile, which is the point.
 
 ## The remaining C#→Rust mappings
 
@@ -271,11 +264,11 @@ Mechanical once D1–D4 are fixed. These become the initial rule DB:
 
 ## Corpus census (measured, not estimated)
 
-Renode v1.16.1 `dc52b24c` at `/mnt/2tb/git_mirror/renode`.
+Renode v1.16.1, commit `dc52b24c`.
 
 **In corpus — peripherals (~13k lines):**
 
-`STMCAN` 1957, `STM32F4_RTC` 1188, `STM32_Timer` 1013, `I2C/STM32F1_I2C` 606,
+`STMCAN` 1957, `STM32F4_RTC` 1188, `STM32_Timer` 1013, `STM32F1_I2C` 606,
 `STM32DMA` 425, `STM32F4_RCC` 404, `STM32_GPIOPort` 376, `STM32SPI` 366,
 `STM32_ADC` 338, `STM32_CRC` 317, `STM32_UART` 295, `STM32F4_FlashController` 275,
 `STM32_SYSCFG` 196, `STM32_IndependentWatchdog` 171, `STM32_RNG` 137,
@@ -286,25 +279,25 @@ Renode v1.16.1 `dc52b24c` at `/mnt/2tb/git_mirror/renode`.
 
 Register DSL 2,538 · `GPIO` 154 · base peripheral classes ~560 · time framework
 6,277 (less ~2k thread machinery under D3) · `Peripherals/Bus` 9,832 (less
-`SVDParser` ~1.1k, `SymbolLookup` ~1.4k, `Symbol` ~400 — all debug-only) ·
-selected `Main/Core` machine plumbing.
+`SVDParser`, `SymbolLookup`, `Symbol` — all debug-only, ~2.9k) · selected
+machine plumbing from `Main/Core`.
 
-**Out of corpus:** every non-ARM core (`Cores/RiscV` 11,125, `Cores/Arm64`
-63,891 lines of tlib C, etc.), monitor/CLI, `.repl`/`.resc` parsing (platform is
-compiled in), Xwt GUI, plugins, Migrant serialisation, `Main/Tests` 12,597,
-`Main/Utilities` 21,179 except what is actually called, all non-F427 peripherals
-(854 peripheral files total; we need ~22).
+**Out of corpus:** every non-ARM core (`Cores/RiscV` 11,125 lines of C#,
+`arch/arm64` 63,891 lines of tlib C, etc.), monitor/CLI, `.repl`/`.resc` parsing
+(the platform is compiled in), Xwt GUI, plugins, Migrant serialisation,
+`Main/Tests` 12,597, `Main/Utilities` 21,179 except what is actually called, and
+all non-F427 peripherals (854 peripheral files exist; we need ~22).
 
-**Also in corpus — the awto-l8 custom peripherals (~65k of C#… no, ~1,600 lines):**
-`AwtoF427FlashController` (~15k bytes), `AwtoF4Crc`, `AwtoShellIo`,
-`AwtoEspPeer`, `AwtoCanPeer`. These must port too — they are the test harness.
+**Also in corpus — the project's custom peripherals (~1,600 lines):** a dual-bank
+F427 flash controller, an F4 CRC unit, a shell-I/O hook peripheral, a UART peer
+model and a CAN peer model. These must port too — they are the test harness.
 
 **Total Rust target: ~25–30k lines.** Tractable in months, not years.
 
 ## Architecture
 
 ```
-Renode C# (F427 subset)          awto-l8 firmware ELF
+Renode C# (F427 subset)          target firmware ELF
         │                                 │
         ▼                                 │
 Roslyn IOperation walk                    │
@@ -331,8 +324,9 @@ differential oracle vs C# Renode ── same ELF, same platform
 
 ## Validation oracle
 
-Layered, cheapest first. **This is stronger than linux-rs had**, because the
-reference implementation is a deterministic emulator we can run in lockstep.
+Layered, cheapest first. **This is stronger than a typical translation project
+gets**, because the reference implementation is a deterministic emulator we can
+run in lockstep.
 
 1. **Compiles** — `cargo build`, clippy clean.
 2. **Register-level unit differential** — for each peripheral, replay a recorded
@@ -342,14 +336,13 @@ reference implementation is a deterministic emulator we can run in lockstep.
    built first.*
 3. **Instruction-lockstep state diff** — run both emulators to instruction count
    N on the same ELF; diff CPU registers, RAM, and peripheral state. Exact,
-   because tlib is shared (see the c2rust section). Bisect divergence to the
-   first differing instruction.
-4. **Boot-log equivalence** — the documented PDM boot sequence, in order, to
-   `system_boot OK @ 287 ms` and the shell prompt.
-5. **`cli_test` command drive** — `help`, `otp`, `info`, the `smoke:<cmd>` sweep,
-   and the CAN ISO-TP path, all already proven under C# Renode.
+   because tlib is shared. Bisect divergence to the first differing instruction.
+4. **Boot-log equivalence** — the documented boot sequence, in order, to
+   `system_boot OK` and the shell prompt.
+5. **CLI test drive** — `help`, `otp`, `info`, the auto-discovered command smoke
+   sweep, and the CAN ISO-TP path, all already proven under C# Renode.
 6. **Human review** — mandatory for anything touching the time framework, IRQ
-   delivery ordering, or D1/D3 borrow-and-threading decisions, regardless of
+   delivery ordering, or the D1/D3 borrow-and-threading decisions, regardless of
    tiers 1–5.
 
 Tier 2 deserves emphasis: capturing an access trace from C# Renode is a small
@@ -360,9 +353,8 @@ a test-driven one with an exact pass/fail.
 
 ### Phase 0 — environment and decisions (exit: D1–D4 settled, oracle tier 2 exists)
 
-- Reproduce the known-good C# baseline: `pdm_boot.resc` boots to a prompt, `help`
-  and `otp` drive. This is the reference; nothing proceeds until it is
-  reproducible on demand.
+- Reproduce the known-good C# baseline boot to a prompt. This is the reference;
+  nothing proceeds until it is reproducible on demand.
 - Build the tier-2 trace capture hook in C# Renode; record a boot trace per
   peripheral.
 - Stand up the Rust workspace, tlib FFI binding, and prove a "do-nothing" machine
@@ -399,16 +391,16 @@ a test-driven one with an exact pass/fail.
 
 - Port the machine, sysbus, GPIO routing, NVIC, time framework (D3), and
   `MappedMemory`.
-- Port the awto-l8 custom peripherals: `AwtoF427FlashController`, `AwtoF4Crc`,
-  `AwtoShellIo`, `AwtoEspPeer`, `AwtoCanPeer`.
+- Port the project's custom peripherals (flash controller, CRC, shell I/O, UART
+  peer, CAN peer).
 - Port `STMCAN` — the legacy outlier, hand-translated with human review, and the
-  place to *not* replicate the two documented bugs (recorded as deliberate,
+  place to *not* replicate the two defects above (recorded as deliberate,
   justified deviations rather than silent fixes).
 - Oracle tiers 3 and 4: instruction-lockstep, then boot-log equivalence.
 
-### Phase 4 — drive the tests (exit: `cli_test` runs against renode-rs)
+### Phase 4 — drive the tests (exit: the CLI test suite runs against renode-rs)
 
-- Oracle tier 5: `help`, `otp`, `info`, the `smoke:<cmd>` sweep, CAN ISO-TP.
+- Oracle tier 5: `help`, `otp`, `info`, the command smoke sweep, CAN ISO-TP.
 - Compare wall-clock against C# Renode's measured ~0.3× real time. Beating it is
   expected but is **not** a Phase-4 goal — equivalence is.
 
@@ -418,9 +410,9 @@ Only now, and only against a clean differential record:
 
 - **Stage-3 lift**: `Rc<RefCell<T>>` → arena + typed index handles (D1's named
   successor), starting with register fields (D2).
-- Kill the `RefCell` borrow-check overhead on hot paths.
-- Consider whether the TIM5 input-capture stub that would remove the documented
-  ~27 s LSI boot cost belongs here or earlier.
+- Remove `RefCell` borrow-check overhead on hot paths.
+- Consider whether a TIM5 input-capture stub — which would remove a documented
+  ~27 s LSI-measurement boot cost — belongs here or earlier.
 - Revisit D3 if profiling justifies it.
 - Only *then* consider tlib translation via `awtoau/c2rust`, if at all.
 
@@ -429,13 +421,13 @@ Only now, and only against a clean differential record:
 | Risk | Mitigation |
 |---|---|
 | **`RefCell` re-entrancy panics** (highest risk) | Phase-0 borrow discipline: never hold a borrow across a sysbus call. Tier-3 lockstep finds these immediately, at an exact instruction |
-| D3 (single-threaded) proves wrong | Decided explicitly in Phase 0 with a written verdict; reversal cost is `Rc`→`Arc` mechanical sweep, painful but bounded |
+| D3 (single-threaded) proves wrong | Decided explicitly in Phase 0 with a written verdict; reversal cost is an `Rc`→`Arc` mechanical sweep, painful but bounded |
 | Rule thesis false for C# | Phase-1 gate on peripheral two, before any frontend is built |
 | Roslyn frontend is a bigger build than expected | Phase 1 hand-translates without it; the frontend is only justified once the DSL and rules exist |
 | tlib FFI proves awkward from Rust | It is a plain C ABI already called by P/Invoke; if it fails, that is Phase-0 knowledge, not Phase-3 |
 | Scope creep toward "a Rust Renode" | Non-goal, stated: no `.repl` parsing, no monitor, no plugins, no GUI, one platform compiled in |
 | Legacy hand-written peripherals (STMCAN) resist rules | Expected. They are the human-review bucket by design, not a rule-DB failure |
-| The four known Renode bugs get faithfully reproduced | Deliberate: reproduce first (so the oracle passes), then fix as recorded, justified deviations |
+| The four known Renode defects get faithfully reproduced | Deliberate: reproduce first (so the oracle passes), then fix as recorded, justified deviations |
 
 ## Repo layout (intended)
 
@@ -449,3 +441,8 @@ src/               the Rust emulator crate
 oracle/            trace capture, lockstep harness, boot-log diff
 tmp/               scratch + logs (untracked)
 ```
+
+## Licensing note
+
+Renode is MIT-licensed (Antmicro). Translated work derives from it and must
+carry appropriate attribution. To be confirmed before any code is published.
