@@ -18,15 +18,12 @@
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
-//!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.registers
 //!   - Reset: withheld, cannot emit stmt:Loop
-//!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.registers
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq, st.state
 //!   - calls base-class method `OnGPIO` on `BaseGPIOPort`, which is not translated
 //!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
-//!   - state field `registers`: no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.DoubleWordRegisterCollection`
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -135,6 +132,14 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
+fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
+    return bank.read(offset as u64, st).unwrap_or(0) as u32;
+}
+
+fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
+    bank.write(offset as u64, value as u64, st);
+}
+
 fn write_state(bank: &Bank<State>, st: &mut State, value: u16) -> () {
     /* Loop */
 }

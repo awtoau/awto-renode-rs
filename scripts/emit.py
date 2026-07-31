@@ -166,7 +166,7 @@ def render_mode(const: str | None) -> str:
 
 class Emitter:
     PROJECT_KEYS = ("state_struct", "peripheral_methods", "callback_naming",
-                    "logging", "enums")
+                    "logging", "enums", "register_collection", "inheritance")
 
     def __init__(self, con: sqlite3.Connection, log: logging.Logger,
                  rules_dir: Path | None = None):
@@ -415,6 +415,17 @@ class Emitter:
             tmpl = table.get(symbol or "")
             if tmpl and kids:
                 return tmpl.format(operand=self.emit_expr(kids[0]))
+        rc = self.project.get("register_collection", {})
+        if (kind == "Invocation" and symbol
+                and rc.get("symbol_contains", "\0") in symbol):
+            meth = symbol.split("(")[0].split(".")[-1]
+            tmpl = rc.get("members", {}).get(meth)
+            if tmpl:
+                vals = [self.emit_expr(a) for a in args]
+                fmt = {f"arg{i}": v for i, v in enumerate(vals)}
+                fmt["args"] = ", ".join(vals)
+                return tmpl.format(**fmt)
+
         logrule = self.project.get("logging", {})
         if (kind == "Invocation" and symbol
                 and logrule.get("symbol_contains", "\0") in symbol):
@@ -450,9 +461,18 @@ class Emitter:
             recv0 = next((c[0] for c in all_kids if c[1] != "Argument"), None)
             rk = self.kind_of(recv0) if recv0 is not None else None
             if decl and decl != self._current_type and rk == "InstanceReference":
+                mname = symbol.split("(")[0].rsplit(".", 1)[-1]
+                qual = self.project.get("inheritance", {}).get(
+                    "qualified_call", "{base}_{name}").format(
+                    base=snake(decl), name=snake(mname))
+                if qual in self._emitted_fns or snake(mname) in self._emitted_fns:
+                    target = qual if qual in self._emitted_fns else snake(mname)
+                    arg_txt = ", ".join(self.emit_expr(a) for a in args)
+                    return (f"{target}(bank, st, {arg_txt})" if arg_txt
+                            else f"{target}(bank, st)")
                 spec = self.project.get("peripheral_methods", {}).get("base_call", {})
                 self.gaps.append(spec.get("gap", "base call to {name}").format(
-                    name=symbol.split("(")[0].rsplit(".", 1)[-1], type=decl))
+                    name=mname, type=decl))
                 return "/* GAP: base-class call */"
 
         if kind == "Invocation" and symbol:
@@ -1139,6 +1159,32 @@ class Emitter:
             "AND m.has_body=1 AND mb.name<>? ORDER BY mb.name",
             (type_name, method_name))]
         emitted: dict[str, str] = {}
+        # Base-class methods, flattened. A name the derived type also defines is
+        # qualified by its declaring type, so `base.Reset()` has something
+        # unambiguous to call. See inheritance.qualified_call.
+        derived = set(names)
+        inh = self.project.get("inheritance", {})
+        for base in self.base_chain(type_name):
+            for (bn,) in self.con.execute(
+                    "SELECT mb.name FROM member mb JOIN method m ON m.member_id=mb.id "
+                    "JOIN type t ON t.id=mb.type_id WHERE t.name=? AND mb.kind='method' "
+                    "AND m.has_body=1 ORDER BY mb.name", (base,)):
+                self.gaps = []
+                lines = self.emit_peripheral_method(base, bn)
+                method_gaps.extend(self.gaps)
+                if not lines:
+                    continue
+                key = self.fn_name(bn)
+                if bn in derived:
+                    key = inh.get("qualified_call", "{base}_{name}").format(
+                        base=snake(base), name=self.fn_name(bn))
+                    lines[0] = lines[0].replace(
+                        f"fn {self.fn_name(bn)}(", f"fn {key}(", 1)
+                emitted[key] = "\n".join(lines)
+        # Visible to the derived methods as they emit, so a base call can
+        # resolve; the fixpoint below still prunes anything left dangling.
+        self._emitted_fns = set(emitted)
+        self._current_type = type_name
         for nm in names:
             self.gaps = []
             lines = self.emit_peripheral_method(type_name, nm)
@@ -1286,6 +1332,32 @@ class Emitter:
             return None
         return types.get(cs.split(".")[-1])
 
+    def base_chain(self, type_name: str) -> list[str]:
+        """Base types of this peripheral, nearest first, that are IN the corpus.
+
+        A base outside the cut cannot be flattened; callers report that rather
+        than silently translating a peripheral with half its state missing."""
+        out: list[str] = []
+        row = self.con.execute(
+            "SELECT id, base_type_id, base_extern FROM type WHERE name=?",
+            (type_name,)).fetchone()
+        seen = set()
+        while row and row[1] and row[1] not in seen:
+            seen.add(row[1])
+            nxt = self.con.execute(
+                "SELECT name, id, base_type_id, base_extern FROM type WHERE id=?",
+                (row[1],)).fetchone()
+            if not nxt:
+                break
+            out.append(nxt[0])
+            row = (nxt[1], nxt[2], nxt[3])
+        return out
+
+    def external_base(self, type_name: str) -> str | None:
+        row = self.con.execute(
+            "SELECT base_extern FROM type WHERE name=?", (type_name,)).fetchone()
+        return row[0] if row and row[0] else None
+
     def nested_enums(self, type_name: str) -> list[tuple[str, list[tuple[str, str]]]]:
         """Enums declared inside the peripheral, with their C# discriminants."""
         out = []
@@ -1317,12 +1389,16 @@ class Emitter:
         qmarks = ",".join("?" for _ in kinds)
         for n, dt in self.con.execute(
                 f"SELECT mb.name, mb.declared_type FROM member mb "
-                f"JOIN type t ON t.id=mb.type_id WHERE t.name=? "
+                f"JOIN type t ON t.id=mb.type_id WHERE t.name IN "
+                f"({','.join('?' for _ in [type_name] + self.base_chain(type_name))}) "
                 f"AND mb.kind IN ({qmarks}) "
                 f"AND mb.is_static=0 AND mb.has_storage=1 "
-                f"ORDER BY mb.name", (type_name, *kinds)):
+                f"ORDER BY mb.name",
+                (*([type_name] + self.base_chain(type_name)), *kinds)):
             if any(h in (dt or "") for h in handles):
                 continue          # a register handle: already in `Fields`
+            if (dt or "").strip() in spec.get("elided", {}).get("types", []):
+                continue          # the Bank already is this -- see elided.note
             rt = spec.get("type_map", {}).get((dt or "").strip()) \
                 or self.rust_type(dt or "")
             if rt is None:

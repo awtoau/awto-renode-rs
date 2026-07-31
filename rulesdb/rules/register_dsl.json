@@ -222,6 +222,13 @@
     "requires_storage": {
       "note": "Only members that actually store go in State. `STM32_UART.BaudRate` computes from two register fields and holds nothing; emitting it as a field would invent storage the C# does not have -- the same error class as the invented `.with_reserved(9, 23)`. Derived from member.has_storage, so it is not a hand-maintained skip list.",
       "column": "has_storage"
+    },
+    "elided": {
+      "note": "Base-class members that renode-regs' Bank ALREADY IS. `RegistersCollection` and `mapper` are the register collection and its offset mapping; the Rust peripheral receives them as the `bank` parameter, so carrying them in State too would model the same thing twice. Elided with a reason rather than reported as gaps, which would imply work that does not exist. `machine` and `sysbus` are NOT elided -- they are real unmodelled infrastructure and stay visible.",
+      "types": [
+        "Antmicro.Renode.Core.Structure.Registers.DoubleWordRegisterCollection",
+        "Antmicro.Renode.Peripherals.Bus.Wrappers.RegisterMapper"
+      ]
     }
   },
   "callback_naming": {
@@ -261,5 +268,22 @@
       "note": "WithEnumFields gives C# a STRONGLY TYPED callback -- `(idx, val)` where val is already the enum, with no cast node anywhere. The Rust callback signature is u64, so the conversion belongs at the parameter's uses inside the body. Scoped to lambda slots: a peripheral method that genuinely takes an enum parameter declares it as the enum and must not be wrapped.",
       "emit": "{type}::from_u64({name})"
     }
+  },
+  "inheritance": {
+    "note": "Rust has no inheritance, so a peripheral's base class is FLATTENED into it: base fields join State, base methods are emitted as free fns over the same (bank, st). This is the object-model deviation D1 applied to peripherals -- recorded here because the alternative, a trait, cannot carry the base's FIELDS, which is what the derived code actually reaches for.",
+    "qualified_call": "{base}_{name}",
+    "qualified_note": "When the derived type overrides a base method, both flatten to the same name. `base.Reset()` therefore calls the base's version under a name qualified by its declaring type -- unambiguous at any depth, and derived from the corpus rather than a hand-kept table.",
+    "skip_when_external": "A base outside the corpus cut (BaseGPIOPort) cannot be flattened; the derived members that need it are withheld and the gap names the type."
+  },
+  "register_collection": {
+    "note": "The C# RegistersCollection IS renode-regs' Bank -- it was elided from State for that reason, so its uses must resolve to `bank` rather than to a fabricated accessor. The bank threads `&mut S` through read/write because callbacks need the peripheral's state, which is why the argument lists differ from C#. Matched on BaseRegisterCollection, the generic DECLARATION Roslyn resolves calls to -- the concrete DoubleWordRegisterCollection never appears at a call site, because targets are keyed on OriginalDefinition.",
+    "receiver": "bank",
+    "members": {
+      "Reset": "bank.reset()",
+      "Read": "bank.read({arg0} as u64, st).unwrap_or(0) as u32",
+      "Write": "bank.write({arg0} as u64, {arg1} as u64, st)"
+    },
+    "symbol_contains": "BaseRegisterCollection",
+    "cast_note": "C# types the bus offset as `long` and the value as `uint`; the bank uses u64 for both, so the casts are at the boundary. Faithful: the C# signature is what the bus calls, and the width is not narrowed."
   }
 }
