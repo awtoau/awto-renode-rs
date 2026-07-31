@@ -12,13 +12,21 @@
 //!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
+//!   - ChangeMode: parameter `newMode` has no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode`
+//!   - GetLocalReceiver: withheld, cannot emit stmt:Throw
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode
+//!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
-//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
 //!   - OutputSpeed: callback for bit 0 needs peer method(s) not yet emitted: st.output_speed
 //!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down
+//!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.registers
+//!   - Reset: withheld, cannot emit stmt:Loop
+//!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.registers
+//!   - WritePin: withheld, reaches state this peripheral does not have: st.irq, st.state
+//!   - calls base-class method `OnGPIO` on `BaseGPIOPort`, which is not translated
+//!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
 //!   - state field `mode`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode[]`
@@ -61,6 +69,21 @@ pub struct State {
     pub pull_up_pull_down_reset_value: u32,
 }
 
+// The peripheral's own methods. C# reaches its state through
+// `this`; these receive it as (bank, st) instead, so a callback
+// can call them -- a closure cannot borrow what it lives inside.
+fn write_state(bank: &Bank<State>, st: &mut State, value: u16) -> () {
+    /* Loop */
+}
+
+// Callbacks for computed fields. C# writes these as lambdas capturing
+// `this`; a closure cannot live inside the object it borrows, so each
+// becomes a free fn over (bank, state). See rulesdb/rules/.
+fn output_data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, val: u64) -> () {
+    write_state(bank, st, val as u16);
+    return;
+}
+
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::OUTPUT_TYPE, 0)
@@ -89,7 +112,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::OUTPUT_DATA, 0)
-        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, None)
+        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, Some(output_data_0_writer))
         .with_reserved(16, 16)
         .done();
 

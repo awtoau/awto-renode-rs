@@ -178,6 +178,7 @@ class Emitter:
         self._callbacks: list[str] = []
         self._emitted_fns: set[str] = set()
         self._state_names: set[str] = set()
+        self._current_type: str | None = None
         self._current_reg: str | None = None
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
         self.forms = load_register_forms(rd)
@@ -438,6 +439,19 @@ class Emitter:
             return logrule.get("emit", "log::{level}!({args})").format(
                 level=lvl, args=", ".join(rest))
 
+        if kind == "Invocation" and symbol and self._current_type:
+            # A call on `this` whose target is declared on a BASE type is
+            # `base.Foo()`. Emitting it as a self-call is unbounded recursion
+            # that compiles -- see peripheral_methods.base_call.
+            decl = symbol.split("(")[0].rsplit(".", 1)[0].split(".")[-1]
+            recv0 = next((c[0] for c in all_kids if c[1] != "Argument"), None)
+            rk = self.kind_of(recv0) if recv0 is not None else None
+            if decl and decl != self._current_type and rk == "InstanceReference":
+                spec = self.project.get("peripheral_methods", {}).get("base_call", {})
+                self.gaps.append(spec.get("gap", "base call to {name}").format(
+                    name=symbol.split("(")[0].rsplit(".", 1)[-1], type=decl))
+                return "/* GAP: base-class call */"
+
         if kind == "Invocation" and symbol:
             # Generic call. Project rules were tried above, so reaching here
             # means no idiom claimed it.
@@ -477,8 +491,21 @@ class Emitter:
             return tmpl.format(array=self.emit_expr(kids[0]),
                                index=self.emit_expr(kids[1]))
 
-        if kind in ("Conversion", "Parenthesized", "Argument"):
-            # Transparent: an implicit conversion is not written by anyone.
+        if kind == "Conversion" and kids:
+            inner = self.emit_expr(kids[0])
+            # Only NUMERIC conversions need spelling in Rust; see language rule.
+            try:
+                num = json.loads(detail or "{}").get("numeric", False)
+            except json.JSONDecodeError:
+                num = False
+            tgt = self.rust_type(rtype or "") if num else None
+            if num and tgt:
+                return self.language.get("conversions", {}).get(
+                    "numeric", "{expr} as {target}").format(expr=inner, target=tgt)
+            return inner
+
+        if kind in ("Parenthesized", "Argument"):
+            # Transparent: neither is written in Rust.
             return self.emit_expr(kids[0]) if kids else "/* empty */"
         if kind == "InstanceReference":
             return "self"
@@ -623,19 +650,23 @@ class Emitter:
         # Rewrite the captured `this`. In the C# the closure reaches the
         # peripheral through `this`; as a free fn it receives `bank` and `st`
         # instead, so references must be redirected to the parameters.
+        body = self.rewrite_this(body)
+        text = lam.get("free_fn", "fn {name}({params}) -> {ret} {{\n{body}\n}}").format(
+            name=name, params=params, ret=sigs["ret"], body="\n".join(body))
+        return text.splitlines()
+
+    def rewrite_this(self, body: list[str]) -> list[str]:
+        """Redirect a captured `this` onto the (bank, st) parameters.
+
+        Shared by lambdas and peripheral methods: both are free fns that
+        received what the C# reached through `this`."""
+        call = self.project.get("peripheral_methods", {}).get(
+            "call", "{name}(bank, st{args})")
         rewritten: list[str] = []
         for line in body:
             line = line.replace("self.bank.", "bank.").replace("self.f.", "st.f.")
-            # A call to a PEER METHOD is the case that does not rewrite: the
-            # free fn has the bank and the state, not the peripheral, so
-            # `self.update()` has no receiver. Flagged rather than mangled --
-            # it is a real design question about what `S` must contain, not a
-            # missing template.
             # A peer-method call: the peripheral's own methods are free fns
             # over (bank, st) too, so the receiver becomes those parameters.
-            # See register_dsl.json peripheral_methods for why uniformly.
-            call = self.project.get("peripheral_methods", {}).get(
-                "call", "{name}(bank, st{args})")
             def peer(m):
                 inner = m.group(2).strip()
                 return call.format(name=m.group(1),
@@ -643,10 +674,7 @@ class Emitter:
             line = re.sub(r"\bself\.([a-z_][a-z0-9_]*)\(([^()]*)\)", peer, line)
             line = line.replace("self.", "st.")
             rewritten.append(line)
-        body = rewritten
-        text = lam.get("free_fn", "fn {name}({params}) -> {ret} {{\n{body}\n}}").format(
-            name=name, params=params, ret=sigs["ret"], body="\n".join(body))
-        return text.splitlines()
+        return rewritten
 
     def lambda_uses(self, oid: int) -> set[str]:
         """Parameter names actually referenced in this lambda's body, so unused
@@ -913,6 +941,7 @@ class Emitter:
         method_id, = row
 
         self._state_names = {n for n, _ in self.state_fields(type_name)[0]}
+        self._current_type = type_name
         chains: dict[int, list[tuple[int, int, str]]] = {}
         for oid, symbol, start, end in self.con.execute(
                 "SELECT id, symbol, span_start, span_start + span_len FROM operation "
@@ -960,11 +989,56 @@ class Emitter:
         boundary rather than a convention -- which is what lets check_generated.py
         enforce it byte-for-byte.
         """
-        self._callbacks = []
-        stmts, fields, gaps = self.emit_registers(type_name, method_name)
-        offsets = self.register_offsets(type_name, method_name)
         state, state_gaps = self.state_fields(type_name)
+        self._callbacks = []
+        # Peripheral methods first: a callback may call one, and the converter
+        # only emits a callback whose dependencies exist.
+        methods: list[str] = []
+        self._emitted_fns = set()
+        self._state_names = {n for n, _ in state}
+        self._current_type = type_name
+        self.gaps = []
+        method_gaps: list[str] = []
+        names = [r[0] for r in self.con.execute(
+            "SELECT mb.name FROM member mb JOIN method m ON m.member_id=mb.id "
+            "JOIN type t ON t.id=mb.type_id WHERE t.name=? AND mb.kind='method' "
+            "AND m.has_body=1 AND mb.name<>? ORDER BY mb.name",
+            (type_name, method_name))]
+        emitted: dict[str, str] = {}
+        for nm in names:
+            self.gaps = []
+            lines = self.emit_peripheral_method(type_name, nm)
+            method_gaps.extend(self.gaps)
+            if lines:
+                emitted[snake(nm)] = "\n".join(lines)
+        # A method may call another that was withheld. Drop until stable, so
+        # the file never references a function it does not contain.
+        while True:
+            drop = {n for n, src in emitted.items()
+                    for c in re.findall(r"\b([a-z_][a-z0-9_]*)\(bank, st", src)
+                    if c not in emitted and c != n}
+            if not drop:
+                break
+            for n in sorted(drop):
+                pass
+            casualties = {n for n, src in emitted.items()
+                          if any(c not in emitted and c != n for c in
+                                 re.findall(r"\b([a-z_][a-z0-9_]*)\(bank, st", src))}
+            for n in sorted(casualties):
+                missing = sorted({c for c in re.findall(
+                    r"\b([a-z_][a-z0-9_]*)\(bank, st", emitted[n])
+                    if c not in emitted and c != n})
+                method_gaps.append(
+                    f"{n}: withheld, calls withheld method(s): {', '.join(missing)}")
+                del emitted[n]
+        methods = [emitted[k] for k in sorted(emitted)]
+        self._emitted_fns = set(emitted)
+        self.gaps = []
+        stmts, fields, gaps = self.emit_registers(type_name, method_name)
+        gaps.extend(method_gaps)
         gaps.extend(state_gaps)
+        offsets = self.register_offsets(type_name, method_name)
+
 
         L: list[str] = []
         a = L.append
@@ -1009,6 +1083,13 @@ class Emitter:
             a(f"    pub {n}: {ty},")
         a("}")
         a("")
+        if methods:
+            a("// The peripheral's own methods. C# reaches its state through")
+            a("// `this`; these receive it as (bank, st) instead, so a callback")
+            a("// can call them -- a closure cannot borrow what it lives inside.")
+            for m in methods:
+                a(m)
+                a("")
         if self._callbacks:
             a("// Callbacks for computed fields. C# writes these as lambdas capturing")
             a("// `this`; a closure cannot live inside the object it borrows, so each")
@@ -1089,6 +1170,72 @@ class Emitter:
             return []
         seen = {name: off for name, off, _r, _s in self.find_registers(row[0]) if name}
         return sorted(seen.items(), key=lambda kv: kv[1])
+
+    def emit_peripheral_method(self, type_name: str, method_name: str) -> list[str]:
+        """A whole C# method as a free fn over (bank, st).
+
+        Distinct from emit_method, which walks a fluent register chain; this
+        emits an ordinary body, so a callback can call it."""
+        row = self.con.execute("""
+            SELECT m.member_id, m.return_type FROM method m
+            JOIN member mb ON mb.id = m.member_id
+            JOIN type t ON t.id = mb.type_id
+            WHERE t.name = ? AND mb.name = ? AND m.has_body = 1""",
+            (type_name, method_name)).fetchone()
+        if not row:
+            return []
+        method_id, ret_cs = row
+        before = len(self.unhandled)
+        seen_unhandled = set(self.unhandled)
+        self._current_type = type_name
+        spec = self.project.get("peripheral_methods", {})
+        ret = (spec.get("void_ret", "()") if (ret_cs or "void") == "void"
+               else self.rust_type(ret_cs) or spec.get("void_ret", "()"))
+
+        extra = ""
+        for pname, ptype in self.con.execute(
+                "SELECT name, type FROM parameter WHERE method_id=? ORDER BY ordinal",
+                (method_id,)):
+            rt = (self.project.get("state_struct", {}).get("type_map", {})
+                  .get((ptype or "").strip()) or self.rust_type(ptype or ""))
+            if rt is None:
+                self.gaps.append(
+                    f"{method_name}: parameter `{pname}` has no Rust mapping "
+                    f"for `{ptype}`")
+                return []
+            extra += f", {snake(pname)}: {rt}"
+
+        root = self.con.execute(
+            "SELECT id FROM operation WHERE method_id=? AND parent_id IS NULL",
+            (method_id,)).fetchone()
+        if not root:
+            return []
+        body: list[str] = []
+        for cid, kind, _s, _c, _t in self.children(root[0]):
+            body.extend(self.emit_block(cid, 1) if kind == "Block"
+                        else self.emit_stmt(cid, 1))
+        if not body:
+            return []
+        # Any construct the converter could not emit leaves a marker; those do
+        # not parse in expression position and a stub would look finished.
+        if len(self.unhandled) > before:
+            new = sorted(set(self.unhandled) - seen_unhandled)
+            self.gaps.append(
+                f"{method_name}: withheld, cannot emit {', '.join(new)}")
+            return []
+        body = self.rewrite_this(body)
+        unknown = sorted({m for m in re.findall(
+            r"\bst\.([a-z_][a-z0-9_]*)", "\n".join(body))
+            if m != "f" and m not in self._state_names})
+        if unknown:
+            self.gaps.append(
+                f"{method_name}: withheld, reaches state this peripheral does "
+                f"not have: {', '.join('st.' + u for u in unknown)}")
+            return []
+        decl = spec.get("decl",
+                        "fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}")
+        return [decl.format(name=snake(method_name), extra=extra, ret=ret) + " {",
+                *body, "}"]
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:
         row = self.con.execute("""

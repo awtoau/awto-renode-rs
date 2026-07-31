@@ -172,13 +172,22 @@
   },
   "peripheral_methods": {
     "note": "EVERY peripheral method becomes a free fn over (bank, state) -- not only the ones that touch the bank. Inside a DSL callback you hold `&Bank<S>` and `&mut S`, which is the peripheral taken apart, so a method reached from a callback cannot have a `self`. Splitting methods by whether they touch registers would give two calling conventions and a classification that shifts as rules change; 49 of 296 methods in register-bearing types touch a field today, but which ones is not a stable property. Uniform is cheaper and needs no analysis.",
-    "decl": "fn {name}(bank: &Bank<S>, st: &mut S{extra}) -> {ret}",
+    "decl": "fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}",
     "call": "{name}(bank, st{args})",
     "field_handles": "st.f.{field}",
     "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see.",
     "unemitted_dependency": {
       "note": "A callback body may call a peer method the converter cannot yet emit. Emitting the call anyway produces a file that does not compile and LOOKS finished; emitting a plausible stub is worse. So the callback is withheld, the combinator falls back to no callback, and the gap is reported by name. The register's layout is still correct -- only its behaviour is missing, and visibly so. The same applies when a body reaches a State field the converter could not type (GPIO's arrays of nested enums): the callback is withheld and the missing field named, rather than emitted against a struct that lacks it.",
       "action": "withhold callback, report gap"
+    },
+    "void_ret": "()",
+    "base_call": {
+      "note": "`base.Reset()` resolves to the BASE type's method, not the peripheral's. Rewriting it as a self-call produced `fn reset(...) { reset(bank, st); ... }` -- unbounded recursion that compiles cleanly and would only show up as a stack overflow at run time. Detected by comparing the callee's declaring type to the peripheral's own; the base class is not translated yet, so it is reported.",
+      "gap": "calls base-class method `{name}` on `{type}`, which is not translated"
+    },
+    "withhold_on_unhandled": {
+      "note": "A method body containing a construct the converter cannot emit is withheld whole, exactly as a callback is. Emitting it produces markers in expression position (`f(a, /* DelegateCreation */, b)`) which do not parse, and anything that did parse would be a stub that looks finished. Withholding also cascades correctly: a callback depending on a withheld method is itself withheld, so the file stays consistent.",
+      "action": "withhold method, report gap"
     }
   },
   "state_struct": {
@@ -200,7 +209,8 @@
     "type_map": {
       "note": "Renode types with no BCL equivalent. `Core.GPIO` is an output line; the peripheral only ever sets its level, so `bool` carries it -- consistent with the IRQ_SET expression rule. `CancellationTokenSource` cancels a scheduled action, and under D3 (single-threaded) that is a shared flag, not a threading primitive: Cancel() sets it and the scheduled closure checks it before firing. This is a DEVIATION in mechanism with identical observable behaviour, recorded here rather than left to look like a faithful mapping.",
       "Antmicro.Renode.Core.GPIO": "bool",
-      "System.Threading.CancellationTokenSource": "Option<std::rc::Rc<std::cell::Cell<bool>>>"
+      "System.Threading.CancellationTokenSource": "Option<std::rc::Rc<std::cell::Cell<bool>>>",
+      "System.Threading.CancellationToken": "std::rc::Rc<std::cell::Cell<bool>>"
     },
     "requires_storage": {
       "note": "Only members that actually store go in State. `STM32_UART.BaudRate` computes from two register fields and holds nothing; emitting it as a field would invent storage the C# does not have -- the same error class as the invented `.with_reserved(9, 23)`. Derived from member.has_storage, so it is not a hand-maintained skip list.",

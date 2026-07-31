@@ -7,8 +7,10 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - Data: callback for bit 0 needs peer method(s) not yet emitted: update
 //!   - Data: conditional access `?.` needs nullability analysis
+//!   - WriteChar: withheld, cannot emit expr:DelegateCreation, expr:InterpolatedString
+//!   - calls base-class method `Reset` on `BasicDoubleWordPeripheral`, which is not translated
+//!   - conditional access `?.` needs nullability analysis
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 use std::collections::VecDeque;
@@ -60,6 +62,27 @@ pub struct State {
     pub receive_fifo: VecDeque<u8>,
 }
 
+// The peripheral's own methods. C# reaches its state through
+// `this`; these receive it as (bank, st) instead, so a callback
+// can call them -- a closure cannot borrow what it lives inside.
+fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc<std::cell::Cell<bool>>) -> () {
+    if !ct.get() {
+        bank.set_flag(st.f.idle_line_detected, true);
+        update(bank, st);
+    }
+}
+
+fn reset(bank: &Bank<State>, st: &mut State) -> () {
+    /* GAP: base-class call */;
+    /* GAP: `?.` needs nullability analysis (D4) */;
+    st.receive_fifo.clear();
+    st.irq = false;
+}
+
+fn update(bank: &Bank<State>, st: &mut State) -> () {
+    st.irq = ((((bank.flag(st.f.idle_line_detected_interrupt_enabled) && bank.flag(st.f.idle_line_detected)) || (bank.flag(st.f.receiver_not_empty_interrupt_enabled) && bank.flag(st.f.read_fifo_not_empty))) || bank.flag(st.f.transmit_data_register_empty_interrupt_enabled)) || (bank.flag(st.f.transmission_complete_interrupt_enabled) && bank.flag(st.f.transmission_complete)));
+}
+
 // Callbacks for computed fields. C# writes these as lambdas capturing
 // `this`; a closure cannot live inside the object it borrows, so each
 // becomes a free fn over (bank, state). See rulesdb/rules/.
@@ -69,6 +92,28 @@ fn status_3_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: 
 
 fn status_7_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
     return u64::from(true);
+}
+
+fn data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
+    let mut value = 0;
+    bank.set_flag(st.f.idle_line_detected, false);
+    if (st.receive_fifo.len() > 0) {
+        value = st.receive_fifo.pop_front().unwrap() as u32;
+    }
+    bank.set_flag(st.f.read_fifo_not_empty, (st.receive_fifo.len() > 0));
+    update(bank, st);
+    return value as u64;
+}
+
+fn data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, value: u64) -> () {
+    if (!bank.flag(st.f.usart_enabled) && !bank.flag(st.f.transmitter_enabled)) {
+        log::warn!("Trying to transmit a character, but the transmitter is not enabled. dropping.");
+        return;
+    }
+    /* GAP: `?.` needs nullability analysis (D4) */;
+    bank.set_flag(st.f.transmission_complete, true);
+    update(bank, st);
+    return;
 }
 
 /// C# `DefineRegisters()`, field for field.
@@ -88,7 +133,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::DATA, 0)
-        .with_value_cb(0, 9, FieldMode::READ_WRITE, None, None)
+        .with_value_cb(0, 9, FieldMode::READ_WRITE, Some(data_0_provider), Some(data_0_writer))
         .done();
 
     bank.define(reg::BAUD_RATE, 0)

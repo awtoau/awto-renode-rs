@@ -160,7 +160,9 @@
       "Dictionary.Add": "{recv}.insert({args})",
       "HashSet.Contains": "{recv}.contains(&{args})",
       "String.Append": "{recv}.push_str({args})",
-      "String.ToString": "{recv}.to_string()"
+      "String.ToString": "{recv}.to_string()",
+      "CancellationToken.IsCancellationRequested": "{recv}.get()",
+      "CancellationTokenSource.Cancel": "{recv}.set(true)"
     },
     "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path.",
     "primitives": {
@@ -187,5 +189,9 @@
   "coercions": {
     "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation.",
     "bool_to_u64": "u64::from({expr})"
+  },
+  "conversions": {
+    "note": "C# widens numerically without being asked (`uint value = receiveFifo.Dequeue()` on a Queue<byte>). Rust never does, so an implicit NUMERIC conversion becomes an explicit cast. Non-numeric implicit conversions -- boxing, interface upcasts -- are still transparent, because they have no Rust spelling and inserting one would be noise. The corpus records both flags on the Conversion node.",
+    "numeric": "{expr} as {target}"
   }
 }
