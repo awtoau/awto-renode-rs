@@ -9,7 +9,8 @@
 //! GAPS the converter reports rather than guessing:
 //!   - Data: conditional access `?.` needs nullability analysis
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
+//!   - Reset: withheld, body still contains a gap marker (/* GAP: `?.` needs nullability analysis (D4) */;)
+//!   - WriteChar: withheld, body still contains a gap marker (/* GAP: `?.` needs nullability analysis (D4) */;)
 //!   - conditional access `?.` needs nullability analysis
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
@@ -146,13 +147,6 @@ fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc
         bank.set_flag(st.f.idle_line_detected, true);
         update(bank, st);
     }
-}
-
-fn reset(bank: &Bank<State>, st: &mut State) -> () {
-    basic_double_word_peripheral_reset(bank, st);
-    /* GAP: `?.` needs nullability analysis (D4) */;
-    st.receive_fifo.clear();
-    st.irq = false;
 }
 
 fn update(bank: &Bank<State>, st: &mut State) -> () {

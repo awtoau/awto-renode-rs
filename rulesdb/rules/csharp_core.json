@@ -211,5 +211,16 @@
   "literals": {
     "note": "A C# floating literal must keep its fraction in Rust: `16.0` emitted as `16` turns an f64 division into integer division, silently changing the result.",
     "float_suffix": ".0"
+  },
+  "loops": {
+    "note": "For, ForEach, While and Do all arrive from Roslyn as kind `Loop` and are told apart by LoopKind, which the ingest now records. Rust has no C-style for, so a `for(init; cond; incr)` becomes init followed by a while whose body ends with the increment -- an equivalence that holds because C# evaluates the increment after every body pass including one ending in `continue`, and there are no `continue` statements in this corpus. Recorded so the assumption is checkable rather than silent.",
+    "ForEach": "for {var} in {collection} {{\n{body}\n}}",
+    "For": "{init}\n{pad}while {cond} {{\n{body}\n{pad}    {incr}\n{pad}}}",
+    "While": "while {cond} {{\n{body}\n}}"
+  },
+  "increment": {
+    "note": "Rust has no ++/--. In STATEMENT position the distinction between prefix and postfix does not matter, since the value is discarded; in expression position it would, and there are no such uses in this corpus -- so only the statement form is mapped, and the expression form reports a gap rather than silently dropping the difference.",
+    "Increment": "{target} += 1;",
+    "Decrement": "{target} -= 1;"
   }
 }

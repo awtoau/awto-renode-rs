@@ -593,6 +593,12 @@ class Emitter:
                 cond=self.emit_expr(kids[0]), then=self.emit_expr(kids[1]),
                 alt=self.emit_expr(kids[2]))
 
+        if kind in ("Increment", "Decrement"):
+            self.gaps.append(
+                f"{kind.lower()} in expression position: prefix/postfix "
+                f"difference is observable there (see language rule `increment`)")
+            return f"/* GAP: {kind} in expression position */"
+
         if kind == "Interpolation" and kids:
             # The hole node wraps the expression; the format placeholder was
             # already emitted by InterpolatedString.
@@ -888,10 +894,25 @@ class Emitter:
             return []
         kind, _symbol, detail = row
         kids = self.children(oid)
+
+        if kind == "Loop":
+            return self.emit_loop(oid, indent)
+
+        if kind in ("Increment", "Decrement") and kids:
+            tmpl = self.language.get("increment", {}).get(kind)
+            if tmpl:
+                return [pad + tmpl.format(target=self.emit_expr(kids[0][0]))]
         stmts = self.language.get("statements", {})
 
         if kind == "ExpressionStatement":
-            return [pad + self.emit_expr(kids[0][0]) + ";"] if kids else []
+            if not kids:
+                return []
+            # An Increment here is in STATEMENT position, where prefix and
+            # postfix are indistinguishable; route it to the statement rule
+            # rather than the expression one, which reports a gap.
+            if self.kind_of(kids[0][0]) in ("Increment", "Decrement"):
+                return self.emit_stmt(kids[0][0], indent)
+            return [pad + self.emit_expr(kids[0][0]) + ";"]
 
         if kind == "SimpleAssignment":
             return [pad + self.emit_assignment(oid)]
@@ -945,6 +966,51 @@ class Emitter:
 
         self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
         return [f"{pad}/* {kind} */"]
+
+    def emit_loop(self, oid: int, indent: int) -> list[str]:
+        """A C# loop. The kind comes from the corpus (LoopKind), not from the
+        child shape, so a For and a ForEach are never confused."""
+        pad = "    " * indent
+        rules = self.language.get("loops", {})
+        det = (self.con.execute("SELECT detail FROM operation WHERE id=?", (oid,))
+               .fetchone() or [None])[0]
+        info = {}
+        if det:
+            try:
+                info = json.loads(det)
+            except json.JSONDecodeError:
+                info = {}
+        lk = info.get("loop")
+        kids = list(self.children(oid))
+        body_id = next((c[0] for c in kids if c[1] == "Block"), None)
+        body = self.emit_block(body_id, indent + 1) if body_id is not None else []
+
+        if lk == "ForEach" and len(kids) >= 2:
+            coll = self.emit_expr(kids[0][0])
+            var = snake(info.get("var") or "item")
+            return [pad + f"for {var} in {coll} {{", *body, pad + "}"]
+
+        if lk == "While":
+            cond = self.emit_expr(kids[0][0]) if kids else "true"
+            return [pad + f"while {cond} {{", *body, pad + "}"]
+
+        if lk == "For":
+            init = [c for c in kids if c[1] == "VariableDeclarationGroup"]
+            cond = [c for c in kids if c[1] == "Binary"]
+            incr = [c for c in kids if c[1] == "ExpressionStatement"]
+            out = []
+            for c in init:
+                out.extend(self.emit_stmt(c[0], indent))
+            cond_txt = self.emit_expr(cond[0][0]) if cond else "true"
+            out.append(pad + f"while {cond_txt} {{")
+            out.extend(body)
+            for c in incr:
+                out.extend(self.emit_stmt(c[0], indent + 1))
+            out.append(pad + "}")
+            return out
+
+        self.unhandled[f"loop:{lk}"] = self.unhandled.get(f"loop:{lk}", 0) + 1
+        return []
 
     def emit_block(self, oid: int, indent: int) -> list[str]:
         """A Block, or a single statement used as one."""
@@ -1504,6 +1570,12 @@ class Emitter:
             new = sorted(set(self.unhandled) - seen_unhandled)
             self.gaps.append(
                 f"{method_name}: withheld, cannot emit {', '.join(new)}")
+            return []
+        marker = [l.strip() for l in body if "/* GAP" in l]
+        if marker:
+            self.gaps.append(
+                f"{method_name}: withheld, body still contains a gap marker "
+                f"({marker[0][:60]})")
             return []
         body = self.rewrite_this(body)
         unknown = sorted({m for m in re.findall(

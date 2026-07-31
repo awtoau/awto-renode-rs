@@ -9,9 +9,9 @@
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array
-//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array
-//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections, st.order_by, st.select, st.where
@@ -19,12 +19,15 @@
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
+//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
-//!   - Reset: withheld, cannot emit stmt:Loop
+//!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value, st.number_of_pins
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
-//!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
+//!   - WriteState: withheld, cannot emit expr:CompoundAssignment
+//!   - base_gpio_port_reset: withheld, calls withheld method(s): connections, unset
+//!   - set_connections_state_using_bits: withheld, calls withheld method(s): connections, set, unset
 //!   - state field `Connections`: no Rust mapping for `System.Collections.Generic.IReadOnlyDictionary<int, Antmicro.Renode.Core.IGPIO>`
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
@@ -158,22 +161,8 @@ fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
     return bank.read(offset as u64, st).unwrap_or(0) as u32;
 }
 
-fn reset(bank: &Bank<State>, st: &mut State) -> () {
-    /* GAP: base-class call */;
-    bank.reset();
-    /* Loop */
-}
-
-fn set_connections_state_using_bits(bank: &Bank<State>, st: &mut State, bits: u32) -> () {
-    /* Loop */
-}
-
 fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
     bank.write(offset as u64, value as u64, st);
-}
-
-fn write_state(bank: &Bank<State>, st: &mut State, value: u16) -> () {
-    /* Loop */
 }
 
 // Callbacks for computed fields. C# writes these as lambdas capturing
@@ -198,11 +187,6 @@ fn pull_up_pull_down_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, 
 
 fn pull_up_pull_down_0_writer(bank: &Bank<State>, st: &mut State, idx: usize, _old: u64, val: u64) -> () {
     st.pull_up_pull_down[idx as usize] = PullUpPullDown::from_u64(val);
-    return;
-}
-
-fn output_data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, val: u64) -> () {
-    write_state(bank, st, val as u16);
     return;
 }
 
@@ -234,7 +218,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::OUTPUT_DATA, 0)
-        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, Some(output_data_0_writer))
+        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, None)
         .with_reserved(16, 16)
         .done();
 

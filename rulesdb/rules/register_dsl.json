@@ -195,6 +195,10 @@
         "get_",
         "set_"
       ]
+    },
+    "withhold_on_gap_marker": {
+      "note": "A `/* GAP: ... */` marker is VALID RUST in statement position, so a method containing one compiles and runs -- wrongly. It produced a `while` loop whose increment had been replaced by the marker: an infinite loop that rustc accepts, the same failure class as the base.Reset() recursion. Any method whose body still carries a marker is therefore withheld, exactly as one with an unhandled construct is.",
+      "action": "withhold method, report gap"
     }
   },
   "state_struct": {

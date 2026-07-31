@@ -305,6 +305,19 @@ public static class Walker
                     Add("params", string.Join(" ", af.Symbol.Parameters.Select(pp => pp.Name)));
                     Add("returns", af.Symbol.ReturnType.ToDisplayString());
                     break;
+                case ILoopOperation lp:
+                    // For, ForEach, While and Do all arrive as kind `Loop`.
+                    // They have different child shapes and different Rust
+                    // spellings, so without this the emitter cannot tell a
+                    // `for(;;)` from a `foreach`.
+                    Add("loop", lp.LoopKind.ToString());
+                    if (lp is IForEachLoopOperation fe
+                        && fe.Locals.FirstOrDefault() is { } fev)
+                    {
+                        Add("var", fev.Name);
+                        Add("vartype", fev.Type?.ToDisplayString() ?? "");
+                    }
+                    break;
                 case IInstanceReferenceOperation ir:
                     Add("refkind", ir.ReferenceKind.ToString());
                     break;
