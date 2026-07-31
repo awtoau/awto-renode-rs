@@ -32,6 +32,7 @@ Log:  ./tmp/logs/emit.log
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sqlite3
 import subprocess
@@ -74,6 +75,29 @@ def snake(name: str) -> str:
     return "".join(out)
 
 
+def load_rules(rules_dir: Path) -> list[dict]:
+    """Load every rule file. The converter's knowledge lives HERE, as data.
+
+    An emitter with combinator names hardcoded in its source is a converter with
+    the corpus baked in -- the same failure as hand-writing the output, one level
+    up. Rules are data so that supporting a new construct is an edit to
+    rulesdb/rules/, reviewable on its own and applicable to any corpus."""
+    rules: list[dict] = []
+    if not rules_dir.exists():
+        return rules
+    for f in sorted(rules_dir.glob("*.json")):
+        doc = json.loads(f.read_text())
+        for r in doc.get("rules", []):
+            r.setdefault("family", doc.get("family", ""))
+            rules.append(r)
+    return rules
+
+
+def to_const(name: str) -> str:
+    """`Control1` -> `CONTROL1`, `BaudRate` -> `BAUD_RATE`."""
+    return snake(name).upper()
+
+
 def render_mode(const: str | None) -> str:
     """C# FieldMode is a [Flags] enum; render the combination."""
     if const is None:
@@ -89,10 +113,13 @@ def render_mode(const: str | None) -> str:
 
 
 class Emitter:
-    def __init__(self, con: sqlite3.Connection, log: logging.Logger):
+    def __init__(self, con: sqlite3.Connection, log: logging.Logger,
+                 rules_dir: Path | None = None):
         self.con = con
         self.log = log
         self.unhandled: dict[str, int] = {}
+        self.gaps: list[str] = []
+        self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
@@ -132,18 +159,30 @@ class Emitter:
         return snake(sym.split(".")[-1].split("(")[0]) if sym else None
 
     def bind(self, oid: int, symbol: str) -> dict[str, tuple]:
-        """Map parameter name -> the argument's (kind, symbol, const) triple."""
-        names = self.params(symbol)
+        """Map parameter name -> the argument's (kind, symbol, const) triple.
+
+        Uses the argument's RECORDED BOUND PARAMETER, not its position. C# named
+        arguments may skip earlier optionals -- `Define(this, name: "USART_DR")`
+        omits resetValue -- and positional binding then reads the name as the
+        reset value. Roslyn resolved this at compile time; the ingest records it.
+        """
         out: dict[str, tuple] = {}
-        for i, (arg_id, kind, _s, _c, _t) in enumerate(self.children(oid)):
+        fallback = self.params(symbol)
+        for i, (arg_id, kind, arg_sym, _c, _t) in enumerate(self.children(oid)):
             if kind != "Argument":
                 continue
             inner = self.children(arg_id)
             if not inner:
                 continue
             _iid, ikind, isym, iconst, _ityp = inner[0]
-            if i < len(names):
-                out[names[i]] = (ikind, isym, iconst)
+            # `arg_sym` is the parameter, e.g. "uint resetValue"; take its name.
+            if arg_sym:
+                pname = arg_sym.split()[-1]
+            elif i < len(fallback):
+                pname = fallback[i]
+            else:
+                continue
+            out[pname] = (ikind, isym, iconst)
         return out
 
     def combinator(self, symbol: str) -> str | None:
@@ -154,6 +193,9 @@ class Emitter:
         return after.split("<")[0].split("(")[0]
 
     def emit_call(self, oid: int, symbol: str) -> str | None:
+        """Apply the first matching RULE. This method knows nothing about any
+        individual combinator -- adding support for a new one is a data change
+        to rulesdb/rules/, never a code change here."""
         name = self.combinator(symbol)
         if name is None:
             return None
@@ -163,41 +205,125 @@ class Emitter:
             v = b.get(param)
             return v[2] if v else None
 
-        def has(param: str) -> bool:
+        def present(param: str) -> bool:
             v = b.get(param)
-            return v is not None and v[0] not in ("DefaultValue",)
+            return v is not None and v[0] != "DefaultValue"
 
-        pos = const("position")
-        width = const("width")
-        mode = render_mode(const("mode"))
-        field = self.out_field(oid, symbol)
+        env = {
+            "pos": const("position"),
+            "width": const("width"),
+            "count": const("count"),
+            "mode": render_mode(const("mode")),
+            "field": self.out_field(oid, symbol),
+        }
+        flags = {
+            "field": env["field"] is not None,
+            "provider": present("valueProviderCallback"),
+            "writer": present("writeCallback"),
+        }
 
-        # Only an `out` parameter produces a bound field handle. A callback
-        # WITHOUT one is a computed field -- the C# `WithFlag(3, FieldMode.Read,
-        # valueProviderCallback: _ => false)` shape -- which has no storage and
-        # is emitted as a tag plus a note, never as a fabricated handle.
-        if name == "WithFlag":
-            if field:
-                return f".with_flag({pos}, &mut f.{field}, {mode})"
-            if has("valueProviderCallback"):
-                return f".with_tagged_flag({pos})  // computed: needs a dispatch arm"
-            return f".with_tagged_flag({pos})"
-        if name in ("WithValueField", "WithEnumField"):
-            if field:
-                return f".with_value({pos}, {width}, &mut f.{field}, {mode})"
-            if has("valueProviderCallback") or has("writeCallback"):
-                return f".with_tag({pos}, {width})  // computed: needs a dispatch arm"
-            return f".with_tag({pos}, {width})"
-        if name == "WithTaggedFlag":
-            return f".with_tagged_flag({pos})"
-        if name == "WithTag":
-            return f".with_tag({pos}, {width})"
-        if name == "WithReservedBits":
-            return f".with_reserved({pos}, {width})"
-        if name in ("WithWriteCallback", "WithReadCallback", "WithChangeCallback"):
-            return None  # register-level callbacks are dispatch, not layout
+        for rule in self.rules:
+            if name not in rule["matches"].split("|"):
+                continue
+            cond = rule.get("when")
+            if cond and not any(flags.get(tok.strip(), False) for tok in cond.split(" or ")):
+                continue
+            if rule.get("gap"):
+                self.gaps.append(f"{name}: {rule['gap']}")
+            template = rule.get("emit")
+            if template is None:
+                return None
+            try:
+                return template.format(**env)
+            except KeyError as missing:
+                self.unhandled[f"{rule['name']}:missing {missing}"] = 1
+                return None
+
         self.unhandled[name] = self.unhandled.get(name, 0) + 1
         return None
+
+    def enum_offset(self, oid: int) -> tuple[str | None, int | None]:
+        """Register offset from a `Define` call's first argument.
+
+        `Register.Status.Define(...)` passes the enum member, and Roslyn records
+        an enum member reference as a CONSTANT -- so the numeric offset and its
+        name are both recoverable without evaluating anything."""
+        args = [c for c in self.children(oid) if c[1] == "Argument"]
+        if not args:
+            return None, None
+        # Argument -> Conversion -> FieldReference(const = the enum value)
+        node = args[0][0]
+        for _ in range(3):
+            kids = self.children(node)
+            if not kids:
+                break
+            cid, kind, sym, const, _typ = kids[0]
+            if kind == "FieldReference" and const is not None:
+                return (sym.split(".")[-1] if sym else None), int(const)
+            node = cid
+        return None, None
+
+    def emit_registers(self, type_name: str, method_name: str) -> tuple[list[str], list[str], list[str]]:
+        """Emit a whole register-layout function.
+
+        Returns (register statements, field names, gaps). Calls are grouped into
+        registers by SPAN START: every call in a fluent chain shares the start of
+        the chain's root expression, which is what associates a combinator with
+        its `Define`."""
+        row = self.con.execute("""
+            SELECT m.member_id FROM method m
+            JOIN member mb ON mb.id = m.member_id
+            JOIN type t ON t.id = mb.type_id
+            WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
+        if not row:
+            return [], [], [f"{type_name}.{method_name} not in the corpus"]
+        method_id, = row
+
+        chains: dict[int, list[tuple[int, int, str]]] = {}
+        for oid, symbol, start, end in self.con.execute(
+                "SELECT id, symbol, span_start, span_start + span_len FROM operation "
+                "WHERE method_id=? AND kind='Invocation' AND symbol IS NOT NULL",
+                (method_id,)):
+            chains.setdefault(start, []).append((end, oid, symbol))
+
+        stmts: list[str] = []
+        fields: list[str] = []
+        gaps: list[str] = []
+
+        for start in sorted(chains):
+            calls = sorted(chains[start])
+            define = next((c for c in calls if ".Define(" in c[2]), None)
+            if define is None:
+                continue
+            _e, define_oid, define_sym = define
+            name, offset = self.enum_offset(define_oid)
+            if offset is None:
+                gaps.append(f"register at span {start}: offset not resolvable")
+                continue
+            b = self.bind(define_oid, define_sym)
+            reset = b.get("resetValue", (None, None, None))[2] or "0"
+
+            self.gaps = []
+            body: list[str] = []
+            for _end, oid, symbol in calls:
+                if oid == define_oid:
+                    continue
+                line = self.emit_call(oid, symbol)
+                gaps.extend(f"{name}: {g}" for g in self.gaps)
+                self.gaps = []
+                if line is None:
+                    continue
+                f = self.out_field(oid, symbol)
+                if f and f not in fields:
+                    fields.append(f)
+                body.append(line)
+
+            const_name = to_const(name or f"REG_{offset:X}")
+            stmts.append(f"    bank.define(reg::{const_name}, {reset})")
+            stmts.extend(f"        {l}" for l in body)
+            stmts.append("        .done();")
+            stmts.append("")
+        return stmts, fields, gaps
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:
         row = self.con.execute("""

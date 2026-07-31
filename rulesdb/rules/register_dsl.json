@@ -1,0 +1,80 @@
+{
+  "family": "REGISTER_FIELD",
+  "description": "Renode's register DSL combinators. These are RULES, not emitter source code: the converter reads them from the database and knows nothing about any individual combinator. Adding support for a new one is a data change.",
+  "bindings": {
+    "pos": "position",
+    "width": "width",
+    "mode": "mode",
+    "field": "$out",
+    "provider": "$has:valueProviderCallback",
+    "writer": "$has:writeCallback"
+  },
+  "rules": [
+    {
+      "name": "WITH_FLAG_BOUND",
+      "matches": "WithFlag",
+      "when": "field",
+      "emit": ".with_flag({pos}, &mut f.{field}, {mode})"
+    },
+    {
+      "name": "WITH_FLAG_COMPUTED",
+      "matches": "WithFlag",
+      "when": "provider or writer",
+      "emit": ".with_tagged_flag({pos})",
+      "gap": "computed field: needs a dispatch arm",
+      "note": "A callback with no `out` parameter has no storage. Emitting a field handle here would fabricate one, so the rule emits a tag and reports the gap."
+    },
+    {
+      "name": "WITH_FLAG_TAG",
+      "matches": "WithFlag",
+      "emit": ".with_tagged_flag({pos})"
+    },
+    {
+      "name": "WITH_VALUE_BOUND",
+      "matches": "WithValueField|WithEnumField",
+      "when": "field",
+      "emit": ".with_value({pos}, {width}, &mut f.{field}, {mode})"
+    },
+    {
+      "name": "WITH_VALUE_COMPUTED",
+      "matches": "WithValueField|WithEnumField",
+      "when": "provider or writer",
+      "emit": ".with_tag({pos}, {width})",
+      "gap": "computed field: needs a dispatch arm"
+    },
+    {
+      "name": "WITH_VALUE_TAG",
+      "matches": "WithValueField|WithEnumField",
+      "emit": ".with_tag({pos}, {width})"
+    },
+    {
+      "name": "WITH_FIELDS_BOUND",
+      "matches": "WithValueFields|WithEnumFields",
+      "when": "field",
+      "emit": ".with_fields_cb({pos}, {width}, {count}, &mut f.{field}, {mode}, None, None)",
+      "bindings": { "count": "count" }
+    },
+    {
+      "name": "WITH_TAGGED_FLAG",
+      "matches": "WithTaggedFlag",
+      "emit": ".with_tagged_flag({pos})"
+    },
+    {
+      "name": "WITH_TAG",
+      "matches": "WithTag",
+      "emit": ".with_tag({pos}, {width})"
+    },
+    {
+      "name": "WITH_RESERVED_BITS",
+      "matches": "WithReservedBits",
+      "emit": ".with_reserved({pos}, {width})"
+    },
+    {
+      "name": "REGISTER_CALLBACK",
+      "matches": "WithWriteCallback|WithReadCallback|WithChangeCallback",
+      "emit": null,
+      "gap": "register-level callback: dispatch, not layout",
+      "note": "Deliberately emits nothing. These carry behaviour, not register shape, and a plausible-looking guess would leave the oracle checking generated guesswork."
+    }
+  ]
+}

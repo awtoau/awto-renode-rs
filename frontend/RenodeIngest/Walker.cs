@@ -197,6 +197,11 @@ public static class Walker
 
             ISymbol? symbol = op switch
             {
+                // An argument's BOUND PARAMETER. C# named arguments may appear
+                // out of positional order -- `Define(this, name: "USART_DR")`
+                // skips resetValue -- so binding by position silently reads the
+                // wrong value. Roslyn already resolved this; record it.
+                IArgumentOperation arg => arg.Parameter,
                 IInvocationOperation inv => inv.TargetMethod,
                 IObjectCreationOperation oc => oc.Constructor,
                 IFieldReferenceOperation fr => fr.Field,
