@@ -5,6 +5,20 @@
 //! certifies equivalence, and an "improved" port makes the trace comparison
 //! meaningless. Deviations are recorded here, never applied silently.
 //!
+//! ## Generated vs hand-written
+//!
+//! The register LAYOUT lives in `uart_registers.rs`, produced by the converter
+//! from the corpus and enforced byte-for-byte by `scripts/check_generated.py`.
+//! This file holds only behaviour, which the converter does not yet emit.
+//!
+//! Three hand edits were deleted when the layout became generated, all of which
+//! had survived the trace oracle and mutation testing:
+//!   - `.with_reserved(9, 23)` and `(16, 16)` on USART_DR: **not in the C# at
+//!     all**, and behaviourally inert, so nothing could catch them
+//!   - a dummy `ValueId::default()` where the C# has a computed field with no
+//!     storage; the generated version reports the gap instead
+//!   - four shortened field names, which made the file unreproducible
+//!
 //! ## Deviations from the C#, all forced and all recorded
 //!
 //! 1. **No idle-line timer.** The C# schedules a machine action one UART frame
@@ -24,39 +38,8 @@
 //! - `BaudRate` is computed but used for nothing except the idle-line timeout.
 //!   Renode models no transmission rate at all.
 
-use renode_regs::{Bank, FieldMode, FlagId, ValueId};
-
-/// Register offsets. C# `enum Register : long`.
-mod reg {
-    pub const STATUS: u64 = 0x00;
-    pub const DATA: u64 = 0x04;
-    pub const BAUD_RATE: u64 = 0x08;
-    pub const CONTROL1: u64 = 0x0C;
-    pub const CONTROL2: u64 = 0x10;
-    pub const CONTROL3: u64 = 0x14;
-    pub const GUARD_TIME_AND_PRESCALER: u64 = 0x18;
-}
-
-#[derive(Default)]
-struct Fields {
-    idle_line_detected: FlagId,
-    read_fifo_not_empty: FlagId,
-    transmission_complete: FlagId,
-    receiver_enabled: FlagId,
-    transmitter_enabled: FlagId,
-    idle_line_irq_enabled: FlagId,
-    rx_not_empty_irq_enabled: FlagId,
-    tx_complete_irq_enabled: FlagId,
-    tx_empty_irq_enabled: FlagId,
-    parity_control_enabled: FlagId,
-    usart_enabled: FlagId,
-    dma_reception_request: FlagId,
-    parity_selection: FlagId,
-    oversampling_mode: FlagId,
-    stop_bits: ValueId,
-    divider_fraction: ValueId,
-    divider_mantissa: ValueId,
-}
+use crate::uart_registers::{define_registers, reg, Fields};
+use renode_regs::Bank;
 
 /// C# `STM32_UART(IMachine machine, uint frequency = 8000000)`. This is the
 /// SOURCE default, not platform configuration -- the .repl does not override it
@@ -106,7 +89,7 @@ impl Stm32Uart {
     /// the idle-line timeout. There is no transmission-rate model.
     pub fn baud_rate(&self) -> u32 {
         // OversamplingMode.By8 ignores the oldest bit of dividerFraction.
-        let over8 = self.bank.flag(self.f.oversampling_mode);
+        let over8 = self.bank.value(self.f.oversampling_mode) != 0;
         let fraction = if over8 {
             self.bank.value(self.f.divider_fraction) & 0b111
         } else {
@@ -147,10 +130,10 @@ impl Stm32Uart {
     /// TXE is assumed always true, hence the unconditional term.
     fn update(&mut self) {
         let b = &self.bank;
-        self.irq = (b.flag(self.f.idle_line_irq_enabled) && b.flag(self.f.idle_line_detected))
-            || (b.flag(self.f.rx_not_empty_irq_enabled) && b.flag(self.f.read_fifo_not_empty))
-            || b.flag(self.f.tx_empty_irq_enabled)
-            || (b.flag(self.f.tx_complete_irq_enabled) && b.flag(self.f.transmission_complete));
+        self.irq = (b.flag(self.f.idle_line_detected_interrupt_enabled) && b.flag(self.f.idle_line_detected))
+            || (b.flag(self.f.receiver_not_empty_interrupt_enabled) && b.flag(self.f.read_fifo_not_empty))
+            || b.flag(self.f.transmit_data_register_empty_interrupt_enabled)
+            || (b.flag(self.f.transmission_complete_interrupt_enabled) && b.flag(self.f.transmission_complete));
     }
 
     pub fn read(&mut self, offset: u64) -> u32 {
@@ -199,92 +182,4 @@ impl Stm32Uart {
             }
         }
     }
-}
-
-/// C# `DefineRegisters()`. Field-for-field, in source order.
-fn define_registers(bank: &mut Bank<()>, f: &mut Fields) {
-    bank.define(reg::STATUS, 0xC0)
-        .with_tagged_flag(0) // PE
-        .with_tagged_flag(1) // FE
-        .with_tagged_flag(2) // NF
-        .with_tagged_flag(3) // ORE -- always reads false, handled in read()
-        .with_flag(4, &mut f.idle_line_detected, FieldMode::READ)
-        .with_flag(
-            5,
-            &mut f.read_fifo_not_empty,
-            FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR,
-        )
-        .with_flag(
-            6,
-            &mut f.transmission_complete,
-            FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR,
-        )
-        .with_tagged_flag(7) // TXE -- always reads true, handled in read()
-        .with_tagged_flag(8) // LBD
-        .with_tagged_flag(9) // CTS
-        .with_reserved(10, 22)
-        .done();
-
-    bank.define(reg::DATA, 0)
-        .with_value(0, 9, &mut ValueId::default(), FieldMode::READ_WRITE)
-        .with_reserved(9, 23)
-        .done();
-
-    bank.define(reg::BAUD_RATE, 0)
-        .with_value(0, 4, &mut f.divider_fraction, FieldMode::READ_WRITE)
-        .with_value(4, 12, &mut f.divider_mantissa, FieldMode::READ_WRITE)
-        .with_reserved(16, 16)
-        .done();
-
-    bank.define(reg::CONTROL1, 0)
-        .with_tagged_flag(0) // SBK
-        .with_tagged_flag(1) // RWU
-        .with_flag(2, &mut f.receiver_enabled, FieldMode::READ_WRITE)
-        .with_flag(3, &mut f.transmitter_enabled, FieldMode::READ_WRITE)
-        .with_flag(4, &mut f.idle_line_irq_enabled, FieldMode::READ_WRITE)
-        .with_flag(5, &mut f.rx_not_empty_irq_enabled, FieldMode::READ_WRITE)
-        .with_flag(6, &mut f.tx_complete_irq_enabled, FieldMode::READ_WRITE)
-        .with_flag(7, &mut f.tx_empty_irq_enabled, FieldMode::READ_WRITE)
-        .with_tagged_flag(8) // PEIE
-        .with_flag(9, &mut f.parity_selection, FieldMode::READ_WRITE)
-        .with_flag(10, &mut f.parity_control_enabled, FieldMode::READ_WRITE)
-        .with_tagged_flag(11) // WAKE
-        .with_tagged_flag(12) // M
-        .with_flag(13, &mut f.usart_enabled, FieldMode::READ_WRITE)
-        .with_reserved(14, 1)
-        .with_flag(15, &mut f.oversampling_mode, FieldMode::READ_WRITE)
-        .with_reserved(16, 16)
-        .done();
-
-    bank.define(reg::CONTROL2, 0)
-        .with_tag(0, 4) // ADD
-        .with_reserved(5, 1)
-        .with_tagged_flag(6) // LBDIE
-        .with_reserved(7, 1)
-        .with_tagged_flag(8) // LBCL
-        .with_tagged_flag(9) // CPHA
-        .with_tagged_flag(10) // CPOL
-        .with_tagged_flag(11) // CLKEN
-        .with_value(12, 2, &mut f.stop_bits, FieldMode::READ_WRITE)
-        .with_tagged_flag(14) // LINEN
-        .with_reserved(15, 17)
-        .done();
-
-    bank.define(reg::CONTROL3, 0)
-        .with_tagged_flag(0) // EIE
-        .with_tagged_flag(1) // IREN
-        .with_tagged_flag(2) // IRLP
-        .with_tagged_flag(3) // HDSEL
-        .with_tagged_flag(4) // NACK
-        .with_tagged_flag(5) // SCEN
-        .with_flag(6, &mut f.dma_reception_request, FieldMode::READ_WRITE)
-        .with_tagged_flag(7) // DMAT
-        .with_tagged_flag(8) // RTSE
-        .with_tagged_flag(9) // CTSE
-        .with_tagged_flag(10) // CTSIE
-        .with_reserved(11, 21)
-        .done();
-
-    // Present in the C# enum but never defined, so accesses fall through.
-    let _ = reg::GUARD_TIME_AND_PRESCALER;
 }

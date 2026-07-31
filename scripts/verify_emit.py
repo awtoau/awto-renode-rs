@@ -35,8 +35,9 @@ from emit import Emitter  # noqa: E402
 
 # (C# type, C# method, Rust file, the fn holding the layout)
 TARGETS = {
-    "uart": ("STM32_UART", "DefineRegisters",
-             "src/renode-stm32/src/uart.rs", "define_registers"),
+    # uart is no longer listed: its layout is GENERATED and enforced
+    # byte-for-byte by check_generated.py, which is a stronger guarantee than
+    # this diff. This tool is for layouts still written by hand.
     "gpio": ("STM32_GPIOPort", "CreateRegisters",
              "src/renode-stm32/src/gpio_port.rs", "create_registers"),
 }

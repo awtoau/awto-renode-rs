@@ -42,19 +42,22 @@ from pathlib import Path
 # Files the converter owns. Adding a file here is a commitment that it is
 # machine-produced; it must never be edited by hand again.
 #
-# EMPTY BY DESIGN until the converter can produce a whole file. uart.rs and
-# gpio_port.rs are NOT listed, because they are hand-written -- listing them
-# would assert something false. They are tracked as patches instead
-# (see scripts/record_translations.py and the scorecard).
+# uart_registers.rs is the first file the converter owns. uart.rs itself is NOT
+# listed: it holds behaviour the converter cannot yet emit, and listing it would
+# assert something false. The split is deliberate -- the boundary between
+# generated and hand-written is a FILE boundary, so it can be enforced
+# byte-for-byte rather than by convention.
 GENERATED: list[tuple[str, list[str]]] = [
-    # (path, argv for the generator that produces it)
+    ("src/renode-stm32/src/uart_registers.rs",
+     ["scripts/emit.py", "--type", "STM32_UART", "--method", "DefineRegisters",
+      "--file", "uart_registers"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is
 # the outstanding debt, and the scorecard reports it.
 MUST_BECOME_GENERATED = [
-    "src/renode-stm32/src/uart.rs",
-    "src/renode-stm32/src/gpio_port.rs",
+    "src/renode-stm32/src/uart.rs        (behaviour only; layout is generated)",
+    "src/renode-stm32/src/gpio_port.rs   (layout still hand-written)",
 ]
 
 

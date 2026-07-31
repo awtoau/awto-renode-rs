@@ -120,6 +120,7 @@ class Emitter:
         self.unhandled: dict[str, int] = {}
         self.gaps: list[str] = []
         self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
+        self._flag_fields: set[str] = set()
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
@@ -316,6 +317,8 @@ class Emitter:
                 f = self.out_field(oid, symbol)
                 if f and f not in fields:
                     fields.append(f)
+                    if self.combinator(symbol) == "WithFlag":
+                        self._flag_fields.add(f)
                 body.append(line)
 
             const_name = to_const(name or f"REG_{offset:X}")
@@ -324,6 +327,76 @@ class Emitter:
             stmts.append("        .done();")
             stmts.append("")
         return stmts, fields, gaps
+
+    def emit_file(self, type_name: str, method_name: str, module: str) -> str:
+        """A complete, compilable Rust module: offsets, field handles, layout.
+
+        Only the DECLARATIVE half. Behaviour stays in a hand-written sibling that
+        `use`s this, so the boundary between generated and hand-written is a file
+        boundary rather than a convention -- which is what lets check_generated.py
+        enforce it byte-for-byte.
+        """
+        stmts, fields, gaps = self.emit_registers(type_name, method_name)
+        offsets = self.register_offsets(type_name, method_name)
+
+        L: list[str] = []
+        a = L.append
+        a(f"//! Register layout for `{type_name}`, GENERATED from the corpus.")
+        a("//!")
+        a("//! Do not edit: `scripts/check_generated.py` fails the commit if this")
+        a("//! file differs from converter output. To change it, change the rules")
+        a(f"//! in `rulesdb/rules/` or the C# it is derived from.")
+        a("//!")
+        a(f"//! Source: {type_name}.{method_name}")
+        if gaps:
+            a("//!")
+            a("//! GAPS the converter reports rather than guessing:")
+            for g in sorted(set(gaps)):
+                a(f"//!   - {g}")
+        a("")
+        a("use renode_regs::{Bank, FieldMode, FlagId, ValueId};")
+        a("")
+        a("/// Register offsets, from the C# `enum Register`.")
+        a("pub mod reg {")
+        for name, off in offsets:
+            a(f"    pub const {to_const(name)}: u64 = 0x{off:02X};")
+        a("}")
+        a("")
+        a("/// Field handles bound by `out` parameters in the C#.")
+        a("#[derive(Default)]")
+        a("pub struct Fields {")
+        for f in fields:
+            a(f"    pub {f}: {self.field_type(f)},")
+        a("}")
+        a("")
+        a("/// C# `DefineRegisters()`, field for field.")
+        a("pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {")
+        for line in stmts:
+            a(line.rstrip())
+        a("}")
+        return "\n".join(L).rstrip() + "\n"
+
+    def field_type(self, name: str) -> str:
+        """Flag or value handle, decided by how the field is used."""
+        return "FlagId" if name in self._flag_fields else "ValueId"
+
+    def register_offsets(self, type_name: str, method_name: str) -> list[tuple[str, int]]:
+        """Offsets, recovered from the enum member each `Define` references."""
+        row = self.con.execute("""
+            SELECT m.member_id FROM method m
+            JOIN member mb ON mb.id = m.member_id
+            JOIN type t ON t.id = mb.type_id
+            WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
+        if not row:
+            return []
+        seen: dict[str, int] = {}
+        for (oid,) in self.con.execute(
+                "SELECT id FROM operation WHERE method_id=? AND kind='Invocation' "
+                "AND symbol LIKE '%.Define(%' ORDER BY span_start", (row[0],)):
+            name, off = self.enum_offset(oid)
+            if name and off is not None:
+                seen[name] = off
+        return sorted(seen.items(), key=lambda kv: kv[1])
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:
         row = self.con.execute("""
@@ -357,6 +430,8 @@ def main() -> int:
     ap.add_argument("--type", required=True)
     ap.add_argument("--method", required=True)
     ap.add_argument("--db", default="rulesdb/patterns.db")
+    ap.add_argument("--file", metavar="MODULE",
+                    help="emit a complete Rust module to stdout")
     args = ap.parse_args()
 
     root = repo_root()
@@ -372,6 +447,11 @@ def main() -> int:
 
     con = sqlite3.connect(root / args.db)
     em = Emitter(con, log)
+    if args.file:
+        text = em.emit_file(args.type, args.method, args.file)
+        con.close()
+        sys.stdout.write(text)
+        return 0
     lines = em.emit_method(args.type, args.method)
     con.close()
 

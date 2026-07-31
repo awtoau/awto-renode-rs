@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T15:15:03+10:00 from `9c16ad8` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T15:18:02+10:00 from `10c3b49` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -11,7 +11,12 @@ averaged 1.87 validation instances each.
 | metric | value | target | status |
 |---|---:|---:|---|
 | **instances per rule** | — | ≥ 3 | no committed rules |
-| **patches outstanding** | 0 | 0 | nothing translated yet |
+| **patches outstanding** | 42 of 48 translated (88%) | 0 | FAIL |
+
+> **42 of 48 translated methods are hand-written patches, not rule output.** No rule is committed and no
+> emitter exists, so nothing translated so far would regenerate. Recorded rather
+> than implied: this is the metric that detects exactly this drift, and it read
+> "no translations yet" until the translations were entered.
 
 ## Corpus
 
@@ -21,7 +26,7 @@ averaged 1.87 validation instances each.
 | operation nodes | 65,775 | — |
 | pattern clusters | 0 | — |
 | stubbed | 0 | 0.0% |
-| translated | 0 | 0.0% |
+| translated | 48 | 4.4% |
 | verified | 0 | 0.0% |
 | **rules committed** | 0 | — |
 
@@ -63,13 +68,14 @@ does not have.
 
 | | |
 |---|---|
-| files produced by the converter | 0 |
-| peripherals still hand-written | 2 (uart, gpio_port) |
+| files produced by the converter | 1 (`uart_registers.rs`) |
+| peripherals still hand-written | uart behaviour, gpio layout + behaviour |
 | enforcement | `check_generated.py`, pre-commit |
 
-`scripts/verify_emit.py` reports what the converter cannot yet reproduce:
-87% of UART's combinator calls, 12% of GPIO's — the rest being hand edits
-that should not exist.
+The UART's register layout is now generated and enforced byte-for-byte.
+Deleting the hand-written version removed three edits that had survived
+both the 33,164-access trace and mutation testing — including a
+`.with_reserved(9, 23)` call the C# does not contain.
 
 ## Mutation score
 
