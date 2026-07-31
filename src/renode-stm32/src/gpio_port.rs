@@ -14,12 +14,7 @@
 //!
 //! ## Declared deviations
 //!
-//! 1. **Callbacks are dispatch arms, not combinator arguments.** The C# attaches
-//!    `valueProviderCallback`/`writeCallback` to fields; those closures capture
-//!    peripheral state, which Rust cannot express inside the struct they borrow.
-//!    Behaviour lives in `read`/`write` instead. See `renode-regs` module docs.
-//!
-//! 2. **Alternate-function output routing is not modelled.** The C# maintains
+//! 1. **Alternate-function output routing is not modelled.** The C# maintains
 //!    `GPIOAlternateFunction` objects per pin and connects/disconnects them as
 //!    modes change. Nothing in the captured traces exercises it, and it needs
 //!    the GPIO connection graph, which is not ported. `mode` is tracked
@@ -27,11 +22,59 @@
 //!    silently dropped, because a port that quietly omits behaviour is exactly
 //!    what the oracle cannot catch.
 //!
-//! 3. **Constructor validation is not reproduced.** The C# raises
+//! 2. **Constructor validation is not reproduced.** The C# raises
 //!    `ConstructionException` for out-of-range pins and AF numbers. That is
 //!    platform-construction-time behaviour and the platform here is compiled in.
 
 use renode_regs::{Bank, FieldMode, ValueId};
+
+/// Pin state, held outside the register file because both IDR and ODR project
+/// it. This is the `S` the DSL threads through to callbacks.
+#[derive(Default)]
+pub struct PinState {
+    pins: [bool; NUMBER_OF_PINS],
+}
+
+impl PinState {
+    fn bits(&self) -> u64 {
+        self.pins
+            .iter()
+            .enumerate()
+            .fold(0u64, |acc, (i, &b)| acc | ((b as u64) << i))
+    }
+    /// C# `WriteState(ushort)`.
+    fn write(&mut self, value: u16) {
+        for i in 0..NUMBER_OF_PINS {
+            self.pins[i] = value & (1 << i) != 0;
+        }
+    }
+}
+
+// --- callbacks, the C# valueProvider/writeCallback shapes -------------------
+
+/// IDR and ODR both report pin state. C# `valueProviderCallback`.
+fn read_pin_state(_b: &Bank<PinState>, st: &mut PinState, _i: usize, _cur: u64) -> u64 {
+    st.bits()
+}
+
+/// ODR write. C# `writeCallback: (_, val) => WriteState((ushort)val)`.
+fn write_pin_state(_b: &Bank<PinState>, st: &mut PinState, _i: usize, _old: u64, new: u64) {
+    st.write(new as u16);
+}
+
+/// BSRR low half: set the named pins. C# skips the write when the half is zero.
+fn bsrr_set(_b: &Bank<PinState>, st: &mut PinState, _i: usize, _old: u64, new: u64) {
+    if new != 0 {
+        st.write(st.bits() as u16 | new as u16);
+    }
+}
+
+/// BSRR high half: reset the named pins, applied after the set half.
+fn bsrr_reset(_b: &Bank<PinState>, st: &mut PinState, _i: usize, _old: u64, new: u64) {
+    if new != 0 {
+        st.write(st.bits() as u16 & !(new as u16));
+    }
+}
 
 pub const NUMBER_OF_PINS: usize = 16;
 
@@ -73,18 +116,14 @@ struct Fields {
     mode: ValueId,
     output_speed: ValueId,
     pull_up_pull_down: ValueId,
-    input_data: ValueId,
-    output_data: ValueId,
     alternate_function_low: ValueId,
     alternate_function_high: ValueId,
 }
 
 pub struct Stm32GpioPort {
-    bank: Bank<()>,
+    bank: Bank<PinState>,
     f: Fields,
-    /// Pin state. C# `BaseGPIOPort.State` — a bool per pin, held outside the
-    /// register file because both IDR and ODR project it.
-    state: [bool; NUMBER_OF_PINS],
+    state: PinState,
     mode_reset: u32,
     output_speed_reset: u32,
     pull_up_pull_down_reset: u32,
@@ -92,13 +131,13 @@ pub struct Stm32GpioPort {
 
 impl Stm32GpioPort {
     pub fn new(mode_reset: u32, output_speed_reset: u32, pull_up_pull_down_reset: u32) -> Self {
-        let mut bank: Bank<()> = Bank::new();
+        let mut bank: Bank<PinState> = Bank::new();
         let mut f = Fields::default();
         create_registers(&mut bank, &mut f);
         let mut me = Self {
             bank,
             f,
-            state: [false; NUMBER_OF_PINS],
+            state: PinState::default(),
             mode_reset,
             output_speed_reset,
             pull_up_pull_down_reset,
@@ -109,7 +148,7 @@ impl Stm32GpioPort {
 
     pub fn reset(&mut self) {
         self.bank.reset();
-        self.state = [false; NUMBER_OF_PINS];
+        self.state = PinState::default();
         // C# Reset() seeds mode/speed/pull from the platform's reset values,
         // two bits per pin, rather than from the register reset value.
         for i in 0..NUMBER_OF_PINS as u16 {
@@ -132,66 +171,27 @@ impl Stm32GpioPort {
     }
 
     pub fn pin(&self, pin: usize) -> bool {
-        self.state[pin]
+        self.state.pins[pin]
     }
 
     pub fn set_pin(&mut self, pin: usize, value: bool) {
-        self.state[pin] = value;
+        self.state.pins[pin] = value;
     }
 
-    fn state_bits(&self) -> u64 {
-        self.state
-            .iter()
-            .enumerate()
-            .fold(0u64, |acc, (i, &b)| acc | ((b as u64) << i))
-    }
-
-    /// C# `WriteState(ushort)`.
-    fn write_state(&mut self, value: u16) {
-        for i in 0..NUMBER_OF_PINS {
-            self.state[i] = value & (1 << i) != 0;
-        }
-    }
-
+    /// No dispatch arms: every register goes through the bank, and the
+    /// behaviour is in the callbacks attached to the fields, exactly as the C#
+    /// arranges it. `&self.bank` and `&mut self.state` are disjoint borrows.
     pub fn read(&mut self, offset: u64) -> u32 {
-        match offset {
-            // Deviation 1: these are the C#'s valueProviderCallbacks.
-            reg::INPUT_DATA | reg::OUTPUT_DATA => self.state_bits() as u32,
-            // BSRR is write-only in the C# (FieldMode.Write), so it reads zero.
-            reg::BIT_SET => 0,
-            _ => self.bank.read(offset, &mut ()).unwrap_or(0) as u32,
-        }
+        self.bank.read(offset, &mut self.state).unwrap_or(0) as u32
     }
 
     pub fn write(&mut self, offset: u64, value: u32) {
-        match offset {
-            reg::OUTPUT_DATA => {
-                self.write_state(value as u16);
-            }
-            reg::BIT_SET => {
-                // BSRR: low half sets, high half resets. C# applies set first,
-                // then reset, and both are skipped when the half is zero.
-                let set = (value & 0xFFFF) as u16;
-                let reset = ((value >> 16) & 0xFFFF) as u16;
-                if set != 0 {
-                    self.write_state(self.state_bits() as u16 | set);
-                }
-                if reset != 0 {
-                    self.write_state(self.state_bits() as u16 & !reset);
-                }
-            }
-            reg::INPUT_DATA => {
-                // IDR is read-only; the write is dropped.
-            }
-            _ => {
-                self.bank.write(offset, value as u64, &mut ());
-            }
-        }
+        self.bank.write(offset, value as u64, &mut self.state);
     }
 }
 
 /// C# `CreateRegisters()`.
-fn create_registers(bank: &mut Bank<()>, f: &mut Fields) {
+fn create_registers(bank: &mut Bank<PinState>, f: &mut Fields) {
     bank.define(reg::MODE, 0)
         .with_enum_fields(0, 2, NUMBER_OF_PINS as u32, &mut f.mode, FieldMode::READ_WRITE)
         .done();
@@ -217,19 +217,25 @@ fn create_registers(bank: &mut Bank<()>, f: &mut Fields) {
         .done();
 
     bank.define(reg::INPUT_DATA, 0)
-        .with_value(0, 16, &mut f.input_data, FieldMode::READ)
+        .with_value_cb(0, 16, FieldMode::READ, Some(read_pin_state), None)
         .with_reserved(16, 16)
         .done();
 
     bank.define(reg::OUTPUT_DATA, 0)
-        .with_value(0, 16, &mut f.output_data, FieldMode::READ_WRITE)
+        .with_value_cb(
+            0,
+            16,
+            FieldMode::READ_WRITE,
+            Some(read_pin_state),
+            Some(write_pin_state),
+        )
         .with_reserved(16, 16)
         .done();
 
     // GPIOx_BS (set) and GPIOx_BR (reset), both write-only.
     bank.define(reg::BIT_SET, 0)
-        .with_value(0, 16, &mut ValueId::default(), FieldMode::WRITE)
-        .with_value(16, 16, &mut ValueId::default(), FieldMode::WRITE)
+        .with_value_cb(0, 16, FieldMode::WRITE, None, Some(bsrr_set))
+        .with_value_cb(16, 16, FieldMode::WRITE, None, Some(bsrr_reset))
         .done();
 
     let mut b = bank.define(reg::CONFIGURATION_LOCK, 0);

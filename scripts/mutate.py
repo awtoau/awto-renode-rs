@@ -53,6 +53,28 @@ OPERATORS: list[tuple[str, str, str]] = [
     ("false->true", r"\bfalse\b", "true"),
 ]
 
+# Mutants that provably cannot change behaviour, keyed (target, operator, line
+# fragment). Every entry needs a justification in
+# src/renode-stm32/tests/equivalent_mutants.md -- an unjustified exclusion is
+# indistinguishable from hiding a real survivor.
+EQUIVALENT: dict[str, list[tuple[str, str]]] = {
+    "gpio": [
+        ("read->rw", "f.input_data"),
+        ("read->rw", "FieldMode::READ, Some(read_pin_state)"),
+        ("rw->read", "FieldMode::READ_WRITE,"),
+        ("write->read", "Some(bsrr_set)"),
+        ("write->read", "Some(bsrr_reset)"),
+    ],
+}
+
+
+def is_equivalent(target: str, mut: "Mutant") -> bool:
+    # Match the FULL line: `before` is truncated for display, and matching a
+    # truncated string silently failed to exclude a justified mutant.
+    return any(op == mut.operator and frag in mut.full
+               for op, frag in EQUIVALENT.get(target, []))
+
+
 TARGETS = {
     "uart": ("src/renode-stm32/src/uart.rs", "uart_trace"),
     "gpio": ("src/renode-stm32/src/gpio_port.rs", "gpio_trace"),
@@ -63,8 +85,9 @@ TARGETS = {
 class Mutant:
     operator: str
     line: int
-    before: str
+    before: str      # truncated, for display only
     after: str
+    full: str = ""   # the untruncated source line, for exclusion matching
 
 
 def repo_root() -> Path:
@@ -109,7 +132,7 @@ def generate(source: str) -> list[tuple[Mutant, str]]:
                     continue
                 mutated = "".join(lines[:i]) + new_line + "".join(lines[i + 1:])
                 out.append((
-                    Mutant(name, i + 1, line.strip()[:60], new_line.strip()[:60]),
+                    Mutant(name, i + 1, line.strip()[:60], new_line.strip()[:60], line),
                     mutated,
                 ))
     return out
@@ -140,7 +163,8 @@ def main() -> int:
     log = logging.getLogger("mutate")
     log.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    for h in (logging.FileHandler(logdir / "mutate.log"), logging.StreamHandler(sys.stdout)):
+    for h in (logging.FileHandler(logdir / "mutate.log", mode="w"),
+              logging.StreamHandler(sys.stdout)):
         h.setFormatter(fmt)
         log.addHandler(h)
 
@@ -160,7 +184,7 @@ def main() -> int:
         log.info("%s: %d mutants, judged by %s", name, len(mutants),
                  f"the {test} replay only" if which else "trace + unit tests")
 
-        caught = survived = uncompilable = 0
+        caught = survived = uncompilable = equivalent = 0
         survivors: list[Mutant] = []
         try:
             for i, (mut, text) in enumerate(mutants, 1):
@@ -171,8 +195,11 @@ def main() -> int:
                     # already rejected it, so no test was ever needed.
                     uncompilable += 1
                 elif passed:
-                    survived += 1
-                    survivors.append(mut)
+                    if is_equivalent(name, mut):
+                        equivalent += 1
+                    else:
+                        survived += 1
+                        survivors.append(mut)
                 else:
                     caught += 1
                 if i % 20 == 0:
@@ -183,6 +210,9 @@ def main() -> int:
         viable = caught + survived
         score = 100 * caught / viable if viable else 0
         log.info("  compiled-away %d (rejected by the type system)", uncompilable)
+        if equivalent:
+            log.info("  equivalent    %d (justified in tests/equivalent_mutants.md)",
+                     equivalent)
         log.info("  caught %d / %d viable  =  %.0f%% mutation score", caught, viable, score)
 
         if survivors:

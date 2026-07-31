@@ -159,6 +159,8 @@ impl<S> Register<S> {
             // A field with a provider reports whatever the provider returns,
             // even without FieldMode::READ -- matching the C#, where supplying
             // a valueProviderCallback is what makes the field readable.
+            // A provider only exists on readable fields (enforced at
+            // construction), so consulting it needs no further mode check.
             let raw = match f.provider {
                 Some(p) => p(bank, state, f.group_index, stored),
                 None if f.mode.contains(FieldMode::READ) => stored,
@@ -273,6 +275,7 @@ impl<S> Bank<S> {
                 }
             }
             // C# order: the field is updated, then the write callback fires.
+            // It fires on any write to the register, matching CallWriteHandler.
             if let Some(cb) = f.on_write {
                 cb(self, state, f.group_index, old, incoming);
             }
@@ -323,6 +326,25 @@ impl<'a, S> RegisterBuilder<'a, S> {
         provider: Option<ValueProvider<S>>,
         on_write: Option<WriteCallback<S>>,
     ) -> u16 {
+        // C# RegisterField's constructor: "A write-only field cannot provide a
+        // value callback." That invariant is enforced at construction there, so
+        // enforcing it here is faithfulness, not extra strictness.
+        //
+        // Found by mutation testing: without it, mutating a provider-bearing
+        // field's mode to write-only SURVIVED, because value() consulted the
+        // provider regardless of the mode. The C# makes that unconstructable.
+        assert!(
+            !(provider.is_some() && !mode.contains(FieldMode::READ)),
+            "a write-only field cannot provide a value callback \
+             (offset {offset}, width {width})"
+        );
+        // The mirror case: a callback that can never fire is dead configuration,
+        // and silently accepting it is how dead code hides.
+        assert!(
+            !(on_write.is_some() && mode.is_empty()),
+            "a field with no write mode cannot have a write callback \
+             (offset {offset}, width {width})"
+        );
         let reset = (self.reset >> offset) & mask(width);
         let slot = self.alloc(reset);
         self.fields.push(FieldDef {
@@ -587,6 +609,31 @@ mod tests {
         let mut st = Pins { seen: vec![] };
         bank.write(0, 0, &mut st);
         assert_eq!(st.seen, vec![0, 1, 2, 3], "each field sees its own index");
+    }
+
+    /// C# throws ConstructionException for this exact case. Mutation testing
+    /// found it: without the check, a provider-bearing field mutated to
+    /// write-only survived, because value() used the provider regardless.
+    #[test]
+    #[should_panic(expected = "write-only field cannot provide a value callback")]
+    fn write_only_field_cannot_have_a_value_provider() {
+        fn provider(_b: &Bank<()>, _s: &mut (), _i: usize, _c: u64) -> u64 {
+            0
+        }
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0)
+            .with_value_cb(0, 8, FieldMode::WRITE, Some(provider), None)
+            .done();
+    }
+
+    #[test]
+    #[should_panic(expected = "no write mode cannot have a write callback")]
+    fn unwritable_field_cannot_have_a_write_callback() {
+        fn on_write(_b: &Bank<()>, _s: &mut (), _i: usize, _o: u64, _n: u64) {}
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0)
+            .with_value_cb(0, 8, FieldMode::default(), None, Some(on_write))
+            .done();
     }
 
     #[test]
