@@ -1,63 +1,45 @@
 # The corpus database — design
 
-The economic argument for this project is that **the LLM is invoked once per
-*pattern*, not once per function**. That only works if you can answer, for any
-proposed rule, "where else does this exact shape occur?" — which requires the
-whole corpus to be in a queryable database *before* translation starts.
+The LLM is invoked once per *pattern*, not once per function. That requires
+answering, for any proposed rule, "where else does this shape occur?" — which
+requires the whole corpus in a queryable database *before* translation starts.
 
-This document is the schema and the process discipline that enforces it.
+Schema and the discipline that enforces it.
 
 ## The lesson this is designed around
 
-`linux-rs` ran two tracks in the same period. Measured from its `patterns.db`
-on 2026-07-31:
+`linux-rs` ran two tracks in the same period. Measured from its `patterns.db`,
+2026-07-31:
 
 | Track | Corpus ingested? | Outcome |
 |---|---|---|
 | **c2rust-breadth** | Yes — `c2rust_decl_outcomes` 897,814 rows, `function_safety_status` 43,348 rows | Corpus-scale. A single transpiler fix flipped 317 files from crash to clean transpile |
 | **rule-learning translation** | **No** — `functions` **0 rows**, `statement_families` **0 rows** | 31 rules / 58 validation instances = **1.87 instances per rule**, across 38 translated TUs |
 
-Its own plan named the pattern census as the Phase-1 go/no-go gate. That gate was
-skipped and work went straight to per-file translation, which then needed a
-documented per-file review loop to keep quality up.
+Its own plan named the census as the Phase-1 go/no-go gate. The gate was skipped;
+work went straight to per-file translation, which then needed a per-file review
+loop to hold quality.
 
-**The causal chain matters:** with no corpus in the DB, "validate this rule
-against all structurally-equivalent occurrences" is not a runnable operation. So
-a rule can only ever be justified by the file that motivated it — which makes it
-a patch wearing a rule's label, and makes per-file review the only remaining
-quality mechanism. 1.87 instances per rule is that failure, quantified.
+**The causal chain:** with no corpus in the DB, "validate this rule against all
+structurally-equivalent occurrences" is not a runnable operation. A rule can then
+only be justified by the file that motivated it — a patch wearing a rule's label
+— leaving per-file review as the only quality mechanism. 1.87 is that failure,
+quantified.
 
 ## Four structural defences
 
 Process rules do not survive schedule pressure. These are mechanical.
 
-### 1. The translator reads only from the database
-
-The emitter takes a `method_id` and a rule set. It has no path that reads a
-`.cs` file directly. An unpopulated database therefore translates nothing —
-skipping ingestion is not possible, it is merely unproductive.
-
-### 2. A rule is not a rule until it has N validated instances
-
-`rule.status` cannot reach `committed` while
-`COUNT(rule_instance) < rule.min_instances_required` (default **3**).
-
-A proposed transformation matching one occurrence is recorded honestly as a
-`patch`, not a rule, and patches are a tracked metric that must trend to zero.
-This is the direct antidote to 1.87.
-
-### 3. The health metric is instances-per-rule, and it is on the dashboard
-
-Not "files translated". `progress_snapshot.instances_per_rule` falling toward 1
-means the process has drifted into per-file work, and it is visible the week it
-starts rather than at the retrospective.
-
-### 4. Everything is versioned, so regression is attributable
-
-Every row carries `run_id`. Every translation records the exact rule *versions*
-that produced it. When a rule goes from v3 to v4 you can ask which translations
-were produced by v3 and re-validate exactly those — instead of re-reviewing
-everything.
+1. **The translator reads only from the database.** It takes a `method_id` and a
+   rule set; no path reads a `.cs` file. An empty DB translates nothing.
+2. **A rule needs N validated instances.** `rule.status` cannot reach `committed`
+   while `COUNT(rule_instance) < min_instances_required` (default **3**). Below
+   that it is a `patch`, and patches must trend to zero. Direct antidote to 1.87.
+3. **The health metric is instances-per-rule**, not files translated. A fall
+   toward 1 means drift, visible the week it starts.
+4. **Everything carries `run_id`.** Each translation records the exact rule
+   versions that produced it, so a v3→v4 bump re-validates exactly those rather
+   than everything.
 
 ## Schema
 
@@ -298,7 +280,7 @@ CREATE TABLE translation (
 );
 ```
 
-### Progress — the honesty table
+### Progress
 
 ```sql
 CREATE TABLE progress_snapshot (
@@ -460,9 +442,42 @@ express — and record the measurement in the issue before forking anything.
 Core utilisation per stage, alongside instances-per-rule, in
 `progress_snapshot`. A stage that cannot saturate must carry a written reason.
 
+## The codebase is a build artifact
+
+Rules — not files — are the source code. Two consequences, neither available to
+hand-translation at any price.
+
+**1. Architectural decisions become re-runs.** Change two or three rules,
+regenerate, re-run the oracle; the whole 28k-line structure changes in one run.
+So D1–D4 are *reversible defaults*, not commitments:
+
+| Decision | Rule-expressible | Cost to revisit |
+|---|---|---|
+| **D2** register layout | Fully | One rule + regenerate |
+| **D1** object graph | Largely | A few rules + regenerate; hand-written core is manual |
+| **D4** error model | Largely | Rule + regenerate |
+| **D3** threading | Partially | Reaches hand-written core — the one genuinely expensive reversal |
+
+**2. Alternative rule sets are benchmarked, not debated.** Generate variant A
+(`Rc<RefCell>` per field) and variant B (`Cell` arena), build both, run both
+against the same oracle and benchmark, pick on numbers.
+`translation.rule_versions` makes variants addressable by construction.
+
+Note what this does to **#P1**: its hand-built prototype comparing the two D2
+layouts is the manual version of an experiment the pipeline runs permanently at
+full-corpus scale. P1 still de-risks the premise first, but the capability it
+prototypes should become standing infrastructure.
+
+**3. So `n_patches == 0` is the capability, not hygiene.** A hand-edited file
+will not regenerate. At 5% patched, a rule-set A/B moves only 95% of the codebase
+and the comparison is quietly contaminated. Patches are holes in the ability to
+regenerate, and that ability is the asset. Corollary, from `linux-rs` where it is
+stated correctly even though the process drifted from it: *a landed translation
+must be recreatable from the C# source plus committed rules and scripts alone.*
+
 ## Cost model
 
-This is the reason for all of the above.
+The narrower argument.
 
 | Approach | LLM invocations | Note |
 |---|---|---|
@@ -473,8 +488,8 @@ The rules are also **the durable asset**: they carry forward to the other 419
 DSL-style peripheral files (208,580 lines) at no additional LLM cost. Per-function
 translation carries nothing forward.
 
-**Caveat worth stating plainly:** for the F427 cut alone (~28k lines), this
-tooling is more expensive up front than simply hand-translating. It pays off at
-the full-tree scale, and it is only worth building because that is the intent.
-If the goal were ever narrowed to F427-and-stop, hand-translation would be the
-cheaper answer.
+**Caveat, stated plainly:** for the F427 cut alone (~28k lines), this tooling is
+more expensive up front than hand-translating. It is justified by two things —
+the full-tree scale, and the regeneration capability above. If the goal were ever
+narrowed to F427-and-stop *and* the architecture were known to be right first
+time, hand-translation would be cheaper. Neither of those holds.

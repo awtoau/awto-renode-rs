@@ -54,9 +54,16 @@ These are hard rules for the conversion pipeline. Full rationale and schema:
 - `rule.status` cannot reach `committed` while
   `COUNT(rule_instance) < min_instances_required` (default 3). Enforced in the
   tool, not in review.
-- Below the threshold it is recorded honestly as a **`patch`**. Patches are a
-  tracked metric that must trend to zero. A file-specific hand edit is evidence
+- Below the threshold it is recorded as a **`patch`**. Patches are a
+  CI-gated metric that must trend to zero. A file-specific hand edit is evidence
   the generic process is incomplete — record it as such, do not launder it.
+- **Why zero patches actually matters**: rules are the source code, and the Rust
+  is a build artifact. A hand-edited file is one that **will not regenerate** —
+  so with 5% patched, a rule-set A/B moves only 95% of the codebase and the
+  comparison is quietly contaminated. Patches are not process debt, they are
+  holes in the ability to regenerate, and that ability is the main asset. A
+  landed translation must be recreatable from the C# source plus committed rules
+  and scripts alone.
 - **The LLM is invoked once per unmatched *cluster*, never per function.** A
   per-function invocation path must not exist in the tool. This is the entire
   cost argument.

@@ -186,7 +186,7 @@ directly unit-testable, which is the thing tlib structurally cannot offer.
 - Quantify the divergence from upstream QEMU: what has Renode's fork changed,
   and what upstream TCG fixes since ~2010 has it never received? (Relevant to
   correctness, not just tidiness.)
-- Survey the options, honestly and without assuming the answer:
+- Survey the options without assuming the answer:
   - A hand-written Rust Thumb-2/Cortex-M interpreter — most testable, unknown
     throughput, moderate build.
   - Existing Rust ARM emulation crates — establish what actually exists and is
@@ -596,7 +596,7 @@ stage for no reason.
   change recomputes only what changed.
 - Per-stage core-utilisation telemetry into `progress_snapshot`, tracked
   alongside instances-per-rule.
-- Measure the serial fraction and state the resulting Amdahl ceiling honestly.
+- Measure the serial fraction; state the resulting Amdahl ceiling.
 
 ### On forking Roslyn
 
@@ -746,9 +746,29 @@ take next method from translation_order (leaves first, simplest first)
 - LLM invocation is **per cluster**. A per-function invocation path must not
   exist in the tool.
 
+### Design constraint: whole-type transformation, from the start
+
+**Rules must match and emit at type and member granularity, not only over
+`operation` subtrees.** Statement-level substitution is enough for faithful
+translation and not enough for anything after it.
+
+Why it cannot be deferred: changing an object model — inheritance to composition,
+GC graph to indexed storage, or leaving Renode's model behind entirely — is not a
+local rewrite over expressions. Retrofitting whole-type restructuring onto a
+statement-substitution engine is an engine rewrite. The schema already permits it
+(`operation` → `method` → `member` → `type`); the emitter must be built for it.
+
+This is what keeps D1–D4 reversible and makes rule-set variants comparable — see
+"The codebase is a build artifact" in
+[docs/rulesdb-design.md](rulesdb-design.md).
+
 **Cost model this exists to deliver:** ~200–400 LLM invocations for the corpus
 rather than ~2,000, and the committed rules carry forward to the other 419
 DSL-style peripheral files (208,580 lines) at no further LLM cost.
+
+**The larger payoff:** with rules as the source code, architectural decisions
+become re-runs rather than rewrites, and alternative rule sets can be built and
+benchmarked against the same oracle instead of argued about.
 
 **Exit** — engine runs the queue end to end; threshold enforced mechanically;
 `instances_per_rule` reported per run.

@@ -277,9 +277,20 @@ framework is worth building on rather than porting onto.
 
 ## The four declared deviations
 
-These are the whole-program decisions that cannot be made per-file. Deciding
-them wrong is the main way this project fails, so they are made explicitly, up
-front, with the reasoning recorded.
+These are the whole-program decisions that cannot be made per-file. They are made
+explicitly, up front, with the reasoning recorded.
+
+**They are reversible defaults, not commitments.** Once the rule pipeline exists
+(Phases 1–3), the Rust is a *build artifact*: D2 is fully rule-expressible, D1 and
+D4 largely so, and changing one is a rule edit plus a regenerate rather than a
+rewrite. Better still, alternatives can be **generated as variants and
+benchmarked against the same oracle** rather than argued about — which is what
+`translation.rule_versions` exists to make addressable.
+
+So: pick what the evidence favours now, and treat the alternatives as experiments
+to run later. The exception is **D3**, which reaches into hand-written core
+infrastructure and is therefore only partly regenerable — it stays the one
+genuinely expensive decision, and the one worth most scrutiny before Phase 3.
 
 ### D1 — Object graph: `Rc<RefCell<T>>`, cycles leaked
 
@@ -544,7 +555,7 @@ Full schema and process defences: **[docs/rulesdb-design.md](docs/rulesdb-design
   single highest-leverage translation in the project).
 - Build the **rule engine**: match against the operation tree → emit → query
   *all* matches in the corpus → validate each → commit only at ≥3 validated
-  instances. Below that threshold it is recorded honestly as a `patch`, and
+  instances. Below that threshold it is recorded as a `patch`, and
   patches are a tracked metric that must trend to zero.
 - **Work the queue bottom-up** — leaves first, simplest first. Simple methods
   produce general rules; starting from a 300-node method produces over-specific
@@ -609,6 +620,44 @@ work, which is precisely the kind of change the oracle is built to reject. It ma
 be worth doing as a *test-harness* convenience, but it must never be counted as a
 performance result.
 
+## The exit: Renode as an input, not a dependency
+
+If Renode's object model turns out to be the wrong foundation, the rule pipeline
+is the fastest way to leave it behind.
+
+**What the rule DB captures is not Renode's code** — it is the semantic content
+of its peripheral models: register maps, bit-field semantics, reset values,
+interrupt conditions, state transitions. That is architecture-independent. The
+`IPeripheral` hierarchy and GC object graph are the container it arrived in, and
+once extracted the container is optional.
+
+**The oracle certifies behaviour, not structure**, so restructuring stays safe:
+
+```
+Phases 1-5:  C# Renode      ──differential──▶  faithful Rust
+Later:       faithful Rust  ──differential──▶  restructured Rust
+```
+
+The faithful translation becomes the permanent baseline for every later
+architectural change — both sides Rust, both fast, trivially lockstepped. That is
+a second reason for "faithful first", independent of reviewability.
+
+**The requirement this imposes now:** the rule engine must support **whole-type
+transformation**, not only statement-level substitution. Changing an object model
+means restructuring types (inheritance → composition, GC graph → indexed
+storage), which is not a local rewrite over expressions. The schema permits it;
+the emitter must be built for it from the start, because retrofitting it is an
+engine rewrite. Recorded as a constraint on #R6.
+
+Consequences if this path is ever taken: peripherals Renode models badly can be
+generated from vendor SVD or reference manuals into the same pipeline; the four
+known defects become "the extracted semantics were wrong, use a better source";
+and "the rest of Renode" becomes a question of which *content* to extract rather
+than which code to port.
+
+Not scheduled. Recorded because the decision that preserves the option lands in
+Phase 3.
+
 ## Beyond F427 — what actually scales
 
 F427 is the proving ground, not the ceiling. If the rule thesis holds, most of
@@ -656,8 +705,9 @@ the method. Generalising comes after the proof, not before it.
 |---|---|
 | **The performance premise is wrong** — Rust's MMIO path is not materially faster | Phase-0 spike is a **gate**, run before the design is locked. A negative result reduces this to a safety-only project and that verdict must be allowed to stand |
 | **`RefCell` re-entrancy panics** | Phase-0 borrow discipline: never hold a borrow across a sysbus call. D2's `Cell` arena removes the hazard entirely for register fields, which are the numerous case. Tier-3 lockstep finds the rest at an exact instruction |
-| Cache-hostile data layout locks in early and is expensive to undo | D2 decided up front rather than deferred — the DSL is the abstraction boundary, so storage layout is changeable without touching peripheral code, but only if the boundary is respected from file one |
-| D3 (single-threaded) proves wrong | Decided explicitly in Phase 0 against the profile, not assumed; reversal cost is an `Rc`→`Arc` mechanical sweep, painful but bounded |
+| Cache-hostile data layout locks in early and is expensive to undo | **Largely deflated once the pipeline exists** — D2 is fully rule-expressible, so changing it is one rule edit plus a regenerate. Decided up front anyway because the DSL abstraction boundary must be respected from file one |
+| D3 (single-threaded) proves wrong | Decided explicitly in Phase 0 against the profile, not assumed. **The most expensive deviation to reverse**, because it touches hand-written core infrastructure and is therefore only partly regenerable |
+| **Hand patches accumulate**, silently destroying the regeneration capability | `n_patches` is a CI-gated metric that must trend to zero. Every hand-edited file is a hole in the ability to regenerate, and regeneration is the project's main asset — see [docs/rulesdb-design.md](docs/rulesdb-design.md) |
 | Rule thesis false for C# | Phase-1 gate on peripheral two, before any frontend is built |
 | Roslyn frontend is a bigger build than expected | Phase 1 hand-translates without it; the frontend is only justified once the DSL and rules exist |
 | tlib FFI proves awkward from Rust | It is a plain C ABI already called by P/Invoke; if it fails, that is Phase-0 knowledge, not Phase-3 |
