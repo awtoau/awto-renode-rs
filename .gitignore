@@ -19,3 +19,6 @@ __pycache__/
 
 # Baseline boot archives: large logs, regenerable via scripts/baseline_boot.py
 tmp/baseline/
+
+# Rust spike build output
+spike/*/target/
