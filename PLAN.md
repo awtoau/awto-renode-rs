@@ -122,12 +122,13 @@ port removes.**
    access.
 2. **Time sync collapses under D3.** Single-threaded, the handle state machine
    becomes `virtual_time += delta` and one deadline comparison.
-3. **Cache-resident peripheral state (D2).** A whole peripheral's register fields
-   in ~5 contiguous cache lines means a polling loop runs entirely out of L1. The
-   naive `Rc<RefCell<_>>`-per-field design would scatter ~240 allocations across
-   the heap for RCC alone and touch 2–3 lines per field read.
-4. **Lazy evaluation as a design rule** (below).
-5. **No GC**, and no allocation on the access path.
+3. **No allocation on the access path.** Measured: allocation + GC is **12.4%**
+   of C# Renode's profile, and locking a further **11.1%** — ~30% of runtime is
+   .NET overhead Rust does not pay at all.
+4. **Not the register-field layout.** Measured and *disproved*: the `Cell`-arena
+   vs `Rc<RefCell>` choice is 0.34 ns against a ~409 ns per-access budget —
+   **0.08%**. See [docs/perf-spike.md](docs/perf-spike.md).
+5. **Lazy evaluation as a design rule** (below).
 
 ### Design rule: peripherals are pure functions of virtual time
 
@@ -335,9 +336,17 @@ Why this rather than `Rc<RefCell<_>>` per field:
 | Allocation | one heap allocation *per field* — RCC defines ~240 | one, per peripheral |
 | Per-field overhead | 16 B refcounts + 8 B borrow flag + payload, scattered | 8 B payload, contiguous |
 | Read cost | pointer chase → borrow-flag check (branch + write) → load | one indexed load |
-| Cache behaviour | a poll touches 2–3 lines, likely missing | a whole peripheral's fields fit in ~5 lines; a polling loop stays in L1 |
-| Borrow panics | possible | **impossible** — `Cell` has no borrow flag |
-| `Send` | blocks it | permits it |
+| **Borrow panics** | **possible** | **impossible** — `Cell` has no borrow flag |
+| **`Send`** | **blocks it** | **permits it** |
+| Measured speed | baseline | 1.1–1.7× faster, but see below |
+
+**Decide this on correctness, not speed.** The measured advantage is real
+(1.43× on the polling pattern) but irrelevant in context: a field read is
+0.34 ns against a ~409 ns per-MMIO-access budget — **0.08%**. An earlier draft
+of this plan justified `Cell` on cache locality; that was measured and is
+**wrong** — the case whose working set exceeds L1 showed the *smallest* gap, and
+the real mechanism is the borrow-flag read-modify-write. Full numbers:
+[docs/perf-spike.md](docs/perf-spike.md).
 
 **This costs nothing in faithfulness.** The DSL is the abstraction boundary —
 peripherals never touch storage directly, they go through field handles — so the
