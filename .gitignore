@@ -16,3 +16,6 @@ obj/
 __pycache__/
 *.pyc
 .venv/
+
+# Baseline boot archives: large logs, regenerable via scripts/baseline_boot.py
+tmp/baseline/
