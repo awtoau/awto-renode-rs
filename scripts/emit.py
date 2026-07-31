@@ -113,6 +113,21 @@ def load_expressions(rules_dir: Path) -> list[dict]:
     return out
 
 
+def load_assignments(rules_dir: Path) -> list[dict]:
+    """Project rules for assignment TARGETS.
+
+    `field.Value = x` cannot use the generic `{target} = {value}` mapping: Rust
+    has no assignable property and D2's field handles are indices, so it becomes
+    a bank call. Assignment therefore needs a project rule even though
+    assignment itself is a language construct."""
+    out: list[dict] = []
+    if not rules_dir.exists():
+        return out
+    for f in sorted(rules_dir.glob("*.json")):
+        out.extend(json.loads(f.read_text()).get("assignments", []))
+    return out
+
+
 def load_register_forms(rules_dir: Path) -> list[dict]:
     """How to FIND a register, also data.
 
@@ -159,6 +174,7 @@ class Emitter:
         self._flag_fields: set[str] = set()
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
         self.forms = load_register_forms(rd)
+        self.assignments = load_assignments(rd)
         self.language = load_language(rd)
         self.expressions = load_expressions(rd)
 
@@ -325,7 +341,7 @@ class Emitter:
 
         # Language layer.
         if kind == "Literal":
-            return self.literal(const)
+            return self.literal(const, rtype)
         if kind == "Binary":
             table = self.language.get("operators", {}).get("binary", {})
             tmpl = table.get(symbol or "")
@@ -338,25 +354,76 @@ class Emitter:
             tmpl = table.get(symbol or "")
             if tmpl and kids:
                 return tmpl.format(operand=self.emit_expr(kids[0]))
+        if kind == "Invocation" and symbol:
+            # Generic call. Project rules were tried above, so reaching here
+            # means no idiom claimed it.
+            inv = self.language.get("invocations", {})
+            method = snake(symbol.split("(")[0].split(".")[-1])
+            arg_txt = ", ".join(self.emit_expr(a) for a in args)
+            receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
+            rkind = None
+            if receiver is not None:
+                rkind = self.con.execute(
+                    "SELECT kind FROM operation WHERE id=?", (receiver,)).fetchone()[0]
+            if receiver is None or rkind == "InstanceReference":
+                return inv.get("self", "self.{method}({args})").format(
+                    method=method, args=arg_txt)
+            return inv.get("instance", "{receiver}.{method}({args})").format(
+                receiver=self.emit_expr(receiver), method=method, args=arg_txt)
+
+        if kind == "ConditionalAccess":
+            gap = self.language.get("statements", {}).get("ConditionalAccess", {})
+            self.gaps.append("conditional access `?.` needs nullability analysis")
+            return gap.get("emit", "/* GAP: ?. */")
+
+        if kind == "SimpleAssignment":
+            # Assignment in expression position; C# yields the assigned value.
+            return self.emit_assignment(oid).rstrip(";")
+
+        if kind == "PropertyReference" and symbol:
+            return f"self.{snake(symbol.split('.')[-1])}()"
+
         if kind in ("Conversion", "Parenthesized", "Argument"):
             # Transparent: an implicit conversion is not written by anyone.
             return self.emit_expr(kids[0]) if kids else "/* empty */"
+        if kind == "FieldReference" and symbol:
+            return f"self.{snake(symbol.split('.')[-1].split('(')[0])}"
+        if kind == "InstanceReference":
+            return "self"
+        if kind == "ObjectCreation" and symbol:
+            ty = symbol.split("(")[0].split(".")[-1]
+            return f"{ty}::new({', '.join(self.emit_expr(a) for a in args)})"
         if kind == "ParameterReference" and symbol:
-            return snake(symbol.split(".")[-1])
-        if kind == "LocalReference" and detail:
-            try:
-                return snake(json.loads(detail).get("local", "local"))
-            except json.JSONDecodeError:
-                pass
+            # The symbol is "byte value" -- type then name. Splitting on "."
+            # returned the whole thing and emitted `enqueue(byte value)`.
+            return snake(symbol.split()[-1])
+        if kind == "LocalReference":
+            if detail:
+                try:
+                    return snake(json.loads(detail).get("local", "local"))
+                except json.JSONDecodeError:
+                    pass
+            if symbol:
+                return snake(symbol.split(".")[-1])
 
         self.unhandled[f"expr:{kind}"] = self.unhandled.get(f"expr:{kind}", 0) + 1
         return f"/* {kind} */"
 
-    def literal(self, const: str | None) -> str:
+    def literal(self, const: str | None, rtype: str | None = None) -> str:
+        """A literal, rendered for Rust.
+
+        The TYPE matters: a string literal emitted bare produced
+        `self.log(..., Received a character, ...)` -- unquoted prose spliced into
+        an argument list, which is both wrong and syntactically invalid."""
         if const is None:
             return "0"
         if const in ("True", "False"):
             return const.lower()
+        if rtype == "string":
+            escaped = const.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        if rtype == "char":
+            return f"'{const}'"
         return const
 
     def receiver_field(self, oid: int) -> str | None:
@@ -369,6 +436,104 @@ class Emitter:
             if inner:
                 return inner
         return None
+
+    def emit_stmt(self, oid: int, indent: int = 0) -> list[str]:
+        """One statement, possibly nested. Structure from the LANGUAGE rules."""
+        pad = "    " * indent
+        row = self.con.execute(
+            "SELECT kind, symbol, detail FROM operation WHERE id=?", (oid,)).fetchone()
+        if row is None:
+            return []
+        kind, _symbol, detail = row
+        kids = self.children(oid)
+        stmts = self.language.get("statements", {})
+
+        if kind == "ExpressionStatement":
+            return [pad + self.emit_expr(kids[0][0]) + ";"] if kids else []
+
+        if kind == "SimpleAssignment":
+            return [pad + self.emit_assignment(oid)]
+
+        if kind == "Return":
+            tmpl = stmts.get("Return", {})
+            if kids:
+                return [pad + tmpl.get("with_value", "return {value};")
+                        .format(value=self.emit_expr(kids[0][0]))]
+            return [pad + tmpl.get("bare", "return;")]
+
+        if kind == "Conditional" and len(kids) >= 2:
+            cond = self.emit_expr(kids[0][0])
+            then = self.emit_block(kids[1][0], indent + 1)
+            out = [f"{pad}if {cond} {{"] + then
+            if len(kids) >= 3:
+                out.append(f"{pad}}} else {{")
+                out.extend(self.emit_block(kids[2][0], indent + 1))
+            out.append(pad + "}")
+            return out
+
+        if kind in ("VariableDeclarationGroup", "VariableDeclaration"):
+            out: list[str] = []
+            for cid, _k, _s, _c, _t in kids:
+                out.extend(self.emit_stmt(cid, indent))
+            return out
+
+        if kind == "VariableDeclarator":
+            name = "value"
+            if detail:
+                try:
+                    name = snake(json.loads(detail).get("local", "value"))
+                except json.JSONDecodeError:
+                    pass
+            init = None
+            for cid, ckind, _s, _c, _t in kids:
+                if ckind == "VariableInitializer":
+                    inner = self.children(cid)
+                    if inner:
+                        init = self.emit_expr(inner[0][0])
+            tmpl = stmts.get("VariableDeclarator", {})
+            if init is not None:
+                return [pad + tmpl.get("with_init", "let mut {name} = {init};")
+                        .format(name=name, init=init)]
+            return [pad + tmpl.get("bare", "let mut {name};").format(name=name)]
+
+        self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
+        return [f"{pad}/* {kind} */"]
+
+    def emit_block(self, oid: int, indent: int) -> list[str]:
+        """A Block, or a single statement used as one."""
+        row = self.con.execute("SELECT kind FROM operation WHERE id=?", (oid,)).fetchone()
+        if row and row[0] == "Block":
+            out: list[str] = []
+            for cid, _k, _s, _c, _t in self.children(oid):
+                out.extend(self.emit_stmt(cid, indent))
+            return out
+        return self.emit_stmt(oid, indent)
+
+    def emit_assignment(self, oid: int) -> str:
+        """`x = y`, with project rules for register-field targets."""
+        kids = self.children(oid)
+        if len(kids) < 2:
+            return "/* malformed assignment */"
+        target_id, value_id = kids[0][0], kids[1][0]
+        trow = self.con.execute(
+            "SELECT kind, symbol, type FROM operation WHERE id=?", (target_id,)).fetchone()
+        tkind, tsym, ttype = trow if trow else (None, None, None)
+        value = self.emit_expr(value_id)
+
+        for rule in self.assignments:
+            if rule["target_kind"] != tkind:
+                continue
+            if rule.get("target_symbol_contains") and (
+                    not tsym or rule["target_symbol_contains"] not in tsym):
+                continue
+            if rule.get("target_type_is") and ttype != rule["target_type_is"]:
+                continue
+            return rule["emit"].format(
+                field=self.receiver_field(target_id) or "UNKNOWN", value=value)
+
+        tmpl = self.language.get("statements", {}).get(
+            "SimpleAssignment", {}).get("default", "{target} = {value};")
+        return tmpl.format(target=self.emit_expr(target_id), value=value)
 
     def emit_body(self, type_name: str, method_name: str) -> list[str]:
         """Emit a method body, statement by statement."""
@@ -385,13 +550,8 @@ class Emitter:
         if not block:
             return []
         out: list[str] = []
-        for sid, kind, _s, _c, _t in self.children(block[0]):
-            if kind == "ExpressionStatement":
-                inner = self.children(sid)
-                if inner:
-                    out.append(self.emit_expr(inner[0][0]) + ";")
-            else:
-                self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
+        for sid, _kind, _s, _c, _t in self.children(block[0]):
+            out.extend(self.emit_stmt(sid))
         return out
 
     def enum_offset(self, oid: int) -> tuple[str | None, int | None]:

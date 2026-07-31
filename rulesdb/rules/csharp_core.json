@@ -1,8 +1,7 @@
 {
   "layer": "language",
   "description": "GENERIC C#-to-Rust mappings. These are properties of the two LANGUAGES, not of Renode, and hold for any corpus. This is the layer c2rust occupies for C: a bug here is a transpiler bug and its fix benefits every future file, so it is fixed here rather than worked around per project.",
-  "boundary": "Nothing in this file may mention Renode, a peripheral, or a register. If a mapping needs project knowledge it belongs in a project rule file instead — that split is what keeps the transpiler reusable and the project rules small.",
-
+  "boundary": "Nothing in this file may mention Renode, a peripheral, or a register. If a mapping needs project knowledge it belongs in a project rule file instead \u2014 that split is what keeps the transpiler reusable and the project rules small.",
   "operators": {
     "note": "IBinaryOperation.OperatorKind and IUnaryOperation.OperatorKind, recorded by the ingest. Without them a Binary node says only 'Binary' and no expression can be emitted.",
     "binary": {
@@ -32,7 +31,6 @@
       "Plus": "{operand}"
     }
   },
-
   "deviations": [
     {
       "construct": "integer overflow",
@@ -52,11 +50,10 @@
       "construct": "null",
       "csharp": "any reference may be null",
       "rust": "Option<T>",
-      "mapping": "unresolved — needs nullability analysis",
+      "mapping": "unresolved \u2014 needs nullability analysis",
       "why": "Roslyn carries nullable annotations, but Renode is not annotated, so every reference is potentially null and blanket Option<T> would be noise. Deferred deliberately; see PLAN.md D4."
     }
   ],
-
   "known_transpiler_bugs_fixed": [
     {
       "bug": "partial methods reported as having a body",
@@ -82,5 +79,34 @@
       "fix": "record it",
       "impact": "no expression could be emitted at all"
     }
-  ]
+  ],
+  "statements": {
+    "note": "Statement structure, generic to C# and Rust. Covers 96% of statements directly under a Block in this corpus (ExpressionStatement 2384, Return 1268, Conditional 699, VariableDeclarationGroup 573).",
+    "Return": {
+      "with_value": "return {value};",
+      "bare": "return;"
+    },
+    "Conditional": {
+      "if": "if {cond} {{\n{then}\n}}",
+      "if_else": "if {cond} {{\n{then}\n}} else {{\n{else}\n}}",
+      "ternary": "if {cond} {{ {then} }} else {{ {else} }}"
+    },
+    "VariableDeclarator": {
+      "with_init": "let mut {name} = {init};",
+      "bare": "let mut {name};"
+    },
+    "SimpleAssignment": {
+      "default": "{target} = {value};"
+    },
+    "ConditionalAccess": {
+      "note": "`x?.Foo()`. C# short-circuits on null; Rust's equivalent depends on whether x is Option<T>, which needs the nullability analysis deferred in D4. Emitted as a marked gap rather than a guess.",
+      "emit": "/* GAP: `?.` needs nullability analysis (D4) */"
+    }
+  },
+  "invocations": {
+    "note": "Generic method calls. A call on `this` becomes a self-call; a call on an object becomes a method call on the translated receiver. Project rules match FIRST, so an idiom like IRQ.Set can override this.",
+    "instance": "{receiver}.{method}({args})",
+    "self": "self.{method}({args})",
+    "static": "{type}::{method}({args})"
+  }
 }

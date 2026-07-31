@@ -119,5 +119,21 @@
       "symbol_contains": "GPIO.Set(bool)",
       "emit": "self.irq = {arg0}"
     }
+  ],
+  "assignments": [
+    {
+      "name": "FLAG_FIELD_WRITE",
+      "note": "`someFlag.Value = x`. Rust has no assignable property, and D2's handles are indices, so this is a bank call rather than an lvalue -- which is why assignment needs a PROJECT rule and not just the generic `{target} = {value}`.",
+      "target_kind": "PropertyReference",
+      "target_symbol_contains": "IRegisterField<T>.Value",
+      "target_type_is": "bool",
+      "emit": "self.bank.set_flag(self.f.{field}, {value});"
+    },
+    {
+      "name": "VALUE_FIELD_WRITE",
+      "target_kind": "PropertyReference",
+      "target_symbol_contains": "IRegisterField<T>.Value",
+      "emit": "self.bank.set_value(self.f.{field}, {value});"
+    }
   ]
 }
