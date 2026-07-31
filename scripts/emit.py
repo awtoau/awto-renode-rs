@@ -367,6 +367,10 @@ class Emitter:
             method = snake(symbol.split("(")[0].split(".")[-1])
             arg_txt = ", ".join(self.emit_expr(a) for a in args)
             receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
+            key = self.stdlib_member(symbol)
+            if key and receiver is not None:
+                return self.language["stdlib"]["members"][key].format(
+                    recv=self.emit_expr(receiver), args=arg_txt)
             rkind = None
             if receiver is not None:
                 rkind = self.con.execute(
@@ -417,6 +421,16 @@ class Emitter:
         row = self.con.execute("SELECT kind FROM operation WHERE id=?", (oid,)).fetchone()
         return row[0] if row else ""
 
+    def stdlib_member(self, symbol: str) -> str | None:
+        """The BCL member name as `Type.Member`, if this is one we map."""
+        std = self.language.get("stdlib", {}).get("members", {})
+        parts = symbol.split("(")[0].split(".")
+        if len(parts) < 2:
+            return None
+        ty = parts[-2].split("<")[0]
+        key = f"{ty}.{parts[-1]}"
+        return key if key in std else None
+
     def emit_reference(self, kind: str, symbol: str, kids: list) -> str:
         """A field or property reference, WITH its receiver.
 
@@ -424,6 +438,10 @@ class Emitter:
         `self.<name>`, which reads the wrong object whenever the C# names one
         -- `receiveFifo.Count` became `self.count()`."""
         forms = self.language.get("references", {}).get(kind, {})
+        key = self.stdlib_member(symbol)
+        if key and kids:
+            return self.language["stdlib"]["members"][key].format(
+                recv=self.emit_expr(kids[0]), args="")
         name = snake(symbol.split(".")[-1].split("(")[0])
         if not kids:
             # No receiver child: a static reference, or `this` left implicit.
@@ -488,17 +506,22 @@ class Emitter:
         # instead, so references must be redirected to the parameters.
         rewritten: list[str] = []
         for line in body:
-            line = line.replace("self.bank.", "bank.").replace("self.f.", "bank_fields.")
+            line = line.replace("self.bank.", "bank.").replace("self.f.", "st.f.")
             # A call to a PEER METHOD is the case that does not rewrite: the
             # free fn has the bank and the state, not the peripheral, so
             # `self.update()` has no receiver. Flagged rather than mangled --
             # it is a real design question about what `S` must contain, not a
             # missing template.
-            if re.search(r"\bself\.[a-z_]+\(", line):
-                self.gaps.append(
-                    "lambda calls a peer method; the free fn has bank+state, "
-                    "not the peripheral (see renode-regs callback docs)")
-                line += "  // GAP: peer-method call has no receiver here"
+            # A peer-method call: the peripheral's own methods are free fns
+            # over (bank, st) too, so the receiver becomes those parameters.
+            # See register_dsl.json peripheral_methods for why uniformly.
+            call = self.project.get("peripheral_methods", {}).get(
+                "call", "{name}(bank, st{args})")
+            def peer(m):
+                inner = m.group(2).strip()
+                return call.format(name=m.group(1),
+                                   args=(", " + inner) if inner else "")
+            line = re.sub(r"\bself\.([a-z_][a-z0-9_]*)\(([^()]*)\)", peer, line)
             line = line.replace("self.", "st.")
             rewritten.append(line)
         body = rewritten

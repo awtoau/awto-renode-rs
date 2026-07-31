@@ -146,5 +146,12 @@
       "params": "bank: &Bank<S>, st: &mut S, _idx: usize, _old: u64, new: u64",
       "ret": "()"
     }
+  },
+  "peripheral_methods": {
+    "note": "EVERY peripheral method becomes a free fn over (bank, state) -- not only the ones that touch the bank. Inside a DSL callback you hold `&Bank<S>` and `&mut S`, which is the peripheral taken apart, so a method reached from a callback cannot have a `self`. Splitting methods by whether they touch registers would give two calling conventions and a classification that shifts as rules change; 49 of 296 methods in register-bearing types touch a field today, but which ones is not a stable property. Uniform is cheaper and needs no analysis.",
+    "decl": "fn {name}(bank: &Bank<S>, st: &mut S{extra}) -> {ret}",
+    "call": "{name}(bank, st{args})",
+    "field_handles": "st.f.{field}",
+    "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see."
   }
 }

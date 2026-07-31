@@ -133,5 +133,31 @@
       "self": "self.{name}",
       "static": "{type}::{name}"
     }
+  },
+  "stdlib": {
+    "note": "The .NET BCL to Rust std correspondence. Generic to the two languages, so it belongs here and not in a project rule -- nothing below mentions Renode. 336 uses across 38 distinct members in this corpus. Only members with >=3 uses are listed; the rest are patches until a third instance appears, per the min_instances_required rule.",
+    "types": {
+      "Queue": "VecDeque",
+      "List": "Vec",
+      "Dictionary": "HashMap",
+      "HashSet": "HashSet",
+      "StringBuilder": "String"
+    },
+    "members": {
+      "Queue.Count": "{recv}.len()",
+      "Queue.Dequeue": "{recv}.pop_front().unwrap()",
+      "Queue.Enqueue": "{recv}.push_back({args})",
+      "Queue.Peek": "*{recv}.front().unwrap()",
+      "Queue.Clear": "{recv}.clear()",
+      "List.Count": "{recv}.len()",
+      "List.Add": "{recv}.push({args})",
+      "Array.Length": "{recv}.len()",
+      "Array.Clear": "{recv}.fill(Default::default())",
+      "Dictionary.Add": "{recv}.insert({args})",
+      "HashSet.Contains": "{recv}.contains(&{args})",
+      "String.Append": "{recv}.push_str({args})",
+      "String.ToString": "{recv}.to_string()"
+    },
+    "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path."
   }
 }
