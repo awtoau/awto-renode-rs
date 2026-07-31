@@ -47,9 +47,18 @@ EXEMPT_FILES = {
     "scripts/check_derived.py",           # this file
 }
 
-# A hex literal of >=4 digits is distinctive enough to be provenance-bearing.
-# Rust and Python both allow underscores, so both spellings are searched.
+# A hex literal of >=4 digits is distinctive enough to be provenance-bearing --
+# with one exception. Round powers of two (0x1000, 0x10000, ...) are ubiquitous
+# sizes that carry no provenance: flagging a 4 KiB test buffer as "bkpsram.size"
+# is a false positive, and false positives are how a check gets disabled.
 HEX = re.compile(r"^0x[0-9A-Fa-f]{4,}$")
+
+
+def is_distinctive(literal: str) -> bool:
+    if not HEX.match(literal):
+        return False
+    v = int(literal, 16)
+    return v & (v - 1) != 0  # not a power of two
 
 
 def repo_root() -> Path:
@@ -69,10 +78,10 @@ def distinctive_values(data: dict) -> dict[str, str]:
     for name, entry in data.get("peripherals", {}).items():
         for key, value in (entry.get("params") or {}).items():
             v = str(value).strip()
-            if HEX.match(v):
+            if is_distinctive(v):
                 found[v.lower()] = f"{name}.{key}"
         addr = entry.get("address")
-        if isinstance(addr, int) and addr > 0xFFF:
+        if isinstance(addr, int) and addr > 0xFFF and is_distinctive(hex(addr)):
             found[hex(addr)] = f"{name} address"
     return found
 

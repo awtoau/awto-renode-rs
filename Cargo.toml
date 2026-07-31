@@ -2,7 +2,7 @@
 # crates and barely within one, and incremental rebuilds stay fast. See #36 (R7).
 [workspace]
 resolver = "2"
-members = ["src/renode-regs", "src/renode-oracle", "src/renode-stm32"]
+members = ["src/renode-regs", "src/renode-oracle", "src/renode-stm32", "src/renode-tlib"]
 
 [workspace.package]
 edition = "2021"
