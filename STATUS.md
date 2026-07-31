@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T13:37:53+10:00 from `fe4106c` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T14:47:05+10:00 from `7daa335` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -53,6 +53,26 @@ Per-method tests are generated from tier-2 trace fixtures once the
 harness exists (#34 R5). Until then a stub fails its test by construction,
 which is the intended starting state: **0% passing over 100% of the corpus**
 is a truthful scoreboard, an empty table is not.
+
+## Mutation score
+
+What the tests can actually *see*. A passing trace replay means
+"indistinguishable on this trace" — nothing about a green tick separates a
+thorough trace from a useless one. Mutation testing is the only signal that does.
+
+| target | mode | caught | viable | score | equivalent | survivors |
+|---|---|---:|---:|---:|---:|---:|
+| gpio | all | 8 | 8 | 100.0% | 4 | 0 |
+| uart | all | 30 | 37 | 81.1% | 0 | 7 **7** |
+
+**Unresolved survivors** — each names a behaviour nothing checks:
+
+- `uart` rw->read line 229: `.with_value(0, 9, &mut ValueId::default(), FieldMode::READ_W`
+- `uart` rw->read line 255: `.with_flag(15, &mut f.oversampling_mode, FieldMode::READ_WRI`
+- `uart` rw->read line 268: `.with_value(12, 2, &mut f.stop_bits, FieldMode::READ_WRITE)`
+- `uart` read->rw line 220: `FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR,`
+- `uart` and->or line 126: `if !self.bank.flag(self.f.usart_enabled) && !self.bank.flag(`
+- `uart` and->or line 182: `&& !self.bank.flag(self.f.transmitter_enabled)`
 
 ## Benchmarks
 

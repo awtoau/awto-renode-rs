@@ -24,6 +24,7 @@ Exit: 0 if no survivors, 1 otherwise.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import shutil
@@ -155,6 +156,8 @@ def main() -> int:
                     help="'trace' measures what the CAPTURED TRACE can see; "
                          "'all' adds the hand-written unit tests")
     ap.add_argument("--limit", type=int, default=0, help="cap mutants (0 = no cap)")
+    ap.add_argument("--record", action="store_true",
+                    help="write docs/status/mutants.json for the scorecard")
     args = ap.parse_args()
 
     root = repo_root()
@@ -170,6 +173,7 @@ def main() -> int:
 
     targets = sorted(TARGETS) if args.target == "all" else [args.target]
     total_survivors = 0
+    record: dict[str, dict] = {}
 
     for name in targets:
         rel, test = TARGETS[name]
@@ -225,7 +229,26 @@ def main() -> int:
                     log.info("    %-16s line %-4d %s", s.operator, s.line, s.before)
                 if len(by_op[op]) > 4:
                     log.info("    %-16s ... and %d more", op, len(by_op[op]) - 4)
+        record[name] = {
+            "mode": args.tests,
+            "caught": caught,
+            "viable": viable,
+            "score": round(score, 1),
+            "equivalent": equivalent,
+            "uncompilable": uncompilable,
+            "survivors": [{"operator": s.operator, "line": s.line, "code": s.before}
+                          for s in survivors],
+        }
         total_survivors += survived
+
+    if args.record:
+        out = root / "docs" / "status" / "mutants.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # Merge, so recording one target does not erase the other's result.
+        existing = json.loads(out.read_text()) if out.exists() else {}
+        existing.update(record)
+        out.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
+        log.info("recorded %s", out.relative_to(root))
 
     log.info("")
     if total_survivors:

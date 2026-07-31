@@ -30,6 +30,7 @@ OUT = "STATUS.md"
 RULES_DB = "rulesdb/patterns.db"
 BASELINE = "docs/status/baseline.json"
 TESTS = "docs/status/tests.json"
+MUTANTS = "docs/status/mutants.json"
 BENCHES = "docs/status/benchmarks.json"
 
 # The health metric that detects rule-pipeline drift. See docs/rulesdb-design.md.
@@ -243,6 +244,38 @@ def build(root: Path) -> str:
         a("harness exists (#34 R5). Until then a stub fails its test by construction,")
         a("which is the intended starting state: **0% passing over 100% of the corpus**")
         a("is a truthful scoreboard, an empty table is not.")
+    a("")
+
+    # --- Mutation ------------------------------------------------------------
+    a("## Mutation score")
+    a("")
+    a("What the tests can actually *see*. A passing trace replay means")
+    a('"indistinguishable on this trace" — nothing about a green tick separates a')
+    a("thorough trace from a useless one. Mutation testing is the only signal that does.")
+    a("")
+    mut = load_json(root, MUTANTS)
+    if mut:
+        a("| target | mode | caught | viable | score | equivalent | survivors |")
+        a("|---|---|---:|---:|---:|---:|---:|")
+        for name in sorted(mut):
+            m = mut[name]
+            n_surv = len(m.get("survivors", []))
+            flag = "" if n_surv == 0 else f" **{n_surv}**"
+            a(f"| {name} | {m.get('mode','?')} | {m.get('caught',0)} | {m.get('viable',0)} | "
+              f"{m.get('score',0)}% | {m.get('equivalent',0)} | {n_surv}{flag} |")
+        a("")
+        unresolved = {n: m for n, m in mut.items() if m.get("survivors")}
+        if unresolved:
+            a("**Unresolved survivors** — each names a behaviour nothing checks:")
+            a("")
+            for name, m in sorted(unresolved.items()):
+                for s_ in m["survivors"][:6]:
+                    a(f"- `{name}` {s_['operator']} line {s_['line']}: `{s_['code']}`")
+        else:
+            a("No unresolved survivors. Equivalent mutants are excluded only with a")
+            a("checkable justification in `src/renode-stm32/tests/equivalent_mutants.md`.")
+    else:
+        a(f"Not recorded — run `python3 scripts/mutate.py --record`.")
     a("")
 
     # --- Benchmarks ---------------------------------------------------------

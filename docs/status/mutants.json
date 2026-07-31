@@ -1,0 +1,56 @@
+{
+  "gpio": {
+    "caught": 8,
+    "equivalent": 4,
+    "mode": "all",
+    "score": 100.0,
+    "survivors": [],
+    "uncompilable": 0,
+    "viable": 8
+  },
+  "uart": {
+    "caught": 30,
+    "equivalent": 0,
+    "mode": "all",
+    "score": 81.1,
+    "survivors": [
+      {
+        "code": ".with_value(0, 9, &mut ValueId::default(), FieldMode::READ_W",
+        "line": 229,
+        "operator": "rw->read"
+      },
+      {
+        "code": ".with_flag(15, &mut f.oversampling_mode, FieldMode::READ_WRI",
+        "line": 255,
+        "operator": "rw->read"
+      },
+      {
+        "code": ".with_value(12, 2, &mut f.stop_bits, FieldMode::READ_WRITE)",
+        "line": 268,
+        "operator": "rw->read"
+      },
+      {
+        "code": "FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR,",
+        "line": 220,
+        "operator": "read->rw"
+      },
+      {
+        "code": "if !self.bank.flag(self.f.usart_enabled) && !self.bank.flag(",
+        "line": 126,
+        "operator": "and->or"
+      },
+      {
+        "code": "&& !self.bank.flag(self.f.transmitter_enabled)",
+        "line": 182,
+        "operator": "and->or"
+      },
+      {
+        "code": "self.bank.read(reg::STATUS, &mut ()).unwrap_or(0) as u32 | (",
+        "line": 102,
+        "operator": "shl-off-by-one"
+      }
+    ],
+    "uncompilable": 0,
+    "viable": 37
+  }
+}
