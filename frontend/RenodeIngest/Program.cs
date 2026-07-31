@@ -27,17 +27,32 @@ public static class Program
         var dbPath = ArgValue(args, "--db") ?? "rulesdb/patterns.db";
         var threads = int.TryParse(ArgValue(args, "-j"), out var j) && j > 0
                       ? j : Environment.ProcessorCount;
-        // Breadth mode: ingest EVERY file, not the F427 cut. Not for translation
-        // -- for shaking out walker bugs and Roslyn edge cases at corpus scale.
-        // This is the linux-rs lesson: its breadth track ingested everything and
-        // worked; its narrow track hand-picked files and reached 1.87
-        // instances per rule.
+        // Breadth mode: ingest EVERY file. This is a TOOLING HEALTH CHECK --
+        // does the walker crash, does it lose data silently -- and nothing more.
+        //
+        // It must NEVER be a source of rules or work. Renode is 448k lines
+        // against an F427 deliverable of ~16k, so breadth data would generate
+        // hundreds of clusters from EFR32xG2, Xtensa and RISC-V peripherals we
+        // will never translate: polluting the rule DB, inflating coverage, and
+        // spending LLM budget on patterns that are not the deliverable.
+        //
+        // Enforced below by refusing the canonical database path and tagging the
+        // run config as 'breadth', which the rule engine must reject.
         var all = args.Contains("--all");
 
         var renodeSrc = Environment.GetEnvironmentVariable("RENODE_SRC");
         if (string.IsNullOrWhiteSpace(renodeSrc))
         {
             Console.Error.WriteLine("RENODE_SRC not set (see .env.example)");
+            return 1;
+        }
+
+        if (all && Path.GetFullPath(dbPath).EndsWith(
+                Path.Combine("rulesdb", "patterns.db"), StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine(
+                "--all is a tooling health check and must not write the canonical corpus.\n" +
+                "Rules come from the F427 cut only. Pass --db tmp/breadth.db instead.");
             return 1;
         }
 
@@ -147,7 +162,8 @@ public static class Program
         }
 
         var commit = GitCommit(renodeSrc);
-        var written = await Ingest.RunAsync(compilation, trees, dbPath, renodeSrc, commit, threads);
+        var written = await Ingest.RunAsync(compilation, trees, dbPath, renodeSrc, commit,
+                                            threads, all ? "breadth" : "f427");
         Console.WriteLine($"\ntotal     {total.Elapsed.TotalSeconds:F1}s");
         return written ? 0 : 1;
     }

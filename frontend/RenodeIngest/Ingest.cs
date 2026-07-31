@@ -24,7 +24,8 @@ public static class Ingest
     public static async Task<bool> RunAsync(Compilation compilation,
                                             IReadOnlyList<SyntaxTree> trees,
                                             string dbPath, string treeRoot,
-                                            string renodeCommit, int threads)
+                                            string renodeCommit, int threads,
+                                            string config)
     {
         // --- Pass 1: parallel walk -------------------------------------------
         var walk = Stopwatch.StartNew();
@@ -77,7 +78,7 @@ public static class Ingest
             "INSERT INTO corpus_run(started_at,renode_commit,tool_version,config,host) " +
             "VALUES ($a,$b,$c,$d,$e) RETURNING id",
             ("$a", DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm:sszzz")),
-            ("$b", renodeCommit), ("$c", ToolVersion()), ("$d", "f427"),
+            ("$b", renodeCommit), ("$c", ToolVersion()), ("$d", config),
             ("$e", Environment.MachineName));
 
         var typeIds = new Dictionary<string, long>(StringComparer.Ordinal);

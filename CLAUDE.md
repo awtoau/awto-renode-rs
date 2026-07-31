@@ -41,6 +41,27 @@ technical content stands on its own without the provenance.
 These are hard rules for the conversion pipeline. Full rationale and schema:
 [docs/rulesdb-design.md](docs/rulesdb-design.md).
 
+### Breadth is a health check, never a source of work
+
+`--all` / `scripts/check_breadth.py` runs the ingest over the whole Renode tree
+(~448k lines, ~50s). It exists to answer one question: **does the tooling crash
+or lose data silently?** It is cheap enough to run routinely only because Renode
+is small; the kernel corpus this method came from is 70x larger.
+
+**It must never produce rules, clusters, coverage numbers, or work items.** The
+deliverable is ~16k lines of F427 code. Breadth data would generate hundreds of
+clusters from EFR32xG2, Xtensa and RISC-V peripherals that will never be
+translated — polluting the rule DB, inflating coverage, and spending LLM budget
+on patterns that are not the deliverable.
+
+Enforced structurally: `--all` refuses to write `rulesdb/patterns.db` and tags
+`corpus_run.config = 'breadth'`. The rule engine must reject any run so tagged.
+
+A breadth failure is a **bug in our tooling**, not a fact about Renode. It found
+one on its first run: 5,123 methods (24.7%) claimed a body while emitting no
+operations, with zero exceptions thrown, because `partial void Foo();` is
+neither abstract nor extern.
+
 ### Corpus before translation
 
 - **The translator reads only from the corpus database.** No code path may read a
