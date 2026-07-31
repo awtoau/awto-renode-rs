@@ -213,6 +213,20 @@ public static class Walker
                 _ => null,
             };
 
+            // Operator kind for expressions where `Kind` alone is ambiguous.
+            // A `Binary` node says nothing about whether it is `&&`, `+` or
+            // `==`, and no expression emitter can work without that. Stored in
+            // `symbol`, which is otherwise unused for these kinds.
+            string? opKind = op switch
+            {
+                IBinaryOperation b => b.OperatorKind.ToString(),
+                IUnaryOperation u => u.OperatorKind.ToString(),
+                ICompoundAssignmentOperation c => c.OperatorKind.ToString(),
+                IIncrementOrDecrementOperation i => i.IsPostfix ? "Postfix" : "Prefix",
+                IConversionOperation cv => cv.Conversion.IsImplicit ? "Implicit" : "Explicit",
+                _ => null,
+            };
+
             result.Operations.Add(new OperationRec
             {
                 LocalId = id,
@@ -222,7 +236,7 @@ public static class Walker
                 Depth = depth,
                 Kind = op.Kind.ToString(),
                 Type = op.Type?.ToDisplayString(),
-                Symbol = symbol is null ? null : TargetKey(symbol),
+                Symbol = symbol is not null ? TargetKey(symbol) : opKind,
                 ConstValue = op.ConstantValue.HasValue
                              ? op.ConstantValue.Value?.ToString() ?? "null" : null,
                 SpanStart = op.Syntax.Span.Start,
