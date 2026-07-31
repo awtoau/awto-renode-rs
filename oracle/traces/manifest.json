@@ -1,0 +1,145 @@
+{
+  "captured_at": "2026-07-31T13:09:07+10:00",
+  "run_for_simulated_s": 8.0,
+  "wall_clock_s": 84.8,
+  "peripherals": {
+    "adc1": {
+      "accesses": 16800,
+      "distinct_offsets": 8,
+      "reads": 11415,
+      "writes": 5385
+    },
+    "can1": {
+      "accesses": 228,
+      "distinct_offsets": 19,
+      "reads": 115,
+      "writes": 113
+    },
+    "crc_f4": {
+      "accesses": 4,
+      "distinct_offsets": 2,
+      "reads": 2,
+      "writes": 2
+    },
+    "dma1": {
+      "accesses": 183,
+      "distinct_offsets": 13,
+      "reads": 97,
+      "writes": 86
+    },
+    "dma2": {
+      "accesses": 12356,
+      "distinct_offsets": 15,
+      "reads": 6176,
+      "writes": 6180
+    },
+    "exti": {
+      "accesses": 25,
+      "distinct_offsets": 5,
+      "reads": 12,
+      "writes": 13
+    },
+    "flash_ctrl": {
+      "accesses": 980,
+      "distinct_offsets": 7,
+      "reads": 607,
+      "writes": 373
+    },
+    "gpioPortA": {
+      "accesses": 62,
+      "distinct_offsets": 6,
+      "reads": 17,
+      "writes": 45
+    },
+    "gpioPortB": {
+      "accesses": 93,
+      "distinct_offsets": 7,
+      "reads": 44,
+      "writes": 49
+    },
+    "gpioPortC": {
+      "accesses": 287,
+      "distinct_offsets": 7,
+      "reads": 82,
+      "writes": 205
+    },
+    "gpioPortE": {
+      "accesses": 110,
+      "distinct_offsets": 7,
+      "reads": 54,
+      "writes": 56
+    },
+    "nvic": {
+      "accesses": 17469,
+      "distinct_offsets": 37,
+      "reads": 12685,
+      "writes": 4784
+    },
+    "pwr": {
+      "accesses": 16,
+      "distinct_offsets": 1,
+      "reads": 11,
+      "writes": 5
+    },
+    "rcc": {
+      "accesses": 885,
+      "distinct_offsets": 8,
+      "reads": 810,
+      "writes": 75
+    },
+    "rtc": {
+      "accesses": 9,
+      "distinct_offsets": 7,
+      "reads": 9,
+      "writes": 0
+    },
+    "spi2": {
+      "accesses": 660,
+      "distinct_offsets": 5,
+      "reads": 561,
+      "writes": 99
+    },
+    "spi3": {
+      "accesses": 466,
+      "distinct_offsets": 5,
+      "reads": 378,
+      "writes": 88
+    },
+    "syscfg": {
+      "accesses": 9,
+      "distinct_offsets": 3,
+      "reads": 6,
+      "writes": 3
+    },
+    "timer2": {
+      "accesses": 32,
+      "distinct_offsets": 8,
+      "reads": 14,
+      "writes": 18
+    },
+    "timer5": {
+      "accesses": 14745,
+      "distinct_offsets": 10,
+      "reads": 14728,
+      "writes": 17
+    },
+    "timer7": {
+      "accesses": 24037,
+      "distinct_offsets": 6,
+      "reads": 16018,
+      "writes": 8019
+    },
+    "uart8": {
+      "accesses": 273,
+      "distinct_offsets": 6,
+      "reads": 162,
+      "writes": 111
+    },
+    "usart1": {
+      "accesses": 33164,
+      "distinct_offsets": 6,
+      "reads": 6777,
+      "writes": 26387
+    }
+  }
+}
