@@ -54,6 +54,47 @@ No names of private repos, products, customers, or hardware programs. The
 firmware under test is "the target STM32F427 firmware". Keep it generic; the
 technical content stands on its own without the provenance.
 
+## The one rule that matters
+
+**BUILD THE CONVERTER. DO NOT WRITE THE OUTPUT BY HAND.**
+
+The deliverable is a general C#-to-Rust converter driven by the corpus database.
+It must work on any corpus. It is never a per-peripheral special case, and a
+"rule" that only ever matches one site is a hand-written file wearing a rule's
+name.
+
+When asked to "translate `<peripheral>`", the task is **to make the converter
+able to produce it**, not to produce it. If the converter cannot yet emit some
+construct, the correct output is a gap the converter reports — never a
+hand-written stand-in that looks finished.
+
+### Why this is stated this bluntly
+
+It has already gone wrong here, and quietly. Both peripherals were hand-written,
+described as translations in three commit messages, and passed their traces and
+mutation testing. Regenerating and diffing then found:
+
+- `.with_reserved(9, 23)` in `uart.rs` that **the C# does not contain** —
+  invented, and behaviourally inert, so no test could see it
+- a dummy `ValueId::default()` handle where the C# has a computed field with no
+  storage — the generated version is *more faithful* than the hand-written one
+- four renamed fields, making the file unreproducible without a per-file rename
+  table
+
+PLAN.md already said "recreatable from the C# source plus committed rules and
+scripts alone". Saying it was not enough, so it is now checked.
+
+### Enforced
+
+- `scripts/check_generated.py` (pre-commit, hard failure): a file listed as
+  generated must be byte-identical to converter output. Hand-editing one fails
+  the commit.
+- `scripts/verify_emit.py`: diffs a hand-written peripheral against what the
+  converter produces, and names every difference as either an emitter gap or a
+  hand edit that should not exist.
+- Anything not yet reproducible is recorded as a **patch** and counted on the
+  scorecard. The target is zero.
+
 ## Conversion rules
 
 These are hard rules for the conversion pipeline. Full rationale and schema:

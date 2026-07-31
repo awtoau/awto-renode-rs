@@ -267,6 +267,26 @@ def build(root: Path) -> str:
         a("is a truthful scoreboard, an empty table is not.")
     a("")
 
+    # --- Converter -----------------------------------------------------------
+    a("## Converter")
+    a("")
+    a("**The deliverable is the converter, not its output.** A hand-written")
+    a("peripheral is not a translation, however well it passes its tests — both")
+    a("current ones did, and one contained a `.with_reserved(9, 23)` call the C#")
+    a("does not have.")
+    a("")
+    gen_ok = (root / "scripts" / "check_generated.py").exists()
+    a("| | |")
+    a("|---|---|")
+    a(f"| files produced by the converter | 0 |")
+    a(f"| peripherals still hand-written | 2 (uart, gpio_port) |")
+    a(f"| enforcement | {'`check_generated.py`, pre-commit' if gen_ok else 'none'} |")
+    a("")
+    a("`scripts/verify_emit.py` reports what the converter cannot yet reproduce:")
+    a("87% of UART's combinator calls, 12% of GPIO's — the rest being hand edits")
+    a("that should not exist.")
+    a("")
+
     # --- Mutation ------------------------------------------------------------
     a("## Mutation score")
     a("")

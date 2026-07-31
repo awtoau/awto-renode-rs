@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Refuse to commit a hand-written peripheral. Pre-commit, hard failure.
+
+THE FAILURE THIS EXISTS TO STOP
+-------------------------------
+An agent asked to "translate STM32_UART" writes the file by hand, it passes its
+tests, and it gets described as a translation. It is not: it is a hand-written
+file that happens to resemble one. The evidence, from this project:
+
+  - `.with_reserved(9, 23)` was written into uart.rs. The C# has no such call.
+    Invented, and behaviourally inert, so the trace oracle and mutation testing
+    both passed it.
+  - A dummy `ValueId::default()` handle was written where the C# has a computed
+    field with no storage.
+  - Four fields were renamed, making the file unreproducible without a per-file
+    rename table.
+
+None of that was caught by tests. It was caught by regenerating and diffing.
+
+PLAN.md already required "recreatable from the C# source plus committed rules
+and scripts alone", and stating it was not enough. So this is enforced:
+
+  **A file listed in GENERATED must be byte-identical to what the converter
+  produces from the corpus. Editing it by hand is a commit failure.**
+
+The converter must be GENERAL — driven by the corpus database, working on any
+C# input — never a per-peripheral special case. A "rule" that only ever matches
+one site is a hand-written file wearing a rule's name.
+
+Run:  python3 scripts/check_generated.py
+Log:  ./tmp/logs/check_generated.log
+Exit: 0 clean, 1 if any generated file was hand-edited.
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+import sys
+from pathlib import Path
+
+# Files the converter owns. Adding a file here is a commitment that it is
+# machine-produced; it must never be edited by hand again.
+#
+# EMPTY BY DESIGN until the converter can produce a whole file. uart.rs and
+# gpio_port.rs are NOT listed, because they are hand-written -- listing them
+# would assert something false. They are tracked as patches instead
+# (see scripts/record_translations.py and the scorecard).
+GENERATED: list[tuple[str, list[str]]] = [
+    # (path, argv for the generator that produces it)
+]
+
+# Peripheral sources that must EVENTUALLY be generated. Their presence here is
+# the outstanding debt, and the scorecard reports it.
+MUST_BECOME_GENERATED = [
+    "src/renode-stm32/src/uart.rs",
+    "src/renode-stm32/src/gpio_port.rs",
+]
+
+
+def repo_root() -> Path:
+    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                               capture_output=True, text=True, check=True).stdout.strip())
+
+
+def main() -> int:
+    root = repo_root()
+    logdir = root / "tmp" / "logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    log = logging.getLogger("check_generated")
+    log.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    for h in (logging.FileHandler(logdir / "check_generated.log", mode="w"),
+              logging.StreamHandler(sys.stdout)):
+        h.setFormatter(fmt)
+        log.addHandler(h)
+
+    violations = 0
+    for rel, argv in GENERATED:
+        path = root / rel
+        if not path.exists():
+            log.error("%s is listed as generated but does not exist", rel)
+            violations += 1
+            continue
+        produced = subprocess.run([sys.executable, *argv], cwd=root,
+                                  capture_output=True, text=True)
+        if produced.returncode != 0:
+            log.error("%s: generator failed: %s", rel, produced.stderr.strip()[:300])
+            violations += 1
+            continue
+        if produced.stdout != path.read_text():
+            log.error("%s HAS BEEN HAND-EDITED -- it differs from generator output.",
+                      rel)
+            log.error("  Regenerate it, or change the converter. Do not edit the file.")
+            violations += 1
+        else:
+            log.info("ok  %s matches generator output", rel)
+
+    if not GENERATED:
+        log.info("no generated files yet")
+    if MUST_BECOME_GENERATED:
+        log.info("")
+        log.info("OUTSTANDING: %d peripheral(s) still hand-written, and therefore "
+                 "not translations:", len(MUST_BECOME_GENERATED))
+        for f in MUST_BECOME_GENERATED:
+            log.info("    %s", f)
+        log.info("Run scripts/verify_emit.py to see exactly what the converter "
+                 "cannot yet reproduce.")
+
+    if violations:
+        log.error("FAIL: %d generated file(s) hand-edited", violations)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

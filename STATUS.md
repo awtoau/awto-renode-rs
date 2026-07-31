@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T14:58:16+10:00 from `7583d30` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T15:08:34+10:00 from `1f74f1f` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -58,6 +58,23 @@ Per-method tests are generated from tier-2 trace fixtures once the
 harness exists (#34 R5). Until then a stub fails its test by construction,
 which is the intended starting state: **0% passing over 100% of the corpus**
 is a truthful scoreboard, an empty table is not.
+
+## Converter
+
+**The deliverable is the converter, not its output.** A hand-written
+peripheral is not a translation, however well it passes its tests — both
+current ones did, and one contained a `.with_reserved(9, 23)` call the C#
+does not have.
+
+| | |
+|---|---|
+| files produced by the converter | 0 |
+| peripherals still hand-written | 2 (uart, gpio_port) |
+| enforcement | `check_generated.py`, pre-commit |
+
+`scripts/verify_emit.py` reports what the converter cannot yet reproduce:
+87% of UART's combinator calls, 12% of GPIO's — the rest being hand edits
+that should not exist.
 
 ## Mutation score
 
