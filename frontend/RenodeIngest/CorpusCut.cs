@@ -74,6 +74,12 @@ public static class CorpusCut
     {
         "Main/Peripherals/BasicDoubleWordPeripheral.cs",
         "Main/Peripherals/BasicBytePeripheral.cs",
+        // Base classes of peripherals already in the cut. Omitting a base is
+        // the same omission as omitting a called method: the derived type
+        // cannot be translated without it, since Rust has no inheritance and
+        // the base is flattened into the derived peripheral.
+        "Main/Peripherals/GPIOPort/BaseGPIOPort.cs", // base of STM32_GPIOPort
+        "Main/Peripherals/UART/IUART.cs",            // Parity/Bits, returned by STM32_UART
         "Main/Peripherals/IPeripheral.cs",
         "Main/Peripherals/IMachine.cs",
         "Main/Peripherals/Memory/MappedMemory.cs",

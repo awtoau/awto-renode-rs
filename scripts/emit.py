@@ -450,6 +450,10 @@ class Emitter:
                             break
                         stack.append(cid)
                 lvl = levels.get(raw.split(".")[-1], lvl)
+            # log! takes format arguments itself; a nested format!() is a
+            # compile error (the macro needs a literal). See unwrap_format.
+            if len(rest) == 1 and rest[0].startswith("format!(") and rest[0].endswith(")"):
+                rest = [rest[0][len("format!("):-1]]
             return logrule.get("emit", "log::{level}!({args})").format(
                 level=lvl, args=", ".join(rest))
 

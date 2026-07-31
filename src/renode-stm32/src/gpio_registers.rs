@@ -9,21 +9,26 @@
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
-//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
-//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
-//!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
+//!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections, st.order_by, st.select, st.where
+//!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
-//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
+//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
+//!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, cannot emit stmt:Loop
-//!   - WritePin: withheld, reaches state this peripheral does not have: st.irq, st.state
-//!   - calls base-class method `OnGPIO` on `BaseGPIOPort`, which is not translated
+//!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
+//!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
+//!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
 //!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
+//!   - state field `Connections`: no Rust mapping for `System.Collections.Generic.IReadOnlyDictionary<int, Antmicro.Renode.Core.IGPIO>`
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
+//!   - state field `machine`: no Rust mapping for `Antmicro.Renode.Core.IMachine`
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -120,6 +125,8 @@ impl PullUpPullDown {
 pub struct State {
     /// Register field handles, bound by the C# `out` parameters.
     pub f: Fields,
+    pub number_of_connections: i32,
+    pub state: Vec<bool>,
     pub mode: Vec<Mode>,
     pub mode_reset_value: u32,
     pub number_of_a_fs: u32,
@@ -132,8 +139,33 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
+fn base_gpio_port_on_gpio(bank: &Bank<State>, st: &mut State, number: i32, value: bool) -> () {
+    if !check_pin_number(bank, st, number) {
+        return;
+    }
+    st.state[number as usize] = value;
+}
+
+fn check_pin_number(bank: &Bank<State>, st: &mut State, number: i32) -> bool {
+    if ((number < 0) || (number >= st.number_of_connections)) {
+        log::error!("This peripheral supports gpio inputs from 0 to {}, but {} was called.", st.number_of_connections, number);
+        return false;
+    }
+    return true;
+}
+
 fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
     return bank.read(offset as u64, st).unwrap_or(0) as u32;
+}
+
+fn reset(bank: &Bank<State>, st: &mut State) -> () {
+    /* GAP: base-class call */;
+    bank.reset();
+    /* Loop */
+}
+
+fn set_connections_state_using_bits(bank: &Bank<State>, st: &mut State, bits: u32) -> () {
+    /* Loop */
 }
 
 fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {

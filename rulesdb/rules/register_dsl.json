@@ -246,6 +246,9 @@
       "Info": "info",
       "Debug": "debug",
       "Noisy": "trace"
+    },
+    "unwrap_format": {
+      "note": "C# passes an interpolated string as the message, which emits as format!(..). The log macros take format arguments THEMSELVES, so a nested format! is both redundant and a compile error -- the macro requires a string literal. The wrapper is unwrapped so the literal and its arguments pass straight through."
     }
   },
   "enums": {
