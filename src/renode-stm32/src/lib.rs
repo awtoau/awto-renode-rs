@@ -4,3 +4,4 @@
 //! improvement, so a "better" translation is a failed one.
 
 pub mod uart;
+pub mod gpio_port;

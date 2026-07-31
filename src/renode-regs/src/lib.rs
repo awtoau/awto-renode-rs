@@ -19,6 +19,24 @@
 //! index-based bank is `Send`, which `Rc` blocks and which N-instance test
 //! parallelism needs.
 //!
+//! # Declared deviation: callbacks live in the peripheral, not the register
+//!
+//! The C# attaches `valueProviderCallback` / `writeCallback` closures to fields
+//! inside the register definition. Those closures capture and mutate peripheral
+//! state, which in Rust means a closure holding `&mut self` stored inside the
+//! very struct it borrows -- the classic self-referential problem, solvable only
+//! with `Rc<RefCell<>>` or unsafe.
+//!
+//! So callbacks are NOT part of this DSL. The bank stores field state; the
+//! peripheral's `read`/`write` dispatch performs the behaviour. Same semantics,
+//! same ordering, different placement.
+//!
+//! This is a deliberate, recorded deviation rather than a limitation. It was
+//! surfaced by the second peripheral: `STM32_UART` hid it by hand-coding its
+//! `DR` handling, and `STM32_GPIOPort` -- where most registers carry callbacks
+//! -- made it unavoidable. The rule for callback-bearing fields therefore emits
+//! a dispatch arm, not a combinator argument.
+//!
 //! # Faithfulness
 //!
 //! Field semantics — `FieldMode`, callback ordering, reset behaviour — mirror
@@ -82,6 +100,13 @@ impl ValueId {
     #[inline]
     fn idx(self) -> usize {
         self.0 as usize
+    }
+    /// Handle to the `n`th field of a `with_value_fields` group. Consecutive
+    /// allocation is guaranteed, which is what makes indices better than
+    /// pointers for the plural combinators.
+    #[inline]
+    pub const fn offset(self, n: u16) -> Self {
+        Self(self.0 + n)
     }
 }
 
@@ -293,6 +318,40 @@ impl<'a> RegisterBuilder<'a> {
         self
     }
 
+    /// `WithValueFields(pos, width, count, ...)` -- `count` consecutive fields
+    /// of equal width. Returns the first handle; the rest are consecutive
+    /// indices, which is exactly why field handles are indices and not pointers.
+    pub fn with_value_fields(
+        mut self,
+        pos: u32,
+        width: u32,
+        count: u32,
+        out: &mut ValueId,
+        mode: FieldMode,
+    ) -> Self {
+        for i in 0..count {
+            let slot = self.push(pos + i * width, width, mode, false);
+            if i == 0 {
+                *out = ValueId(slot);
+            }
+        }
+        self
+    }
+
+    /// `WithEnumFields<E>(pos, width, count, ...)`. Enum fields are stored
+    /// identically to value fields -- the C# distinction is type-level only, and
+    /// the enum conversion happens where the peripheral reads the field.
+    pub fn with_enum_fields(
+        self,
+        pos: u32,
+        width: u32,
+        count: u32,
+        out: &mut ValueId,
+        mode: FieldMode,
+    ) -> Self {
+        self.with_value_fields(pos, width, count, out, mode)
+    }
+
     /// Finish the register and install it in the bank.
     pub fn done(self) {
         let mut covered = 0u64;
@@ -389,6 +448,21 @@ mod tests {
         // Bits 1..31 are covered by no field: Renode warns about these, so the
         // mask is returned rather than silently dropped.
         assert_eq!(bank.write(0, 0b110), Some(0b110));
+    }
+
+    #[test]
+    fn value_fields_allocate_consecutive_handles() {
+        // GPIOPort's MODER is 16 two-bit fields; indexing pin N must be
+        // first_handle + N, which is what makes index handles pay off.
+        let mut bank = Bank::new();
+        let mut first = ValueId::default();
+        bank.define(0, 0)
+            .with_value_fields(0, 2, 16, &mut first, FieldMode::READ_WRITE)
+            .done();
+        bank.write(0, 0b11 << 4); // pin 2 = 0b11
+        assert_eq!(bank.value(first.offset(2)), 0b11);
+        assert_eq!(bank.value(first.offset(0)), 0);
+        assert_eq!(bank.read(0), Some(0b11 << 4));
     }
 
     #[test]
