@@ -62,15 +62,30 @@ public static class CorpusCut
         "Main/Core/Structure/Registers/Tag.cs",
     };
 
-    /// <summary>Machine plumbing the peripherals sit on.</summary>
+    /// <summary>
+    /// Machine plumbing the peripherals sit on.
+    ///
+    /// The second group was NOT chosen by reading the platform description --
+    /// it came from querying the ingested call graph for what the cut actually
+    /// calls outside itself. Guessing the cut is how you discover a missing
+    /// dependency three phases later.
+    /// </summary>
     public static readonly string[] Infrastructure =
     {
         "Main/Peripherals/BasicDoubleWordPeripheral.cs",
         "Main/Peripherals/BasicBytePeripheral.cs",
         "Main/Peripherals/IPeripheral.cs",
+        "Main/Peripherals/IMachine.cs",
         "Main/Peripherals/Memory/MappedMemory.cs",
         "Main/Peripherals/Miscellaneous/CombinedInput.cs",
         "Main/Core/GPIO.cs",
+        // Found by call-graph query, with the call counts that justified each:
+        "Main/Core/IGPIO.cs",                       // IGPIOExtensions Set/Unset, 45
+        "Main/Logging/Logger.cs",                   // Log/NoisyLog/Warning/Debug, 180
+        "Main/Exceptions/ConstructionException.cs", // 19
+        "Main/Exceptions/RecoverableException.cs",  // 17
+        "Main/Utilities/BitHelper.cs",              // GetValue/AreAnyBitsSet, 20+
+        "Main/Utilities/Misc.cs",                   // FormatWith and friends, 12+
     };
 
     public static IEnumerable<string> All() =>

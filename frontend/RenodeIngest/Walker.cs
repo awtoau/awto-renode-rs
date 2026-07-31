@@ -35,6 +35,20 @@ public static class Walker
 
     public static string Key(ISymbol s) => s.ToDisplayString(KeyFormat);
 
+    /// <summary>
+    /// Key for a call/reference TARGET, normalised to the generic definition.
+    ///
+    /// A call to `WithFlag&lt;DoubleWordRegister&gt;` constructs the generic, and the
+    /// constructed symbol's display string does not match the declaration's
+    /// (`WithFlag&lt;T&gt;`). Keying on the constructed form made 1,109 register-DSL
+    /// calls resolve as external despite the DSL being in corpus, which would
+    /// have made is_leaf and the whole topological work queue wrong.
+    ///
+    /// OriginalDefinition maps a constructed generic -- method or containing
+    /// type -- back to the declaration the corpus actually holds.
+    /// </summary>
+    public static string TargetKey(ISymbol s) => Key(s.OriginalDefinition);
+
     public static FileResult Walk(Compilation compilation, SyntaxTree tree, string treeRoot)
     {
         var model = compilation.GetSemanticModel(tree);
@@ -203,7 +217,7 @@ public static class Walker
                 Depth = depth,
                 Kind = op.Kind.ToString(),
                 Type = op.Type?.ToDisplayString(),
-                Symbol = symbol is null ? null : Key(symbol),
+                Symbol = symbol is null ? null : TargetKey(symbol),
                 ConstValue = op.ConstantValue.HasValue
                              ? op.ConstantValue.Value?.ToString() ?? "null" : null,
                 SpanStart = op.Syntax.Span.Start,
@@ -214,15 +228,16 @@ public static class Walker
             {
                 case IInvocationOperation inv:
                     result.Calls.Add(new CallSiteRec(
-                        methodKey, Key(inv.TargetMethod), null, id, inv.TargetMethod.IsVirtual
-                                                                   || inv.TargetMethod.IsAbstract));
+                        methodKey, TargetKey(inv.TargetMethod), null, id,
+                        inv.TargetMethod.IsVirtual || inv.TargetMethod.IsAbstract));
                     break;
                 case IObjectCreationOperation { Constructor: not null } oc:
-                    result.Calls.Add(new CallSiteRec(methodKey, Key(oc.Constructor), null, id, false));
+                    result.Calls.Add(new CallSiteRec(methodKey, TargetKey(oc.Constructor),
+                                                     null, id, false));
                     break;
                 case IFieldReferenceOperation fr:
                     result.FieldAccesses.Add(new FieldAccessRec(
-                        methodKey, Key(fr.Field), id, IsWriteTarget(fr)));
+                        methodKey, TargetKey(fr.Field), id, IsWriteTarget(fr)));
                     break;
             }
 
