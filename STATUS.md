@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T11:36:17+10:00 from `6e49706` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T12:00:01+10:00 from `b4d1b93` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -15,16 +15,15 @@ averaged 1.87 validation instances each.
 
 ## Corpus
 
-Not ingested — `rulesdb/patterns.db` does not exist. This is Phase 1 (#30 R1, #31 R2).
-
-Target corpus, measured from Renode v1.16.1 `dc52b24c`:
-
-| | |
-|---|---:|
-| peripherals in scope | ~22 types, ~13k lines |
-| ARM core bindings (C#) | 3,677 lines |
-| register DSL | 2,538 lines |
-| total Rust target | ~25–30k lines |
+| | count | % of corpus |
+|---|---:|---:|
+| methods ingested | 700 | — |
+| operation nodes | 55,100 | — |
+| pattern clusters | 0 | — |
+| stubbed | 0 | 0.0% |
+| translated | 0 | 0.0% |
+| verified | 0 | 0.0% |
+| **rules committed** | 0 | — |
 
 ## Gates
 

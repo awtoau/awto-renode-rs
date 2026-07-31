@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS type (
     id            INTEGER PRIMARY KEY,
     run_id        INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
     file_id       INTEGER NOT NULL REFERENCES file(id),
+    -- Roslyn symbol display string: the identity rules join on. Namespace+name
+    -- is NOT unique -- nested types collide (several peripherals in the same
+    -- namespace each declare a nested `Register` enum), and generic arity is
+    -- not captured by name alone.
+    key           TEXT    NOT NULL,
     namespace     TEXT    NOT NULL,
     name          TEXT    NOT NULL,
     kind          TEXT    NOT NULL,   -- class|struct|interface|enum|delegate
@@ -54,9 +59,10 @@ CREATE TABLE IF NOT EXISTS type (
     is_static     INTEGER NOT NULL DEFAULT 0,
     is_generic    INTEGER NOT NULL DEFAULT 0,
     accessibility TEXT    NOT NULL,
-    UNIQUE (run_id, namespace, name)
+    UNIQUE (run_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_type_run  ON type(run_id);
+CREATE INDEX IF NOT EXISTS idx_type_name ON type(run_id, namespace, name);
 CREATE INDEX IF NOT EXISTS idx_type_base ON type(base_type_id);
 
 CREATE TABLE IF NOT EXISTS type_implements (
@@ -71,12 +77,14 @@ CREATE TABLE IF NOT EXISTS member (
     id            INTEGER PRIMARY KEY,
     run_id        INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
     type_id       INTEGER NOT NULL REFERENCES type(id),
+    key           TEXT    NOT NULL,   -- symbol display string, incl. parameters
     kind          TEXT    NOT NULL,   -- field|property|method|event|ctor
     name          TEXT    NOT NULL,
     declared_type TEXT    NOT NULL,
     accessibility TEXT    NOT NULL,
     is_static     INTEGER NOT NULL DEFAULT 0,
-    is_readonly   INTEGER NOT NULL DEFAULT 0
+    is_readonly   INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (run_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_member_type ON member(type_id);
 CREATE INDEX IF NOT EXISTS idx_member_kind ON member(run_id, kind);

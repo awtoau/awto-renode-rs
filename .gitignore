@@ -22,3 +22,8 @@ tmp/baseline/
 
 # Rust spike build output
 spike/*/target/
+
+# Corpus database: regenerable via frontend/RenodeIngest (10 MB, changes every run)
+rulesdb/*.db
+rulesdb/*.db-wal
+rulesdb/*.db-shm

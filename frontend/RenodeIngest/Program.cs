@@ -25,6 +25,8 @@ public static class Program
     {
         var dryRun = args.Contains("--dry-run");
         var dbPath = ArgValue(args, "--db") ?? "rulesdb/patterns.db";
+        var threads = int.TryParse(ArgValue(args, "-j"), out var j) && j > 0
+                      ? j : Environment.ProcessorCount;
 
         var renodeSrc = Environment.GetEnvironmentVariable("RENODE_SRC");
         if (string.IsNullOrWhiteSpace(renodeSrc))
@@ -55,12 +57,13 @@ public static class Program
             MSBuildLocator.RegisterInstance(instance);
         }
 
-        return await Run(project, dbPath, dryRun);
+        return await Run(project, renodeSrc, dbPath, dryRun, threads);
     }
 
     // Kept in its own method so MSBuildLocator.RegisterInstance completes before
     // the JIT resolves any MSBuild-dependent type referenced here.
-    private static async Task<int> Run(string project, string dbPath, bool dryRun)
+    private static async Task<int> Run(string project, string renodeSrc, string dbPath,
+                                      bool dryRun, int threads)
     {
         var total = Stopwatch.StartNew();
 
@@ -134,9 +137,22 @@ public static class Program
             return missing.Count == 0 ? 0 : 1;
         }
 
-        var written = await Ingest.RunAsync(compilation, trees, dbPath, total);
+        var commit = GitCommit(renodeSrc);
+        var written = await Ingest.RunAsync(compilation, trees, dbPath, renodeSrc, commit, threads);
         Console.WriteLine($"\ntotal     {total.Elapsed.TotalSeconds:F1}s");
         return written ? 0 : 1;
+    }
+
+    private static string GitCommit(string dir)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("git", "rev-parse HEAD")
+            { WorkingDirectory = dir, RedirectStandardOutput = true };
+            using var p = System.Diagnostics.Process.Start(psi);
+            return p is null ? "unknown" : p.StandardOutput.ReadToEnd().Trim();
+        }
+        catch { return "unknown"; }
     }
 
     private static string? ArgValue(string[] args, string name)
