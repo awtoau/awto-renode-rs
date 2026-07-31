@@ -13,7 +13,7 @@
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
 //!   - ChangeMode: parameter `newMode` has no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode`
-//!   - GetLocalReceiver: withheld, cannot emit stmt:Throw
+//!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode

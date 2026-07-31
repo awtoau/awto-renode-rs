@@ -11,6 +11,9 @@
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - calls base-class method `Reset` on `BasicDoubleWordPeripheral`, which is not translated
 //!   - conditional access `?.` needs nullability analysis
+//!   - get_BaudRate: withheld, reaches state this peripheral does not have: st.by16
+//!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
+//!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 use std::collections::VecDeque;

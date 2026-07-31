@@ -544,6 +544,15 @@ class Emitter:
                     "numeric", "{expr} as {target}").format(expr=inner, target=tgt)
             return inner
 
+        if kind == "Conditional" and len(kids) >= 3:
+            # `c ? a : b`. Rust's if-else IS an expression, so this needs no
+            # temporary -- the same rule the statement form uses.
+            tmpl = self.language.get("statements", {}).get("Conditional", {}).get(
+                "ternary", "if {cond} {{ {then} }} else {{ {else} }}")
+            return tmpl.replace("{else}", "{alt}").format(
+                cond=self.emit_expr(kids[0]), then=self.emit_expr(kids[1]),
+                alt=self.emit_expr(kids[2]))
+
         if kind == "Interpolation" and kids:
             # The hole node wraps the expression; the format placeholder was
             # already emitted by InterpolatedString.
@@ -1081,7 +1090,7 @@ class Emitter:
             lines = self.emit_peripheral_method(type_name, nm)
             method_gaps.extend(self.gaps)
             if lines:
-                emitted[snake(nm)] = "\n".join(lines)
+                emitted[self.fn_name(nm)] = "\n".join(lines)
         # A method may call another that was withheld. Drop until stable, so
         # the file never references a function it does not contain.
         while True:
@@ -1242,6 +1251,16 @@ class Emitter:
         seen = {name: off for name, off, _r, _s in self.find_registers(row[0]) if name}
         return sorted(seen.items(), key=lambda kv: kv[1])
 
+    def fn_name(self, method_name: str) -> str:
+        """Emitted function name. Property accessors lose their get_/set_ prefix
+        so they match the PropertyReference call sites."""
+        for pre in (self.project.get("peripheral_methods", {})
+                    .get("accessor_names", {}).get("strip_prefixes", [])):
+            if method_name.startswith(pre):
+                method_name = method_name[len(pre):]
+                break
+        return snake(method_name)
+
     def emit_peripheral_method(self, type_name: str, method_name: str) -> list[str]:
         """A whole C# method as a free fn over (bank, st).
 
@@ -1260,8 +1279,19 @@ class Emitter:
         seen_unhandled = set(self.unhandled)
         self._current_type = type_name
         spec = self.project.get("peripheral_methods", {})
-        ret = (spec.get("void_ret", "()") if (ret_cs or "void") == "void"
-               else self.rust_type(ret_cs) or spec.get("void_ret", "()"))
+        if (ret_cs or "void") == "void":
+            ret = spec.get("void_ret", "()")
+        else:
+            ret = ((self.project.get("state_struct", {}).get("type_map", {})
+                    .get((ret_cs or "").strip())) or self.rust_type(ret_cs or ""))
+            if ret is None:
+                # Falling back to () here fabricated a signature: `parity_bit`
+                # returns a C# enum and emitted `-> ()`, silently dropping the
+                # value every caller reads.
+                self.gaps.append(
+                    f"{method_name}: withheld, return type `{ret_cs}` has no "
+                    f"Rust mapping")
+                return []
 
         extra = ""
         for pname, ptype in self.con.execute(
@@ -1305,7 +1335,7 @@ class Emitter:
             return []
         decl = spec.get("decl",
                         "fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}")
-        return [decl.format(name=snake(method_name), extra=extra, ret=ret) + " {",
+        return [decl.format(name=self.fn_name(method_name), extra=extra, ret=ret) + " {",
                 *body, "}"]
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:

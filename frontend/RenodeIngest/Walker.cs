@@ -87,13 +87,20 @@ public static class Walker
 
             foreach (var member in type.GetMembers())
             {
-                // Compiler-generated accessors and backing fields are not source
-                // constructs; translating them would duplicate the property.
+                // Compiler-generated backing fields are not source constructs.
                 if (member.IsImplicitlyDeclared) continue;
-                if (member is IMethodSymbol { MethodKind: MethodKind.PropertyGet
-                                                       or MethodKind.PropertySet
-                                                       or MethodKind.EventAdd
-                                                       or MethodKind.EventRemove }) continue;
+
+                // Accessors were skipped wholesale, on the grounds that
+                // translating them would duplicate the property. That holds for
+                // an AUTO-property, whose accessors carry no code -- but a
+                // COMPUTED property's getter body is the only code there is, and
+                // skipping it meant `BaudRate` had zero operations in the corpus
+                // while being called twice from WriteChar. Accessors of members
+                // that have storage are still skipped; the rest are walked.
+                if (member is IMethodSymbol { AssociatedSymbol: { } assoc,
+                        MethodKind: MethodKind.PropertyGet or MethodKind.PropertySet
+                                 or MethodKind.EventAdd or MethodKind.EventRemove }
+                    && HasStorageFor(assoc)) continue;
 
                 var rec = BuildMember(member, typeRec.Key);
                 if (rec is null) continue;
@@ -136,6 +143,15 @@ public static class Walker
     /// event has implicitly-declared add/remove, a custom one declares them.
     private static bool IsFieldLikeEvent(IEventSymbol e) =>
         e.AddMethod is null || e.AddMethod.IsImplicitlyDeclared;
+
+    /// Does the member this accessor belongs to have storage? Auto-properties
+    /// and field-like events do; computed properties do not, and their
+    /// accessors carry the code.
+    private static bool HasStorageFor(ISymbol assoc) => assoc switch
+    {
+        IEventSymbol e => IsFieldLikeEvent(e),
+        _ => HasBackingField(assoc),
+    };
 
     private static bool HasBackingField(ISymbol member) =>
         member.ContainingType is { } ct

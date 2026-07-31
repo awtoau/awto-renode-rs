@@ -188,6 +188,13 @@
     "withhold_on_unhandled": {
       "note": "A method body containing a construct the converter cannot emit is withheld whole, exactly as a callback is. Emitting it produces markers in expression position (`f(a, /* DelegateCreation */, b)`) which do not parse, and anything that did parse would be a stub that looks finished. Withholding also cascades correctly: a callback depending on a withheld method is itself withheld, so the file stays consistent.",
       "action": "withhold method, report gap"
+    },
+    "accessor_names": {
+      "note": "A property accessor arrives from Roslyn as `get_BaudRate`, but every CALL SITE is a PropertyReference that emits `baud_rate(bank, st)`. The prefix is stripped so the two agree; without it the file defines get_baud_rate and calls baud_rate.",
+      "strip_prefixes": [
+        "get_",
+        "set_"
+      ]
     }
   },
   "state_struct": {
