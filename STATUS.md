@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T13:19:59+10:00 from `68acd37` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T13:37:53+10:00 from `fe4106c` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -33,7 +33,7 @@ Genuine stop points. A failed gate means stop, not retry.
 |---|---|---|
 | **P1** — is the Rust MMIO path faster? | PASS | [docs/perf-spike.md](docs/perf-spike.md) |
 | **R3** — does the corpus collapse into clusters? | done | [docs/census.md](docs/census.md) |
-| **10** — do one peripheral's rules cover an unseen second? | — | blocked on R6 |
+| **10** — do one peripheral's rules cover an unseen second? | done | [docs/phase1-gate.md](docs/phase1-gate.md) |
 
 ## Oracle tiers
 
