@@ -545,6 +545,77 @@ split; if the census does not show one, the central assumption is wrong.
 
 Exit: the crate builds, CI is real, progress is measurable.
 
+## R7 — Parallel conversion harness: saturate 31 threads, deterministically
+
+`phase-1` `perf` `rules`
+
+Blocked by #R1. **Cross-cutting — every stage must satisfy this, so it is
+specified once here rather than rediscovered per stage.**
+
+Conversion is re-run constantly during rule development, so its wall-clock *is*
+the iteration speed. A single-threaded stage is a defect with a recorded reason,
+not an acceptable default.
+
+**Machine:** i9-14900K — 24 physical cores (8 P-cores hyperthreaded = 16 threads,
+plus 16 E-cores), **31 usable threads**, 36 MiB shared L3, 62 GB RAM. It is
+**heterogeneous**, and naive thread pools schedule it badly: a uniform-core
+assumption puts a critical-path task on an E-core and stalls the stage behind it.
+
+### What parallelises
+
+| Stage | Shape |
+|---|---|
+| Roslyn compilation load | **Serial, unavoidable** — cross-file resolution needs the whole `Compilation`. Measure it; this is the Amdahl floor |
+| `IOperation` walk | Per file. `SemanticModel` is safe for concurrent reads once the compilation exists |
+| DB write | Per-worker SQLite → one merge. WAL mode. Never 31 writers on one file |
+| Metrics, fingerprints | Per method — pure functions of one subtree |
+| Purity fixpoint | Parallel worklist per iteration |
+| **Rule application / emission** | **Fully parallel — see below** |
+| Rule validation | Per match |
+| LLM cluster calls | Per cluster; batch against rate limits |
+
+### The emission insight
+
+The leaves-first queue orders **rule discovery**, not rule *application*. Once a
+rule is committed, applying it is a pure function
+`(operation subtree, rule set) → Rust` with no shared state and no dependence on
+call-graph position. The whole corpus therefore emits in parallel; only the
+discovery loop is ordered. Conflating the two would serialise the most expensive
+stage for no reason.
+
+### Tasks
+
+- **Determinism check in CI: run the pipeline at `-j1` and `-j31` and diff.**
+  Byte-identical or fail. Without this the differential oracle is worthless,
+  because every diff against the C# reference becomes scheduling noise. Requires:
+  no timestamps or paths in generated output, content-derived stable IDs, sorted
+  writes, no hash-map iteration-order dependence.
+- Work-stealing scheduler, not static partitioning — E-cores retire short tasks
+  at roughly half a P-core's rate, so static splits leave P-cores idle.
+- Content-addressed cache keyed on `(subtree hash, rule-set hash)`, so a rule
+  change recomputes only what changed.
+- Per-stage core-utilisation telemetry into `progress_snapshot`, tracked
+  alongside instances-per-rule.
+- Measure the serial fraction and state the resulting Amdahl ceiling honestly.
+
+### On forking Roslyn
+
+Available if needed, but **it should be a measured decision, not an assumption** —
+and it is probably unnecessary, since the parallelism above works through the
+public API. Two cheaper moves come first:
+
+- **Bypass `MSBuildWorkspace`** — build `CSharpCompilation.Create` directly with
+  explicit references. Faster, more deterministic, drops a slow and occasionally
+  flaky dependency.
+- **Cache the compilation** — the serial load only needs to re-run when the
+  corpus commit changes.
+
+Fork only if a measured bottleneck traces to something the public API cannot
+express, and record that measurement in this issue before forking anything.
+
+**Exit** — every stage reports core utilisation; the `-j1` vs `-j31` determinism
+check is green in CI; the serial fraction and Amdahl ceiling are documented.
+
 ## R4 — Stub the entire corpus so the crate builds on day one
 
 `phase-2` `frontend`
@@ -563,6 +634,10 @@ This is not scaffolding — it buys four specific things:
 4. **An exact progress metric**: stubs remaining.
 
 **Tasks**
+- **Emit a cargo *workspace* of many small crates, not one large crate** — one
+  per peripheral plus shared core crates. rustc parallelises across crates and
+  barely within one, so this is what makes `cargo build` use all 31 threads, and
+  it also makes incremental rebuilds fast. Expensive to change later; see #R7.
 - Emit module structure mirroring the C# namespaces, with the name manager
   handling reserved-word collisions.
 - Emit struct definitions, trait definitions for interfaces, and method

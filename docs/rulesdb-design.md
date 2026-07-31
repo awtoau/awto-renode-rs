@@ -373,6 +373,93 @@ Each translated method gets its test generated from the tier-2 trace fixtures.
 The CI gate is: crate builds, all generated tests pass, `n_patches` has not
 increased, and `instances_per_rule` has not fallen.
 
+## Parallelism — a design constraint, not a later optimisation
+
+**Target: saturate all 31 available threads at every stage.** Conversion is
+re-run constantly during rule development, so its wall-clock time is the
+project's iteration speed. A stage that runs single-threaded is a defect with a
+recorded reason, not an acceptable default.
+
+The dev machine is an **i9-14900K: 24 physical cores — 8 P-cores (hyperthreaded,
+16 threads) + 16 E-cores — 31 usable threads, 36 MiB shared L3, 62 GB RAM.** It
+is heterogeneous, which naive thread pools schedule badly: a pool that assumes
+uniform cores will put a long critical-path task on an E-core and stall the
+whole stage behind it.
+
+### What parallelises, and how
+
+| Stage | Parallel? | Shape |
+|---|---|---|
+| Roslyn compilation load | **No** — serial, unavoidable | Cross-file type resolution needs the whole `Compilation`. Measure it; it is the Amdahl floor |
+| `IOperation` walk | **Yes, per file** | `SemanticModel` is safe for concurrent reads once the compilation exists. One worker per file |
+| DB write | Sharded | Per-worker SQLite, then one merge. WAL mode; never 31 writers on one file |
+| Metrics, fingerprints | **Yes, per method** | Pure functions of one subtree |
+| Purity fixpoint | **Yes, per iteration** | Parallel worklist over the call graph |
+| Clustering | **Yes** | Parallel map, then group-by reduce |
+| Topological sort | No — but milliseconds | Not worth parallelising |
+| **Rule application / emission** | **Yes, fully** | See below — the important one |
+| Rule validation | **Yes, per match** | Each match validates independently |
+| `cargo build` | **Only if the crate graph allows it** | See below |
+| LLM cluster calls | **Yes** | Independent per cluster; batch against rate limits |
+
+### The emission insight
+
+The leaves-first work queue orders **rule discovery**, not rule *application*.
+Once a rule is committed, applying it is a pure function
+`(operation subtree, rule set) → Rust`, with no shared state and no dependency
+on call-graph position. So the whole corpus emits in parallel — 31 methods at a
+time — and only the discovery loop is ordered.
+
+That distinction is worth stating because conflating the two would serialise the
+most expensive stage for no reason.
+
+### Four rules this imposes on the design
+
+**1. Output must be byte-identical regardless of worker count.** Non-negotiable:
+if a 1-worker and a 31-worker run differ, every diff against the C# reference
+becomes noise and the oracle is worthless. Concretely — no timestamps or paths in
+generated code, stable IDs assigned from content rather than completion order,
+sort before writing, and no dependence on hash-map iteration order. **Enforce it
+with a CI check that runs the pipeline at `-j1` and `-j31` and diffs.**
+
+**2. Emit a cargo workspace of many small crates, not one large crate.** rustc
+parallelises across crates far better than within one. One crate per peripheral
+plus shared core crates gives real build parallelism and much faster incremental
+rebuilds. This is a decision for the stub emitter (#R4) and it is expensive to
+change later.
+
+**3. Content-addressed caching.** A translation is a pure function of
+`(subtree hash, rule-set hash)`. Cache on that key, and a re-run after a rule
+change recomputes only what actually changed — which is what makes the
+rule-development loop tolerable at all.
+
+**4. Schedule for heterogeneous cores.** Long or critical-path tasks (the Roslyn
+load, the merge) belong on P-cores; wide batches of short tasks can fill E-cores.
+Prefer work-stealing over static partitioning, since E-cores finish short tasks
+at roughly half a P-core's rate and static splits leave P-cores idle.
+
+### Forking Roslyn
+
+Probably unnecessary, and it should be a measured decision rather than an
+assumption. The parallelism above is available through the public API:
+`SemanticModel` reads are thread-safe, and the walk shards cleanly per file.
+
+Two cheaper moves come first:
+
+- **Skip `MSBuildWorkspace`.** Construct `CSharpCompilation.Create` directly with
+  explicit references. Faster, more deterministic, and removes an MSBuild
+  dependency that is slow and occasionally flaky.
+- **Cache the compilation.** Roslyn supports serialising metadata references;
+  the serial load only needs to happen when the corpus commit changes.
+
+Fork only if a measured bottleneck traces to something the public API cannot
+express — and record the measurement in the issue before forking anything.
+
+### Tracked metric
+
+Core utilisation per stage, alongside instances-per-rule, in
+`progress_snapshot`. A stage that cannot saturate must carry a written reason.
+
 ## Cost model
 
 This is the reason for all of the above.

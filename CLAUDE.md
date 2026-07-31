@@ -36,6 +36,59 @@ No names of private repos, products, customers, or hardware programs. The
 firmware under test is "the target STM32F427 firmware". Keep it generic; the
 technical content stands on its own without the provenance.
 
+## Conversion rules
+
+These are hard rules for the conversion pipeline. Full rationale and schema:
+[docs/rulesdb-design.md](docs/rulesdb-design.md).
+
+### Corpus before translation
+
+- **The translator reads only from the corpus database.** No code path may read a
+  `.cs` file directly. An unpopulated database therefore translates nothing —
+  skipping ingestion is impossible, not merely discouraged.
+- **Ingest the whole cut, never a hand-picked subset.** Cherry-picking is exactly
+  what makes the leverage measurement unavailable.
+
+### A rule is not a rule until it has three validated instances
+
+- `rule.status` cannot reach `committed` while
+  `COUNT(rule_instance) < min_instances_required` (default 3). Enforced in the
+  tool, not in review.
+- Below the threshold it is recorded honestly as a **`patch`**. Patches are a
+  tracked metric that must trend to zero. A file-specific hand edit is evidence
+  the generic process is incomplete — record it as such, do not launder it.
+- **The LLM is invoked once per unmatched *cluster*, never per function.** A
+  per-function invocation path must not exist in the tool. This is the entire
+  cost argument.
+- Every rule carries `rule_negative` entries — shapes it must *not* match. A rule
+  that over-matches is worse than one that under-matches, because the oracle may
+  not catch it.
+
+### The headline metric is instances-per-rule
+
+Not files translated. A fall toward 1 means the process has drifted into
+per-file work, and it must be visible the week it starts. `linux-rs` reached
+1.87 while "38 TUs translated" still looked healthy.
+
+### Parallelism is a design constraint
+
+- **Every stage saturates all 31 threads, or carries a written reason why not.**
+  Conversion is re-run constantly; its wall-clock is the iteration speed.
+- **Output must be byte-identical at `-j1` and `-j31`.** CI enforces this by
+  running both and diffing. Without it, every diff against the C# reference is
+  noise and the oracle is worthless. So: no timestamps or paths in generated
+  code, content-derived stable IDs, sort before writing, never depend on hash-map
+  iteration order.
+- **Emit a workspace of many small crates**, not one large crate — rustc
+  parallelises across crates, barely within one.
+- **Cache content-addressed** on `(subtree hash, rule-set hash)` so a rule change
+  recomputes only what changed.
+- The machine is heterogeneous (8 P-cores + 16 E-cores). Use work-stealing, not
+  static partitioning.
+- Forking Roslyn is a last resort and needs a recorded measurement first. Try
+  bypassing `MSBuildWorkspace` (`CSharpCompilation.Create` directly) and caching
+  the compilation before considering it.
+
 ## Translation discipline
 
 Faithful first, optimisation later — see PLAN.md. Specifically:
