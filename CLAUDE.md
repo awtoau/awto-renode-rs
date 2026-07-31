@@ -30,6 +30,24 @@ variable and does not exist in the terminal. Injecting it via
 `terminal.integrated.env.linux` works but breaks under ssh, CI and cron — so
 scripts use git, not the editor.
 
+### No second source of truth
+
+Enforced by `python3 scripts/check_derived.py` (pre-commit, hard failure).
+
+Platform configuration lives in the `.repl`. `scripts/parse_repl.py` derives
+`docs/status/platform.json` and the generated `src/renode-stm32/src/platform.rs`
+from it; everything else **reads** those. Retyping a reset value or a peripheral
+list into a test creates a copy that drifts silently — change the platform and
+the test keeps asserting the old value *while passing*.
+
+This is a different failure class from absolute paths, and the path check does
+not catch it. It went unnoticed until review.
+
+Not everything that looks like configuration is: the UART's 8 MHz is the C#
+constructor default and the `.repl` never overrides it, so it belongs to the
+source. It is named `DEFAULT_FREQUENCY` with that reasoning recorded, rather
+than wrongly derived.
+
 ### No private-work references
 
 No names of private repos, products, customers, or hardware programs. The

@@ -9,7 +9,10 @@ than living untracked in .git/hooks:
 Two jobs:
   1. Fail the commit if any tracked file contains a machine-specific absolute
      path (the repo is public -- see CLAUDE.md).
-  2. Regenerate STATUS.md and stage it, so the scorecard is never stale.
+  2. Fail the commit if a value derived from an external source of truth has
+     been copied into hand-written source. That is a second source of truth,
+     and it drifts silently.
+  3. Regenerate STATUS.md and stage it, so the scorecard is never stale.
 
 Set RENODE_RS_SKIP_HOOK=1 to bypass (for rebases and mechanical history edits).
 """
@@ -32,14 +35,17 @@ def main() -> int:
     )
     py = sys.executable
 
-    # 1. Absolute-path check. Hard failure -- this repo is public.
-    check = subprocess.run([py, "scripts/check_paths.py"], cwd=root)
-    if check.returncode != 0:
-        print("\npre-commit: absolute path(s) in tracked files -- commit refused.",
-              file=sys.stderr)
-        print("Fix them, or set RENODE_RS_SKIP_HOOK=1 if you know why this is wrong.",
-              file=sys.stderr)
-        return 1
+    # 1. Hard failures. Both guard the same principle from different angles:
+    #    a tracked file must not carry knowledge that belongs somewhere else.
+    for script, why in (
+        ("scripts/check_paths.py", "absolute path(s) in tracked files"),
+        ("scripts/check_derived.py", "derived value(s) copied into source"),
+    ):
+        if subprocess.run([py, script], cwd=root).returncode != 0:
+            print(f"\npre-commit: {why} -- commit refused.", file=sys.stderr)
+            print("Fix it, or set RENODE_RS_SKIP_HOOK=1 if you know why this is wrong.",
+                  file=sys.stderr)
+            return 1
 
     # 2. Regenerate the scorecard and stage it if it moved. Never fail the
     #    commit on this -- a stale scorecard is a nuisance, not a defect, and
