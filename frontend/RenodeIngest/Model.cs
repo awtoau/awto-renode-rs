@@ -84,6 +84,8 @@ public sealed class OperationRec
     public string? Type { get; init; }
     public string? Symbol { get; init; }
     public string? ConstValue { get; init; }
+    /// Per-kind facts as JSON; see Walker's detail switch.
+    public string? Detail { get; init; }
     public required int SpanStart { get; init; }
     public required int SpanLen { get; init; }
 }

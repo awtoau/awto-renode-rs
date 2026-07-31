@@ -136,6 +136,10 @@ CREATE TABLE IF NOT EXISTS operation (
     type        TEXT,               -- resolved type; null for statements
     symbol      TEXT,               -- resolved target for invocations/references
     const_value TEXT,               -- literal, when constant
+    -- Per-kind facts Roslyn exposes, as JSON. `symbol` was being overloaded for
+    -- operator kinds, which does not scale past one extra fact per node.
+    -- `dotnet run -- --audit` lists what each kind offers.
+    detail      TEXT,
     span_start  INTEGER NOT NULL,   -- source span, for provenance back to the C#
     span_len    INTEGER NOT NULL
 );

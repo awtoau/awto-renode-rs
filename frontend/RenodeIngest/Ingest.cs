@@ -173,12 +173,13 @@ public static class Ingest
                               ? p : DBNull.Value;
             var id = await ScalarInsert(db, tx,
                 "INSERT INTO operation(run_id,method_id,parent_id,ordinal,depth,kind,type," +
-                "symbol,const_value,span_start,span_len) " +
-                "VALUES ($r,$m,$p,$o,$d,$k,$t,$s,$c,$b,$l) RETURNING id",
+                "symbol,const_value,detail,span_start,span_len) " +
+                "VALUES ($r,$m,$p,$o,$d,$k,$t,$s,$c,$e,$b,$l) RETURNING id",
                 ("$r", runId), ("$m", methodId), ("$p", parentId), ("$o", o.Ordinal),
                 ("$d", o.Depth), ("$k", o.Kind), ("$t", (object?)o.Type ?? DBNull.Value),
                 ("$s", (object?)o.Symbol ?? DBNull.Value),
                 ("$c", (object?)o.ConstValue ?? DBNull.Value),
+                ("$e", (object?)o.Detail ?? DBNull.Value),
                 ("$b", o.SpanStart), ("$l", o.SpanLen));
             opIds[(f.Path, o.LocalId)] = id;
         }

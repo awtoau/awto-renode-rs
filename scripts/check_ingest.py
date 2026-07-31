@@ -52,9 +52,9 @@ STRUCTURAL = {
 # Kinds we know are gaps, with what is missing. Listed so they are tracked
 # rather than rediscovered.
 KNOWN_GAPS = {
-    "VariableDeclarator": "the declared local's symbol (name and type)",
-    "LocalFunction": "the local function's symbol; its body is walked but the "
-                     "function it belongs to is not identified",
+    "AnonymousFunction": "lambdas all display as 'lambda expression', so the "
+                         "extracted symbol does not distinguish them; needs the "
+                         "containing member plus source span to be useful",
 }
 
 
@@ -85,7 +85,8 @@ def main() -> int:
         SELECT kind,
                COUNT(*),
                SUM(CASE WHEN symbol IS NOT NULL OR const_value IS NOT NULL
-                          OR type IS NOT NULL THEN 1 ELSE 0 END)
+                          OR type IS NOT NULL OR detail IS NOT NULL
+                        THEN 1 ELSE 0 END)
         FROM operation GROUP BY kind ORDER BY COUNT(*) DESC""").fetchall()
     con.close()
 

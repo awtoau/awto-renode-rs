@@ -213,6 +213,51 @@ public static class Walker
                 _ => null,
             };
 
+            // Per-kind detail, chosen from what `--audit` reports each kind
+            // exposes rather than from what happened to be needed. Emitted as
+            // JSON so adding a fact does not need a schema change.
+            var detail = new List<string>();
+            void Add(string k, object? v)
+            {
+                if (v is null) return;
+                var s = v is bool b ? (b ? "true" : "false") : $"\"{v}\"";
+                detail.Add($"\"{k}\":{s}");
+            }
+            switch (op)
+            {
+                case IBinaryOperation b2:
+                    // IsChecked drives whether arithmetic must emit wrapping_*.
+                    Add("checked", b2.IsChecked);
+                    Add("lifted", b2.IsLifted);
+                    break;
+                case IConversionOperation cv2:
+                    Add("implicit", cv2.Conversion.IsImplicit);
+                    Add("numeric", cv2.Conversion.IsNumeric);
+                    Add("checked", cv2.IsChecked);
+                    break;
+                case IInvocationOperation inv2:
+                    // The CALL SITE's virtualness, which differs from the
+                    // target method's own IsVirtual.
+                    Add("virtual", inv2.IsVirtual);
+                    break;
+                case IVariableDeclaratorOperation vd:
+                    Add("local", vd.Symbol.Name);
+                    Add("type", vd.Symbol.Type.ToDisplayString());
+                    break;
+                case ILocalFunctionOperation lf:
+                    Add("fn", lf.Symbol.Name);
+                    break;
+                case IAnonymousFunctionOperation af:
+                    Add("lambda", af.Symbol.ToDisplayString());
+                    break;
+                case IInstanceReferenceOperation ir:
+                    Add("refkind", ir.ReferenceKind.ToString());
+                    break;
+                case ISimpleAssignmentOperation sa:
+                    Add("ref", sa.IsRef);
+                    break;
+            }
+
             // Operator kind for expressions where `Kind` alone is ambiguous.
             // A `Binary` node says nothing about whether it is `&&`, `+` or
             // `==`, and no expression emitter can work without that. Stored in
@@ -239,6 +284,7 @@ public static class Walker
                 Symbol = symbol is not null ? TargetKey(symbol) : opKind,
                 ConstValue = op.ConstantValue.HasValue
                              ? op.ConstantValue.Value?.ToString() ?? "null" : null,
+                Detail = detail.Count > 0 ? "{" + string.Join(",", detail) + "}" : null,
                 SpanStart = op.Syntax.Span.Start,
                 SpanLen = op.Syntax.Span.Length,
             });
