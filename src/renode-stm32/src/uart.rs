@@ -95,6 +95,13 @@ impl Stm32Uart {
         self.irq
     }
 
+    /// Status register without the read side effects, for assertions.
+    /// `read(STATUS)` has none in the C# either -- only `read(DATA)` does --
+    /// but this takes `&self`, which tests want.
+    pub fn read_sr(&self) -> u32 {
+        self.bank.read(reg::STATUS, &mut ()).unwrap_or(0) as u32 | (1 << 7)
+    }
+
     /// C# `BaudRate` property. Computed from BRR and used for exactly one thing:
     /// the idle-line timeout. There is no transmission-rate model.
     pub fn baud_rate(&self) -> u32 {

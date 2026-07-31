@@ -80,12 +80,28 @@ def generate(source: str) -> list[tuple[Mutant, str]]:
     for name, pattern, repl in OPERATORS:
         rx = re.compile(pattern)
         for i, line in enumerate(lines):
-            # Skip comments: mutating a doc comment changes no behaviour and
-            # would inflate the survivor count with noise.
+            # Skip comments: mutating comment text changes no behaviour and
+            # inflates the survivor count with noise. Trailing comments matter
+            # as much as full-line ones -- `// ORE always reads false` was
+            # yielding a `false->true` "survivor" that mutated prose.
             stripped = line.lstrip()
             if stripped.startswith("//"):
                 continue
+            # NB: a distinct index name -- reusing `i` here shadowed the outer
+            # enumerate and corrupted every mutant's reported line number.
+            code_end = len(line)
+            in_str = False
+            j = 0
+            while j < len(line) - 1:
+                if line[j] == '"' and (j == 0 or line[j - 1] != "\\"):
+                    in_str = not in_str
+                elif not in_str and line[j] == "/" and line[j + 1] == "/":
+                    code_end = j
+                    break
+                j += 1
             for m in rx.finditer(line):
+                if m.start() >= code_end:
+                    continue
                 new_line = line[:m.start()] + (
                     repl(m) if callable(repl) else rx.sub(repl, m.group(0), count=1)
                 ) + line[m.end():]
