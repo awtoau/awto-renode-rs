@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sqlite3
 import subprocess
 import sys
@@ -176,6 +177,11 @@ class Emitter:
         self.forms = load_register_forms(rd)
         self.assignments = load_assignments(rd)
         self.language = load_language(rd)
+        self.callback_signatures = {}
+        for f in sorted(rd.glob("*.json")):
+            self.callback_signatures.update(
+                {k: v for k, v in json.loads(f.read_text())
+                 .get("callback_signatures", {}).items() if isinstance(v, dict)})
         self.expressions = load_expressions(rd)
 
     def params(self, symbol: str) -> list[str]:
@@ -380,14 +386,12 @@ class Emitter:
             # Assignment in expression position; C# yields the assigned value.
             return self.emit_assignment(oid).rstrip(";")
 
-        if kind == "PropertyReference" and symbol:
-            return f"self.{snake(symbol.split('.')[-1])}()"
+        if kind in ("PropertyReference", "FieldReference") and symbol:
+            return self.emit_reference(kind, symbol, kids)
 
         if kind in ("Conversion", "Parenthesized", "Argument"):
             # Transparent: an implicit conversion is not written by anyone.
             return self.emit_expr(kids[0]) if kids else "/* empty */"
-        if kind == "FieldReference" and symbol:
-            return f"self.{snake(symbol.split('.')[-1].split('(')[0])}"
         if kind == "InstanceReference":
             return "self"
         if kind == "ObjectCreation" and symbol:
@@ -408,6 +412,28 @@ class Emitter:
 
         self.unhandled[f"expr:{kind}"] = self.unhandled.get(f"expr:{kind}", 0) + 1
         return f"/* {kind} */"
+
+    def kind_of(self, oid: int) -> str:
+        row = self.con.execute("SELECT kind FROM operation WHERE id=?", (oid,)).fetchone()
+        return row[0] if row else ""
+
+    def emit_reference(self, kind: str, symbol: str, kids: list) -> str:
+        """A field or property reference, WITH its receiver.
+
+        The receiver was previously dropped and every reference emitted as
+        `self.<name>`, which reads the wrong object whenever the C# names one
+        -- `receiveFifo.Count` became `self.count()`."""
+        forms = self.language.get("references", {}).get(kind, {})
+        name = snake(symbol.split(".")[-1].split("(")[0])
+        if not kids:
+            # No receiver child: a static reference, or `this` left implicit.
+            return forms.get("self", "self.{name}").format(name=name)
+        rid = kids[0]
+        rkind = self.kind_of(rid)
+        if rkind == "InstanceReference":
+            return forms.get("self", "self.{name}").format(name=name)
+        return forms.get("instance", "{receiver}.{name}").format(
+            receiver=self.emit_expr(rid), name=name)
 
     def literal(self, const: str | None, rtype: str | None = None) -> str:
         """A literal, rendered for Rust.
@@ -435,6 +461,65 @@ class Emitter:
             inner = self.receiver_field(cid)
             if inner:
                 return inner
+        return None
+
+    def emit_lambda(self, oid: int, name: str, param: str) -> list[str]:
+        """A C# lambda as a Rust free function.
+
+        The closure captured `this`; the free fn takes what it captured as
+        parameters instead, which is the same move the DSL makes for callbacks
+        generally. The body is ordinary statements, so nothing here duplicates
+        the statement rules."""
+        sigs = self.callback_signatures.get(param)
+        if not sigs:
+            self.unhandled[f"lambda:{param}"] = 1
+            return []
+        lam = self.language.get("lambdas", {})
+        body: list[str] = []
+        for cid, kind, _s, _c, _t in self.children(oid):
+            if kind == "Block":
+                body.extend(self.emit_block(cid, 1))
+            else:
+                body.extend(self.emit_stmt(cid, 1))
+        if not body:
+            return []
+        # Rewrite the captured `this`. In the C# the closure reaches the
+        # peripheral through `this`; as a free fn it receives `bank` and `st`
+        # instead, so references must be redirected to the parameters.
+        rewritten: list[str] = []
+        for line in body:
+            line = line.replace("self.bank.", "bank.").replace("self.f.", "bank_fields.")
+            # A call to a PEER METHOD is the case that does not rewrite: the
+            # free fn has the bank and the state, not the peripheral, so
+            # `self.update()` has no receiver. Flagged rather than mangled --
+            # it is a real design question about what `S` must contain, not a
+            # missing template.
+            if re.search(r"\bself\.[a-z_]+\(", line):
+                self.gaps.append(
+                    "lambda calls a peer method; the free fn has bank+state, "
+                    "not the peripheral (see renode-regs callback docs)")
+                line += "  // GAP: peer-method call has no receiver here"
+            line = line.replace("self.", "st.")
+            rewritten.append(line)
+        body = rewritten
+        text = lam.get("free_fn", "fn {name}({params}) -> {ret} {{\n{body}\n}}").format(
+            name=name, params=sigs["params"], ret=sigs["ret"], body="\n".join(body))
+        return text.splitlines()
+
+    def find_lambda(self, oid: int, param: str) -> int | None:
+        """The AnonymousFunction passed as a given named parameter."""
+        for aid, kind, sym, _c, _t in self.children(oid):
+            if kind != "Argument" or not sym or sym.split()[-1] != param:
+                continue
+            node = aid
+            for _ in range(3):
+                kids = self.children(node)
+                if not kids:
+                    return None
+                cid, ckind, _s2, _c2, _t2 = kids[0]
+                if ckind == "AnonymousFunction":
+                    return cid
+                node = cid
         return None
 
     def emit_stmt(self, oid: int, indent: int = 0) -> list[str]:

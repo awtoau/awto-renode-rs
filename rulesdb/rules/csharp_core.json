@@ -78,6 +78,13 @@
       "cause": "OperatorKind not extracted",
       "fix": "record it",
       "impact": "no expression could be emitted at all"
+    },
+    {
+      "bug": "field and property references discarded their receiver",
+      "cause": "every reference emitted as `self.<name>`; the receiver child was never read",
+      "fix": "emit the receiver, treating only InstanceReference as `self`",
+      "impact": "1,555 of 5,915 references (26%) read the wrong object -- `receiveFifo.Count` became `self.count()`",
+      "why_it_hid": "the two peripherals converted so far access state through `this`, so both generated files were byte-identical and correct while the rule was wrong for a quarter of the corpus. Found only by emitting a lambda body, which is the first code that reaches through a named receiver. This is the breadth-is-a-health-check rule earning its place."
     }
   ],
   "statements": {
@@ -108,5 +115,23 @@
     "instance": "{receiver}.{method}({args})",
     "self": "self.{method}({args})",
     "static": "{type}::{method}({args})"
+  },
+  "lambdas": {
+    "note": "A C# lambda capturing `this` cannot be stored inside the object it captures (see renode-regs' module docs). It becomes a FREE FUNCTION taking what it captured as parameters. The body is ordinary statements, so the statement rules apply unchanged.",
+    "free_fn": "fn {name}({params}) -> {ret} {{\n{body}\n}}",
+    "reference": "Some({name})"
+  },
+  "references": {
+    "note": "A C# property read is a getter call. It has a RECEIVER, which must be emitted: ignoring it turned `receiveFifo.Count` into `self.count()`, silently reading the wrong object. `this.X` and bare `X` both parse to an InstanceReference receiver, so the two forms need no separate rules.",
+    "PropertyReference": {
+      "instance": "{receiver}.{name}()",
+      "self": "self.{name}()",
+      "static": "{type}::{name}()"
+    },
+    "FieldReference": {
+      "instance": "{receiver}.{name}",
+      "self": "self.{name}",
+      "static": "{type}::{name}"
+    }
   }
 }

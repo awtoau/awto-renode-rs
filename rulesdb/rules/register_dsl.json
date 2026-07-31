@@ -135,5 +135,16 @@
       "target_symbol_contains": "IRegisterField<T>.Value",
       "emit": "self.bank.set_value(self.f.{field}, {value});"
     }
-  ]
+  ],
+  "callback_signatures": {
+    "note": "The DSL's callback types. A lambda bound to one of these parameters is emitted as a free fn with this signature; `bank` and `state` are what the C# closure captured via `this`.",
+    "valueProviderCallback": {
+      "params": "bank: &Bank<S>, st: &mut S, _idx: usize, _current: u64",
+      "ret": "u64"
+    },
+    "writeCallback": {
+      "params": "bank: &Bank<S>, st: &mut S, _idx: usize, _old: u64, new: u64",
+      "ret": "()"
+    }
+  }
 }
