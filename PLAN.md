@@ -249,6 +249,35 @@ against real silicon** is available to this project. That is the gold-standard
 way to validate a CPU model, and it would be the first real test coverage tlib
 has ever had.
 
+### Do we fork Roslyn, as linux-rs forked c2rust?
+
+**No, on current evidence — and the criterion is recorded so it stays a decision
+rather than an omission.**
+
+`linux-rs` forked c2rust because **c2rust *was* its transpiler**: a research tool
+with real gaps, where one fix flipped 317 files from crash to clean transpile.
+That fork earned itself.
+
+Roslyn is not our transpiler. It is our *parser*, and it is a mature production
+compiler API. Our transpiler is `frontend/RenodeIngest` plus `scripts/emit.py`,
+which we own outright — there is nothing to fork, and generic bugs are fixed at
+source there already.
+
+The measured position: **six ingest gaps so far, zero of them Roslyn
+limitations.** Every one was a property Roslyn exposed that the walker did not
+read — `OperatorKind`, `IArgumentOperation.Parameter`,
+`PartialImplementationPart`, `OriginalDefinition`, `IVariableDeclarator
+Operation.Symbol`, `ILocalFunctionOperation.Symbol`.
+`dotnet run -- --audit` now enumerates all 137 data-bearing properties across
+every operation kind, so the remaining surface is known rather than guessed.
+
+**What would change this:** a construct Renode uses that Roslyn models
+incorrectly or refuses to expose, demonstrated with a reproducer, and not
+merely inconvenient to reach. At that point a pinned submodule and a patch
+series is the right answer, following the `awtoau/c2rust` pattern. Until then,
+forking a compiler to avoid reading its documentation would be the most
+expensive possible way to fix our own bug.
+
 ### Other prior art
 
 | Project | Relevance |

@@ -40,6 +40,14 @@ public static class Program
         // run config as 'breadth', which the rule engine must reject.
         var all = args.Contains("--all");
 
+        // Reflection audit of Roslyn's own API surface. Needs no corpus and no
+        // Renode tree, so it runs before any path handling.
+        if (args.Contains("--audit"))
+        {
+            Audit.Run();
+            return 0;
+        }
+
         var renodeSrc = Environment.GetEnvironmentVariable("RENODE_SRC");
         if (string.IsNullOrWhiteSpace(renodeSrc))
         {

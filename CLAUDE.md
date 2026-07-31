@@ -54,6 +54,32 @@ No names of private repos, products, customers, or hardware programs. The
 firmware under test is "the target STM32F427 firmware". Keep it generic; the
 technical content stands on its own without the provenance.
 
+## Three layers, and where a fix belongs
+
+Getting this wrong is how the converter ends up with the corpus baked into it.
+
+| what | where it lives | why |
+|---|---|---|
+| **Extraction** — reading what Roslyn exposes | transpiler SOURCE (`Walker.cs`) | Mechanism, not knowledge. A bug here is a transpiler bug: fix it once at source and every corpus benefits. This is the c2rust model — generic C-to-Rust bugs are fixed in c2rust, not worked around per project. |
+| **Language mapping** — `ConditionalOr` → `\|\|`, overflow semantics | DATA, `rulesdb/rules/csharp_core.json` | Knowledge, but generic to C# and Rust. Belongs in data so it is reviewable and changeable without touching code, and reusable on any corpus. |
+| **Project idioms** — the register DSL, peripheral shapes | DATA, `rulesdb/rules/*.json` | Knowledge, Renode-only. |
+
+**A generic bug is fixed at source.** Six ingest gaps so far were properties
+Roslyn already exposed and the walker did not read — `OperatorKind`,
+`IArgumentOperation.Parameter`, `PartialImplementationPart`,
+`OriginalDefinition`, and two more. **None were Roslyn limitations.** Each fix
+belongs in `Walker.cs`, and each is recorded in `csharp_core.json` under
+`known_transpiler_bugs_fixed` so the class of mistake is visible.
+
+**Nothing project-specific may reach the source.** `csharp_core.json` must not
+mention Renode, a peripheral or a register; if a mapping needs project
+knowledge it is a project rule. That boundary is what keeps the transpiler
+reusable and the project rules small.
+
+Run `dotnet run -- --audit` in `frontend/RenodeIngest` to list what Roslyn
+exposes per operation kind, so gaps are enumerable rather than discovered by
+tripping over them.
+
 ## The one rule that matters
 
 **BUILD THE CONVERTER. DO NOT WRITE THE OUTPUT BY HAND.**

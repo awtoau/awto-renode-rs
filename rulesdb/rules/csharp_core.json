@@ -1,0 +1,86 @@
+{
+  "layer": "language",
+  "description": "GENERIC C#-to-Rust mappings. These are properties of the two LANGUAGES, not of Renode, and hold for any corpus. This is the layer c2rust occupies for C: a bug here is a transpiler bug and its fix benefits every future file, so it is fixed here rather than worked around per project.",
+  "boundary": "Nothing in this file may mention Renode, a peripheral, or a register. If a mapping needs project knowledge it belongs in a project rule file instead — that split is what keeps the transpiler reusable and the project rules small.",
+
+  "operators": {
+    "note": "IBinaryOperation.OperatorKind and IUnaryOperation.OperatorKind, recorded by the ingest. Without them a Binary node says only 'Binary' and no expression can be emitted.",
+    "binary": {
+      "Add": "{lhs} + {rhs}",
+      "Subtract": "{lhs} - {rhs}",
+      "Multiply": "{lhs} * {rhs}",
+      "Divide": "{lhs} / {rhs}",
+      "Remainder": "{lhs} % {rhs}",
+      "LeftShift": "{lhs} << {rhs}",
+      "RightShift": "{lhs} >> {rhs}",
+      "And": "{lhs} & {rhs}",
+      "Or": "{lhs} | {rhs}",
+      "ExclusiveOr": "{lhs} ^ {rhs}",
+      "ConditionalAnd": "{lhs} && {rhs}",
+      "ConditionalOr": "{lhs} || {rhs}",
+      "Equals": "{lhs} == {rhs}",
+      "NotEquals": "{lhs} != {rhs}",
+      "LessThan": "{lhs} < {rhs}",
+      "LessThanOrEqual": "{lhs} <= {rhs}",
+      "GreaterThan": "{lhs} > {rhs}",
+      "GreaterThanOrEqual": "{lhs} >= {rhs}"
+    },
+    "unary": {
+      "Not": "!{operand}",
+      "BitwiseNegation": "!{operand}",
+      "Minus": "-{operand}",
+      "Plus": "{operand}"
+    }
+  },
+
+  "deviations": [
+    {
+      "construct": "integer overflow",
+      "csharp": "wraps silently in an unchecked context",
+      "rust": "panics in debug, wraps in release",
+      "mapping": "arithmetic on register values emits wrapping_* explicitly",
+      "why": "Recorded rather than assumed. Renode's peripherals rely on C# wrapping for counters and timers; a debug panic there would be a behaviour change the oracle would catch late and confusingly."
+    },
+    {
+      "construct": "C# `bool` in bitwise position",
+      "csharp": "`&` and `|` are valid on bool",
+      "rust": "valid on bool, same semantics",
+      "mapping": "direct",
+      "why": "Noted because `&&`/`&` differ in short-circuiting in both languages, so the OperatorKind distinction must be preserved, not normalised."
+    },
+    {
+      "construct": "null",
+      "csharp": "any reference may be null",
+      "rust": "Option<T>",
+      "mapping": "unresolved — needs nullability analysis",
+      "why": "Roslyn carries nullable annotations, but Renode is not annotated, so every reference is potentially null and blanket Option<T> would be noise. Deferred deliberately; see PLAN.md D4."
+    }
+  ],
+
+  "known_transpiler_bugs_fixed": [
+    {
+      "bug": "partial methods reported as having a body",
+      "cause": "used `!IsAbstract && !IsExtern`; a `partial void Foo();` declaration is neither",
+      "fix": "consult syntax, and follow IMethodSymbol.PartialImplementationPart",
+      "impact": "5,123 methods (24.7% of the corpus) claimed a body and emitted nothing"
+    },
+    {
+      "bug": "generic call targets unresolved",
+      "cause": "keyed on the constructed generic; `WithFlag<DoubleWordRegister>` does not match the declaration `WithFlag<T>`",
+      "fix": "key on ISymbol.OriginalDefinition",
+      "impact": "1,109 register-DSL calls resolved as external, which would have made the entire work queue wrong"
+    },
+    {
+      "bug": "named arguments bound positionally",
+      "cause": "C# named arguments may skip earlier optionals",
+      "fix": "use IArgumentOperation.Parameter, which Roslyn already resolved",
+      "impact": "a register's name was read as its reset value"
+    },
+    {
+      "bug": "binary and unary operators unrecorded",
+      "cause": "OperatorKind not extracted",
+      "fix": "record it",
+      "impact": "no expression could be emitted at all"
+    }
+  ]
+}
