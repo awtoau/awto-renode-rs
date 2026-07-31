@@ -9,9 +9,9 @@
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
-//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
-//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
 //!   - ChangeMode: parameter `newMode` has no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode`
 //!   - GetLocalReceiver: withheld, cannot emit stmt:Throw
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state

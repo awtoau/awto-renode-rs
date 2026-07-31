@@ -8,7 +8,7 @@
 //!
 //! GAPS the converter reports rather than guessing:
 //!   - Data: conditional access `?.` needs nullability analysis
-//!   - WriteChar: withheld, cannot emit expr:DelegateCreation, expr:InterpolatedString
+//!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - calls base-class method `Reset` on `BasicDoubleWordPeripheral`, which is not translated
 //!   - conditional access `?.` needs nullability analysis
 

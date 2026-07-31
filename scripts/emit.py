@@ -473,6 +473,46 @@ class Emitter:
             return inv.get("instance", "{receiver}.{method}({args})").format(
                 receiver=self.emit_expr(receiver), method=method, args=arg_txt)
 
+        if kind == "InterpolatedString":
+            rules = self.language.get("strings", {})
+            fmt, holes = "", []
+            for cid, ck, _s, cconst, _t in self.children(oid):
+                if ck == "InterpolatedStringText":
+                    lit = self.const_text(cid)
+                    fmt += lit.replace("{", "{{").replace("}", "}}")
+                else:
+                    fmt += rules.get("hole", "{}")
+                    holes.append(self.emit_expr(cid))
+            return rules.get("interpolated", 'format!("{fmt}"{args})').format(
+                fmt=fmt, args="".join(", " + h for h in holes))
+
+        if kind == "NameOf":
+            # Roslyn folds nameof to a constant, so the corpus already has it.
+            return self.language.get("strings", {}).get(
+                "nameof", '"{name}"').format(name=(const or "").strip('"'))
+
+        if kind == "DelegateCreation" and kids:
+            inner = kids[0]
+            if self.kind_of(inner) == "AnonymousFunction":
+                det = (self.con.execute(
+                    "SELECT detail FROM operation WHERE id=?", (inner,)
+                ).fetchone() or [None])[0]
+                names = []
+                if det:
+                    try:
+                        names = json.loads(det).get("params", "").split()
+                    except json.JSONDecodeError:
+                        names = []
+                body = []
+                for cid, ck, _s, _c, _t in self.children(inner):
+                    body.extend(self.emit_block(cid, 0) if ck == "Block"
+                                else self.emit_stmt(cid, 0))
+                txt = " ".join(l.strip() for l in body).rstrip(";")
+                return self.language.get("delegates_expr", {}).get(
+                    "closure", "|{params}| {body}").format(
+                    params=", ".join(n if n != "_" else "_" for n in names),
+                    body=txt)
+
         if kind == "ConditionalAccess":
             gap = self.language.get("statements", {}).get("ConditionalAccess", {})
             self.gaps.append("conditional access `?.` needs nullability analysis")
@@ -504,6 +544,11 @@ class Emitter:
                     "numeric", "{expr} as {target}").format(expr=inner, target=tgt)
             return inner
 
+        if kind == "Interpolation" and kids:
+            # The hole node wraps the expression; the format placeholder was
+            # already emitted by InterpolatedString.
+            return self.emit_expr(kids[0])
+
         if kind in ("Parenthesized", "Argument"):
             # Transparent: neither is written in Rust.
             return self.emit_expr(kids[0]) if kids else "/* empty */"
@@ -527,6 +572,17 @@ class Emitter:
 
         self.unhandled[f"expr:{kind}"] = self.unhandled.get(f"expr:{kind}", 0) + 1
         return f"/* {kind} */"
+
+    def const_text(self, oid: int) -> str:
+        """The literal text of an interpolated string's fixed piece."""
+        row = self.con.execute(
+            "SELECT const_value FROM operation WHERE parent_id=? AND kind='Literal'",
+            (oid,)).fetchone()
+        if row and row[0] is not None:
+            return str(row[0]).strip('"')
+        row = self.con.execute(
+            "SELECT const_value FROM operation WHERE id=?", (oid,)).fetchone()
+        return str(row[0]).strip('"') if row and row[0] is not None else ""
 
     def kind_of(self, oid: int) -> str:
         row = self.con.execute("SELECT kind FROM operation WHERE id=?", (oid,)).fetchone()
@@ -667,11 +723,26 @@ class Emitter:
             line = line.replace("self.bank.", "bank.").replace("self.f.", "st.f.")
             # A peer-method call: the peripheral's own methods are free fns
             # over (bank, st) too, so the receiver becomes those parameters.
-            def peer(m):
-                inner = m.group(2).strip()
-                return call.format(name=m.group(1),
-                                   args=(", " + inner) if inner else "")
-            line = re.sub(r"\bself\.([a-z_][a-z0-9_]*)\(([^()]*)\)", peer, line)
+            # Scan for balanced parentheses: a nested call in the arguments
+            # (`self.foo(bar(x))`) defeated a flat [^()]* match, and the call
+            # was then left as `self.` and mangled into `st.` by the next rule.
+            out_chars, i = [], 0
+            while i < len(line):
+                m = re.match(r"self\.([a-z_][a-z0-9_]*)\(", line[i:])
+                if not m:
+                    out_chars.append(line[i])
+                    i += 1
+                    continue
+                j = i + m.end()
+                depth, start = 1, j
+                while j < len(line) and depth:
+                    depth += (line[j] == "(") - (line[j] == ")")
+                    j += 1
+                inner = line[start:j - 1].strip()
+                out_chars.append(call.format(
+                    name=m.group(1), args=(", " + inner) if inner else ""))
+                i = j
+            line = "".join(out_chars)
             line = line.replace("self.", "st.")
             rewritten.append(line)
         return rewritten

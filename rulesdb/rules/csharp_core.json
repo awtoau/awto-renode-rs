@@ -193,5 +193,16 @@
   "conversions": {
     "note": "C# widens numerically without being asked (`uint value = receiveFifo.Dequeue()` on a Queue<byte>). Rust never does, so an implicit NUMERIC conversion becomes an explicit cast. Non-numeric implicit conversions -- boxing, interface upcasts -- are still transparent, because they have no Rust spelling and inserting one would be noise. The corpus records both flags on the Conversion node.",
     "numeric": "{expr} as {target}"
+  },
+  "strings": {
+    "note": "C# `$\"...{expr}...\"` becomes format!. The corpus records the pieces as InterpolatedStringText and Interpolation children in source order, so the format string is rebuilt from them rather than reparsed from the literal.",
+    "interpolated": "format!(\"{fmt}\"{args})",
+    "hole": "{}",
+    "nameof": "\"{name}\"",
+    "nameof_note": "`nameof(X)` is a compile-time constant in C#; Roslyn already folded it, so it emits as the literal name."
+  },
+  "delegates_expr": {
+    "note": "`_ => Foo(x)` in argument position becomes a Rust closure. This is the one place a lambda stays a closure rather than becoming a free fn: it is passed straight to a call and never stored on the peripheral, so it cannot outlive the borrow it captures.",
+    "closure": "|{params}| {body}"
   }
 }
