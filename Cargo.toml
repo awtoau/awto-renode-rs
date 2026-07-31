@@ -1,0 +1,15 @@
+# Workspace of many small crates, not one large crate: rustc parallelises across
+# crates and barely within one, and incremental rebuilds stay fast. See #36 (R7).
+[workspace]
+resolver = "2"
+members = ["src/renode-regs", "src/renode-oracle"]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.0"
+publish = false
+
+[profile.release]
+debug = true
+lto = true
+codegen-units = 1

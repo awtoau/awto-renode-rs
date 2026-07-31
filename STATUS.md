@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T13:11:06+10:00 from `fdb5504` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T13:19:59+10:00 from `68acd37` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -39,7 +39,7 @@ Genuine stop points. A failed gate means stop, not retry.
 
 | tier | what it proves | status |
 |---|---|---|
-| 1 — compiles | the crate builds | no crate yet |
+| 1 — compiles | the crate builds | built |
 | 2 — trace replay | per-peripheral register behaviour | built |
 | 3 — instruction lockstep | full machine state vs C# | not built (#23) |
 | 4 — boot equivalence | firmware reaches the prompt | **C# reference pinned** |
