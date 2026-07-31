@@ -96,5 +96,28 @@
       "reset_from": null,
       "chain_from": "value"
     }
+  ],
+  "expressions": [
+    {
+      "name": "FLAG_FIELD_READ",
+      "note": "`someFlag.Value`. The symbol normalises to IRegisterField<T>.Value because call targets are keyed on OriginalDefinition, so flag-vs-value is distinguished by the RESULT TYPE, not the interface name.",
+      "kind": "PropertyReference",
+      "symbol_contains": "IRegisterField<T>.Value",
+      "type_is": "bool",
+      "emit": "self.bank.flag(self.f.{field})"
+    },
+    {
+      "name": "VALUE_FIELD_READ",
+      "kind": "PropertyReference",
+      "symbol_contains": "IRegisterField<T>.Value",
+      "emit": "self.bank.value(self.f.{field})"
+    },
+    {
+      "name": "IRQ_SET",
+      "note": "`IRQ.Set(x)` drives the interrupt line. The GPIO object is not modelled yet, so this assigns the peripheral's own flag.",
+      "kind": "Invocation",
+      "symbol_contains": "GPIO.Set(bool)",
+      "emit": "self.irq = {arg0}"
+    }
   ]
 }

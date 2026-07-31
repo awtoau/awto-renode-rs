@@ -93,6 +93,26 @@ def load_rules(rules_dir: Path) -> list[dict]:
     return rules
 
 
+def load_language(rules_dir: Path) -> dict:
+    """Generic C#-to-Rust mappings. LANGUAGE layer, no project knowledge.
+
+    Kept apart from project rules deliberately: a bug in an operator mapping is
+    a transpiler bug that affects every corpus, and it must be fixable without
+    reading anything about Renode."""
+    f = rules_dir / "csharp_core.json"
+    return json.loads(f.read_text()) if f.exists() else {}
+
+
+def load_expressions(rules_dir: Path) -> list[dict]:
+    """Project-specific expression idioms."""
+    out: list[dict] = []
+    if not rules_dir.exists():
+        return out
+    for f in sorted(rules_dir.glob("*.json")):
+        out.extend(json.loads(f.read_text()).get("expressions", []))
+    return out
+
+
 def load_register_forms(rules_dir: Path) -> list[dict]:
     """How to FIND a register, also data.
 
@@ -137,7 +157,10 @@ class Emitter:
         self.gaps: list[str] = []
         self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
         self._flag_fields: set[str] = set()
-        self.forms = load_register_forms(rules_dir or repo_root() / "rulesdb" / "rules")
+        rd = rules_dir or repo_root() / "rulesdb" / "rules"
+        self.forms = load_register_forms(rd)
+        self.language = load_language(rd)
+        self.expressions = load_expressions(rd)
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
@@ -259,6 +282,117 @@ class Emitter:
 
         self.unhandled[name] = self.unhandled.get(name, 0) + 1
         return None
+
+    def emit_expr(self, oid: int) -> str:
+        """Recursively emit one expression.
+
+        Generic structure (operators, literals) comes from the LANGUAGE rules;
+        anything mentioning a register or a peripheral comes from the PROJECT
+        rules. The split is enforced by where each table is loaded from, so a
+        Renode idiom cannot leak into the language layer.
+        """
+        row = self.con.execute(
+            "SELECT kind, symbol, const_value, detail, type FROM operation WHERE id=?",
+            (oid,)).fetchone()
+        if row is None:
+            return "/* missing */"
+        kind, symbol, const, detail, rtype = row
+        all_kids = self.children(oid)
+        kids = [c[0] for c in all_kids]
+        # Arguments only. An Invocation's first child is the RECEIVER, so
+        # indexing all children made `arg0` the object being called on rather
+        # than the value passed to it.
+        args = [c[0] for c in all_kids if c[1] == "Argument"]
+
+        # Project idioms first: they are more specific than the language rules.
+        for rule in self.expressions:
+            if rule["kind"] != kind:
+                continue
+            if rule.get("symbol_contains") and (
+                    not symbol or rule["symbol_contains"] not in symbol):
+                continue
+            if rule.get("type_is") and rtype != rule["type_is"]:
+                continue
+            env: dict[str, str] = {}
+            if "{field}" in rule["emit"]:
+                env["field"] = self.receiver_field(oid) or "UNKNOWN"
+            for i, k in enumerate(args):
+                env[f"arg{i}"] = self.emit_expr(k)
+            try:
+                return rule["emit"].format(**env)
+            except KeyError:
+                self.unhandled[f"{rule['name']}:binding"] = 1
+
+        # Language layer.
+        if kind == "Literal":
+            return self.literal(const)
+        if kind == "Binary":
+            table = self.language.get("operators", {}).get("binary", {})
+            tmpl = table.get(symbol or "")
+            if tmpl and len(kids) >= 2:
+                return "(" + tmpl.format(lhs=self.emit_expr(kids[0]),
+                                         rhs=self.emit_expr(kids[1])) + ")"
+            self.unhandled[f"Binary:{symbol}"] = self.unhandled.get(f"Binary:{symbol}", 0) + 1
+        if kind == "Unary":
+            table = self.language.get("operators", {}).get("unary", {})
+            tmpl = table.get(symbol or "")
+            if tmpl and kids:
+                return tmpl.format(operand=self.emit_expr(kids[0]))
+        if kind in ("Conversion", "Parenthesized", "Argument"):
+            # Transparent: an implicit conversion is not written by anyone.
+            return self.emit_expr(kids[0]) if kids else "/* empty */"
+        if kind == "ParameterReference" and symbol:
+            return snake(symbol.split(".")[-1])
+        if kind == "LocalReference" and detail:
+            try:
+                return snake(json.loads(detail).get("local", "local"))
+            except json.JSONDecodeError:
+                pass
+
+        self.unhandled[f"expr:{kind}"] = self.unhandled.get(f"expr:{kind}", 0) + 1
+        return f"/* {kind} */"
+
+    def literal(self, const: str | None) -> str:
+        if const is None:
+            return "0"
+        if const in ("True", "False"):
+            return const.lower()
+        return const
+
+    def receiver_field(self, oid: int) -> str | None:
+        """Field name behind `someField.Value` -- the reference under the
+        property access."""
+        for cid, kind, sym, _c, _t in self.children(oid):
+            if kind in ("FieldReference", "PropertyReference") and sym:
+                return snake(sym.split(".")[-1].split("(")[0])
+            inner = self.receiver_field(cid)
+            if inner:
+                return inner
+        return None
+
+    def emit_body(self, type_name: str, method_name: str) -> list[str]:
+        """Emit a method body, statement by statement."""
+        row = self.con.execute("""
+            SELECT m.member_id FROM method m
+            JOIN member mb ON mb.id = m.member_id
+            JOIN type t ON t.id = mb.type_id
+            WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
+        if not row:
+            return []
+        block = self.con.execute(
+            "SELECT id FROM operation WHERE method_id=? AND kind='Block' "
+            "ORDER BY id LIMIT 1", (row[0],)).fetchone()
+        if not block:
+            return []
+        out: list[str] = []
+        for sid, kind, _s, _c, _t in self.children(block[0]):
+            if kind == "ExpressionStatement":
+                inner = self.children(sid)
+                if inner:
+                    out.append(self.emit_expr(inner[0][0]) + ";")
+            else:
+                self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
+        return out
 
     def enum_offset(self, oid: int) -> tuple[str | None, int | None]:
         """Register offset from a `Define` call's first argument.
