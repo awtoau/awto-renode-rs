@@ -217,6 +217,13 @@ def main() -> int:
     }
     (outdir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
+    # Also write a committed summary. tmp/baseline/ is gitignored (large logs),
+    # but the scorecard and CI need these numbers without the logs, and tracking
+    # them makes reference drift visible in the diff.
+    status_dir = root / "docs" / "status"
+    status_dir.mkdir(parents=True, exist_ok=True)
+    (status_dir / "baseline.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
     log.info("wall %.1fs for %.1fs simulated -> %.2fx real time",
              wall, args.run_for, manifest["realtime_ratio"] or 0)
     for name, _ in MARKERS:

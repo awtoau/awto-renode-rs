@@ -1,0 +1,151 @@
+{
+  "taken_at": "2026-07-31T11:05:48+10:00",
+  "renode_commit": "dc52b24c118a8a53b59b619636004ce16a57c68e",
+  "firmware_commit": "e6f95626d0b06e2c1ed0686c7baa0c2105affe0b",
+  "firmware_elf": "awto-htc.elf",
+  "firmware_elf_sha256": "4eccbaee25d7837ba02b198b0405866e8940676aa11fc9ae95f3dd114acb5c6e",
+  "run_for_simulated_s": 12.0,
+  "wall_clock_s": 74.98,
+  "realtime_ratio": 0.16,
+  "boot_ms_simulated": 291,
+  "renode_exit": 0,
+  "log_lines": 38529,
+  "warning_lines": 38195,
+  "markers_seen": {
+    "shell_uart": "[BOOT] Shell UART initialized",
+    "logger_init": "[BOOT] logger_init OK",
+    "otp": "OTP: block 0 active  product=PDM",
+    "freertos": "[BOOT] FreeRTOS started OK",
+    "banner": "awto-pdm",
+    "shell_ready": "[BOOT] Shell commands ready",
+    "boot_ok": "[BOOT] system_boot OK +291 ms @ 291 ms",
+    "boot_context": "[BOOT] system_boot context build=PDM wire=htc"
+  },
+  "markers_missing": [],
+  "boot_steps": [
+    {
+      "step": "logger_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 0
+    },
+    {
+      "step": "Speaker_Init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 0
+    },
+    {
+      "step": "Speaker_Startup",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 1
+    },
+    {
+      "step": "log_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 1
+    },
+    {
+      "step": "monitor_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 27
+    },
+    {
+      "step": "esp_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 27
+    },
+    {
+      "step": "flash_init",
+      "verdict": "FAIL",
+      "took_ms": 139,
+      "at_ms": 167
+    },
+    {
+      "step": "awto_bxcan_filter_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 168
+    },
+    {
+      "step": "ism330dhcx_init",
+      "verdict": "FAIL",
+      "took_ms": 11,
+      "at_ms": 179
+    },
+    {
+      "step": "accel_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 179
+    },
+    {
+      "step": "awto_motionfx_init",
+      "verdict": "OK",
+      "took_ms": 5,
+      "at_ms": 184
+    },
+    {
+      "step": "awto_bxcan_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 184
+    },
+    {
+      "step": "vip_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 185
+    },
+    {
+      "step": "awto_output_controller_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 186
+    },
+    {
+      "step": "awto_pdm_client_init",
+      "verdict": "OK",
+      "took_ms": 1,
+      "at_ms": 189
+    },
+    {
+      "step": "level_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 190
+    },
+    {
+      "step": "awto_bxcan_filter_init",
+      "verdict": "OK",
+      "took_ms": 0,
+      "at_ms": 190
+    },
+    {
+      "step": "awto_bxcan_go_live",
+      "verdict": "OK",
+      "took_ms": 1,
+      "at_ms": 191
+    },
+    {
+      "step": "system_boot",
+      "verdict": "OK",
+      "took_ms": 291,
+      "at_ms": 291
+    }
+  ],
+  "expected_failures": [
+    "flash_init",
+    "ism330dhcx_init"
+  ],
+  "unexpected_failures": [],
+  "unexpected_passes": [],
+  "first_output_at": {
+    "host_s": 26.57,
+    "virt_s": 7.16
+  }
+}

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Pre-commit hook: enforce repo rules and regenerate the scorecard.
+
+Installed by pointing git at this directory, so the hooks are tracked rather
+than living untracked in .git/hooks:
+
+    git config core.hooksPath scripts/githooks
+
+Two jobs:
+  1. Fail the commit if any tracked file contains a machine-specific absolute
+     path (the repo is public -- see CLAUDE.md).
+  2. Regenerate STATUS.md and stage it, so the scorecard is never stale.
+
+Set RENODE_RS_SKIP_HOOK=1 to bypass (for rebases and mechanical history edits).
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    if os.environ.get("RENODE_RS_SKIP_HOOK"):
+        return 0
+
+    root = Path(
+        subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                       capture_output=True, text=True, check=True).stdout.strip()
+    )
+    py = sys.executable
+
+    # 1. Absolute-path check. Hard failure -- this repo is public.
+    check = subprocess.run([py, "scripts/check_paths.py"], cwd=root)
+    if check.returncode != 0:
+        print("\npre-commit: absolute path(s) in tracked files -- commit refused.",
+              file=sys.stderr)
+        print("Fix them, or set RENODE_RS_SKIP_HOOK=1 if you know why this is wrong.",
+              file=sys.stderr)
+        return 1
+
+    # 2. Regenerate the scorecard and stage it if it moved. Never fail the
+    #    commit on this -- a stale scorecard is a nuisance, not a defect, and
+    #    blocking a commit because `gh` was offline would be worse than useless.
+    gen = subprocess.run([py, "scripts/scorecard.py"], cwd=root,
+                         capture_output=True, text=True)
+    if gen.returncode != 0:
+        print("pre-commit: scorecard generation failed (continuing):",
+              gen.stderr.strip()[:200], file=sys.stderr)
+        return 0
+
+    status = subprocess.run(["git", "status", "--porcelain", "STATUS.md"],
+                            cwd=root, capture_output=True, text=True)
+    if status.stdout.strip():
+        subprocess.run(["git", "add", "STATUS.md"], cwd=root, check=True)
+        print("pre-commit: STATUS.md regenerated and staged")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
