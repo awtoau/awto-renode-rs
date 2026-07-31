@@ -86,7 +86,10 @@ public static class Walker
                 result.Members.Add(rec);
 
                 if (rec.Method is null) continue;
-                foreach (var reference in member.DeclaringSyntaxReferences)
+                // Partial methods keep their body on the implementation part.
+                var bodyOwner = member is IMethodSymbol pm && pm.PartialImplementationPart is { } impl
+                                ? impl : member;
+                foreach (var reference in bodyOwner.DeclaringSyntaxReferences)
                 {
                     if (reference.SyntaxTree != tree) continue;
                     var node = reference.GetSyntax();
@@ -138,7 +141,7 @@ public static class Walker
                     IsAbstract = m.IsAbstract,
                     IsOverride = m.IsOverride,
                     IsExtension = m.IsExtensionMethod,
-                    HasBody = !m.IsAbstract && !m.IsExtern,
+                    HasBody = HasRealBody(m),
                 };
                 foreach (var p in m.Parameters)
                 {
@@ -229,6 +232,38 @@ public static class Walker
             for (var i = children.Count - 1; i >= 0; i--)
                 stack.Push((children[i], id, i, depth + 1));
         }
+    }
+
+    /// <summary>
+    /// Whether the method actually has a body, determined from syntax.
+    ///
+    /// `!IsAbstract &amp;&amp; !IsExtern` is NOT sufficient and gets this wrong at scale:
+    /// a `partial void Foo();` declaration with no implementation is neither
+    /// abstract nor extern yet has no body. Renode has 5,188 partial method
+    /// declarations, mostly in generated peripherals, so the naive test
+    /// mis-reported 24.7% of all body-bearing methods -- silently, because
+    /// nothing throws. Found by the breadth ingest; invisible in the 36-file cut.
+    /// </summary>
+    private static bool HasRealBody(IMethodSymbol m)
+    {
+        // For a partial method the body lives on the implementation part, whose
+        // syntax the definition symbol does not reference.
+        var target = m.PartialImplementationPart ?? m;
+        foreach (var reference in target.DeclaringSyntaxReferences)
+        {
+            switch (reference.GetSyntax())
+            {
+                case BaseMethodDeclarationSyntax b
+                    when b.Body is not null || b.ExpressionBody is not null:
+                case AccessorDeclarationSyntax a
+                    when a.Body is not null || a.ExpressionBody is not null:
+                case ArrowExpressionClauseSyntax:
+                case LocalFunctionStatementSyntax l
+                    when l.Body is not null || l.ExpressionBody is not null:
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>True when this reference is the target of an assignment.</summary>

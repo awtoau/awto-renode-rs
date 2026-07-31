@@ -27,6 +27,12 @@ public static class Program
         var dbPath = ArgValue(args, "--db") ?? "rulesdb/patterns.db";
         var threads = int.TryParse(ArgValue(args, "-j"), out var j) && j > 0
                       ? j : Environment.ProcessorCount;
+        // Breadth mode: ingest EVERY file, not the F427 cut. Not for translation
+        // -- for shaking out walker bugs and Roslyn edge cases at corpus scale.
+        // This is the linux-rs lesson: its breadth track ingested everything and
+        // worked; its narrow track hand-picked files and reached 1.87
+        // instances per rule.
+        var all = args.Contains("--all");
 
         var renodeSrc = Environment.GetEnvironmentVariable("RENODE_SRC");
         if (string.IsNullOrWhiteSpace(renodeSrc))
@@ -57,13 +63,13 @@ public static class Program
             MSBuildLocator.RegisterInstance(instance);
         }
 
-        return await Run(project, renodeSrc, dbPath, dryRun, threads);
+        return await Run(project, renodeSrc, dbPath, dryRun, threads, all);
     }
 
     // Kept in its own method so MSBuildLocator.RegisterInstance completes before
     // the JIT resolves any MSBuild-dependent type referenced here.
     private static async Task<int> Run(string project, string renodeSrc, string dbPath,
-                                      bool dryRun, int threads)
+                                      bool dryRun, int threads, bool all)
     {
         var total = Stopwatch.StartNew();
 
@@ -101,7 +107,8 @@ public static class Program
         // that did not match -- a silently-missing file would quietly shrink
         // the corpus and invalidate every coverage number downstream.
         var trees = compilation.SyntaxTrees
-            .Where(t => !string.IsNullOrEmpty(t.FilePath) && CorpusCut.Contains(t.FilePath))
+            .Where(t => !string.IsNullOrEmpty(t.FilePath)
+                        && (all || CorpusCut.Contains(t.FilePath)))
             .ToList();
 
         var matched = new HashSet<string>();
@@ -115,8 +122,10 @@ public static class Program
 
         var loc = trees.Sum(t => t.GetText().Lines.Count);
         Console.WriteLine();
-        Console.WriteLine($"corpus    {trees.Count}/{CorpusCut.All().Count()} files resolved, {loc:N0} lines");
-        if (missing.Count > 0)
+        Console.WriteLine(all
+            ? $"corpus    BREADTH MODE: {trees.Count} files, {loc:N0} lines"
+            : $"corpus    {trees.Count}/{CorpusCut.All().Count()} files resolved, {loc:N0} lines");
+        if (!all && missing.Count > 0)
         {
             Console.WriteLine($"          {missing.Count} NOT FOUND -- corpus is incomplete:");
             foreach (var m in missing) Console.WriteLine($"            {m}");
