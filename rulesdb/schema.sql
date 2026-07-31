@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS member (
     accessibility TEXT    NOT NULL,
     is_static     INTEGER NOT NULL DEFAULT 0,
     is_readonly   INTEGER NOT NULL DEFAULT 0,
+    -- Does this member actually STORE anything? A computed property (`get { ... }`)
+    -- has no backing field, so treating it as state would fabricate storage the
+    -- C# does not have. Roslyn answers this via the backing field's
+    -- AssociatedSymbol; it is recorded rather than re-derived per consumer.
+    has_storage   INTEGER NOT NULL DEFAULT 1,
     UNIQUE (run_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_member_type ON member(type_id);

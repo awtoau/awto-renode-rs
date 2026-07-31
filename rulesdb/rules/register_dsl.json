@@ -153,5 +153,30 @@
     "call": "{name}(bank, st{args})",
     "field_handles": "st.f.{field}",
     "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see."
+  },
+  "state_struct": {
+    "note": "The peripheral's non-register instance fields. The declared type decides: an IFlagRegisterField/IValueRegisterField/IEnumRegisterField is a HANDLE and already lives in `Fields`; anything else is real data and belongs in State. Derivable from the corpus, so State is generated rather than hand-declared -- which is what lets a callback reach `st.receive_fifo` in generated code.",
+    "handle_types": [
+      "IFlagRegisterField",
+      "IValueRegisterField",
+      "IEnumRegisterField"
+    ],
+    "decl": "pub struct State {",
+    "also_state": {
+      "note": "State is not only `kind='field'`. A PROPERTY or EVENT can hold peripheral state too -- STM32_UART declares `IRQ` as a property and `CharReceived` as an event, and both were missing from a fields-only query.",
+      "kinds": [
+        "field",
+        "property",
+        "event"
+      ]
+    },
+    "type_map": {
+      "note": "Renode types with no BCL equivalent. `Core.GPIO` is an output line; the peripheral only ever sets its level, so `bool` carries it. Consistent with the IRQ_SET expression rule, which assigns a bool.",
+      "Antmicro.Renode.Core.GPIO": "bool"
+    },
+    "requires_storage": {
+      "note": "Only members that actually store go in State. `STM32_UART.BaudRate` computes from two register fields and holds nothing; emitting it as a field would invent storage the C# does not have -- the same error class as the invented `.with_reserved(9, 23)`. Derived from member.has_storage, so it is not a hand-maintained skip list.",
+      "column": "has_storage"
+    }
   }
 }

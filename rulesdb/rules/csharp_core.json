@@ -158,6 +158,26 @@
       "String.Append": "{recv}.push_str({args})",
       "String.ToString": "{recv}.to_string()"
     },
-    "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path."
+    "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path.",
+    "primitives": {
+      "byte": "u8",
+      "sbyte": "i8",
+      "short": "i16",
+      "ushort": "u16",
+      "int": "i32",
+      "uint": "u32",
+      "long": "i64",
+      "ulong": "u64",
+      "bool": "bool",
+      "char": "char",
+      "string": "String",
+      "float": "f32",
+      "double": "f64"
+    },
+    "generic_form": "{outer}<{inner}>",
+    "delegates": {
+      "note": "A C# event or Action field is a callback slot. C# allows many subscribers; Renode's peripherals attach exactly one, so a single Option<Box<dyn FnMut>> is faithful for this corpus and is recorded as such rather than silently narrowing multicast semantics.",
+      "Action": "Option<Box<dyn FnMut({inner})>>"
+    }
   }
 }

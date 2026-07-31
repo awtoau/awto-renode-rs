@@ -46,6 +46,10 @@ public sealed class MemberRec
     public required bool IsStatic { get; init; }
     public required bool IsReadOnly { get; init; }
 
+    /// False for a computed property or a custom event -- it has no backing
+    /// field, so it is not storage. See schema.sql member.has_storage.
+    public bool HasStorage { get; init; } = true;
+
     // Present only when Kind is method or ctor.
     public MethodRec? Method { get; init; }
 }

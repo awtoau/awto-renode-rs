@@ -183,6 +183,16 @@ class Emitter:
                 {k: v for k, v in json.loads(f.read_text())
                  .get("callback_signatures", {}).items() if isinstance(v, dict)})
         self.expressions = load_expressions(rd)
+        # Project rules, read by state_struct and peripheral_methods. Previously
+        # read but never assigned: emit.py worked only where a caller happened
+        # to set it by hand.
+        self.project: dict = {}
+        for f in sorted(rd.glob("*.json")):
+            doc = json.loads(f.read_text())
+            if doc.get("family") or doc.get("layer") != "language":
+                for k in ("state_struct", "peripheral_methods"):
+                    if k in doc:
+                        self.project[k] = doc[k]
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
@@ -842,6 +852,52 @@ class Emitter:
             a(line.rstrip())
         a("}")
         return "\n".join(L).rstrip() + "\n"
+
+    def rust_type(self, cs: str) -> str | None:
+        """A C# declared type as Rust, via the stdlib rules. None when unmapped
+        -- reported as a gap rather than guessed."""
+        std = self.language.get("stdlib", {})
+        prim, types = std.get("primitives", {}), std.get("types", {})
+        cs = cs.strip()
+        if cs in prim:
+            return prim[cs]
+        if "<" in cs:
+            outer = cs.split("<")[0].split(".")[-1]
+            inner = cs[cs.index("<") + 1:cs.rindex(">")]
+            dele = std.get("delegates", {})
+            if outer in dele:
+                i = self.rust_type(inner)
+                return dele[outer].format(inner=i) if i else None
+            o, i = types.get(outer), self.rust_type(inner)
+            if o and i:
+                return std.get("generic_form", "{outer}<{inner}>").format(outer=o, inner=i)
+            return None
+        return types.get(cs.split(".")[-1])
+
+    def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
+        """The peripheral's State, from its non-handle instance fields."""
+        spec = self.project.get("state_struct", {})
+        handles = spec.get("handle_types", [])
+        _ = spec.get("requires_storage")  # documented in the rule; applied in SQL
+        out: list[tuple[str, str]] = []
+        gaps: list[str] = []
+        kinds = spec.get("also_state", {}).get("kinds", ["field"])
+        qmarks = ",".join("?" for _ in kinds)
+        for n, dt in self.con.execute(
+                f"SELECT mb.name, mb.declared_type FROM member mb "
+                f"JOIN type t ON t.id=mb.type_id WHERE t.name=? "
+                f"AND mb.kind IN ({qmarks}) "
+                f"AND mb.is_static=0 AND mb.has_storage=1 "
+                f"ORDER BY mb.name", (type_name, *kinds)):
+            if any(h in (dt or "") for h in handles):
+                continue          # a register handle: already in `Fields`
+            rt = spec.get("type_map", {}).get((dt or "").strip()) \
+                or self.rust_type(dt or "")
+            if rt is None:
+                gaps.append(f"state field `{n}`: no Rust mapping for `{dt}`")
+                continue
+            out.append((snake(n), rt))
+        return out, gaps
 
     def field_type(self, name: str) -> str:
         """Flag or value handle, decided by how the field is used."""

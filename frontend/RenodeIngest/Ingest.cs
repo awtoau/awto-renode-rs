@@ -112,12 +112,13 @@ public static class Ingest
                 if (!typeIds.TryGetValue(m.TypeKey, out var typeId)) continue;
                 var id = await ScalarInsert(db, tx,
                     "INSERT INTO member(run_id,type_id,key,kind,name,declared_type," +
-                    "accessibility,is_static,is_readonly) " +
-                    "VALUES ($r,$t,$y,$k,$n,$d,$a,$s,$o) RETURNING id",
+                    "accessibility,is_static,is_readonly,has_storage) " +
+                    "VALUES ($r,$t,$y,$k,$n,$d,$a,$s,$o,$h) RETURNING id",
                     ("$r", runId), ("$t", typeId), ("$y", m.Key),
                     ("$k", m.Kind), ("$n", m.Name),
                     ("$d", m.DeclaredType), ("$a", m.Accessibility),
-                    ("$s", m.IsStatic ? 1 : 0), ("$o", m.IsReadOnly ? 1 : 0));
+                    ("$s", m.IsStatic ? 1 : 0), ("$o", m.IsReadOnly ? 1 : 0),
+                    ("$h", m.HasStorage ? 1 : 0));
                 memberIds[m.Key] = id;
 
                 if (m.Method is not { } mm) continue;

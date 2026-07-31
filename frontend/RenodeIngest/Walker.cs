@@ -117,6 +117,31 @@ public static class Walker
         return result;
     }
 
+    /// Does this property or event have a compiler-generated backing field?
+    ///
+    /// This is the auto-implemented test, and Roslyn already answers it: the
+    /// backing field's AssociatedSymbol points back at the property. Asking the
+    /// symbol table beats inspecting accessor syntax, which gets expression-bodied
+    /// and partial declarations wrong.
+    ///
+    /// It matters because a COMPUTED property stores nothing. `STM32_UART.BaudRate`
+    /// derives from two register fields; emitting it as state would invent storage
+    /// the C# does not have.
+    /// Does this event store a delegate?
+    ///
+    /// The backing-field test does NOT work here: for a field-like event the
+    /// backing field is synthesized during emit and is absent from the source
+    /// symbol's GetMembers(), so every one of the corpus's 9 events reported
+    /// no storage. The signal Roslyn does give is the accessors -- a field-like
+    /// event has implicitly-declared add/remove, a custom one declares them.
+    private static bool IsFieldLikeEvent(IEventSymbol e) =>
+        e.AddMethod is null || e.AddMethod.IsImplicitlyDeclared;
+
+    private static bool HasBackingField(ISymbol member) =>
+        member.ContainingType is { } ct
+        && ct.GetMembers().OfType<IFieldSymbol>().Any(
+            f => SymbolEqualityComparer.Default.Equals(f.AssociatedSymbol, member));
+
     private static MemberRec? BuildMember(ISymbol member, string typeKey)
     {
         switch (member)
@@ -136,6 +161,7 @@ public static class Walker
                     DeclaredType = p.Type.ToDisplayString(),
                     Accessibility = p.DeclaredAccessibility.ToString().ToLowerInvariant(),
                     IsStatic = p.IsStatic, IsReadOnly = p.IsReadOnly,
+                    HasStorage = HasBackingField(p),
                 };
             case IEventSymbol e:
                 return new MemberRec
@@ -144,6 +170,7 @@ public static class Walker
                     DeclaredType = e.Type.ToDisplayString(),
                     Accessibility = e.DeclaredAccessibility.ToString().ToLowerInvariant(),
                     IsStatic = e.IsStatic, IsReadOnly = false,
+                    HasStorage = IsFieldLikeEvent(e),
                 };
             case IMethodSymbol m:
             {
