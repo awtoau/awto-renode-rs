@@ -1,0 +1,16 @@
+[package]
+name = "field-layout-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Throwaway measurement for issue #3 (P1). Not part of the emulator.
+
+[[bin]]
+name = "field-layout"
+path = "src/main.rs"
+
+[profile.release]
+debug = true          # keep symbols so perf can attribute
+lto = true
+codegen-units = 1
