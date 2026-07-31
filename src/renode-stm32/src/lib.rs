@@ -5,3 +5,4 @@
 
 pub mod uart;
 pub mod gpio_port;
+pub mod platform;

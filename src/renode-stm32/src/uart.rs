@@ -58,8 +58,15 @@ struct Fields {
     divider_mantissa: ValueId,
 }
 
+/// C# `STM32_UART(IMachine machine, uint frequency = 8000000)`. This is the
+/// SOURCE default, not platform configuration -- the .repl does not override it
+/// for any UART on this board, so it is not derived from the platform.
+/// It affects only `baud_rate()`, which Renode uses for nothing but the
+/// idle-line timeout.
+pub const DEFAULT_FREQUENCY: u32 = 8_000_000;
+
 pub struct Stm32Uart {
-    bank: Bank,
+    bank: Bank<()>,
     f: Fields,
     receive_fifo: std::collections::VecDeque<u8>,
     frequency: u32,
@@ -71,7 +78,7 @@ pub struct Stm32Uart {
 
 impl Stm32Uart {
     pub fn new(frequency: u32) -> Self {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = Fields::default();
         define_registers(&mut bank, &mut f);
         Self {
@@ -143,7 +150,7 @@ impl Stm32Uart {
         match offset {
             reg::STATUS => {
                 // ORE reads 0 and TXE reads 1, neither backed by a field.
-                let mut v = self.bank.read(offset).unwrap_or(0);
+                let mut v = self.bank.read(offset, &mut ()).unwrap_or(0);
                 v |= 1 << 7; // TXE
                 v as u32
             }
@@ -157,7 +164,7 @@ impl Stm32Uart {
                 self.update();
                 value as u32
             }
-            _ => self.bank.read(offset).unwrap_or(0) as u32,
+            _ => self.bank.read(offset, &mut ()).unwrap_or(0) as u32,
         }
     }
 
@@ -176,19 +183,19 @@ impl Stm32Uart {
                 self.update();
             }
             reg::STATUS | reg::CONTROL1 => {
-                self.bank.write(offset, value as u64);
+                self.bank.write(offset, value as u64, &mut ());
                 // Both registers carry a write callback that ends in Update().
                 self.update();
             }
             _ => {
-                self.bank.write(offset, value as u64);
+                self.bank.write(offset, value as u64, &mut ());
             }
         }
     }
 }
 
 /// C# `DefineRegisters()`. Field-for-field, in source order.
-fn define_registers(bank: &mut Bank, f: &mut Fields) {
+fn define_registers(bank: &mut Bank<()>, f: &mut Fields) {
     bank.define(reg::STATUS, 0xC0)
         .with_tagged_flag(0) // PE
         .with_tagged_flag(1) // FE

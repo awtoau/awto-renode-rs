@@ -13,13 +13,14 @@ impl Replayable for Harness {
     fn reset(&mut self) { self.0.reset() }
 }
 
-/// Reset values from awto_pdm.repl / stm32f4.repl, per port.
+/// Reset values come from the platform description via
+/// `scripts/parse_repl.py`. Retyping them here would create a second source of
+/// truth that drifts silently: change the .repl and these tests would keep
+/// asserting the old values while passing.
 fn port(name: &str) -> Stm32GpioPort {
-    match name {
-        "gpioPortA" => Stm32GpioPort::new(0xA800_0000, 0x0C00_0000, 0x6400_0000),
-        "gpioPortB" => Stm32GpioPort::new(0x0000_0280, 0x0000_00C0, 0x0000_0100),
-        _ => Stm32GpioPort::new(0, 0, 0),
-    }
+    let c = renode_stm32::platform::gpio_port(name)
+        .unwrap_or_else(|| panic!("{name} is not in the platform description"));
+    Stm32GpioPort::new(c.mode_reset, c.output_speed_reset, c.pull_up_pull_down_reset)
 }
 
 #[test]
@@ -100,8 +101,8 @@ mod semantics_the_traces_cannot_see {
 
     #[test]
     fn mode_reset_value_is_applied_two_bits_per_pin() {
-        // gpioPortA: modeResetValue 0xA8000000 -> pins 13,14 = 0b10, pin 15 = 0b10
-        let g = Stm32GpioPort::new(0xA800_0000, 0, 0);
+        let c = renode_stm32::platform::gpio_port("gpioPortA").unwrap();
+        let g = Stm32GpioPort::new(c.mode_reset, 0, 0);
         assert_eq!(g.mode(13), Mode::AlternateFunction);
         assert_eq!(g.mode(14), Mode::AlternateFunction);
         assert_eq!(g.mode(15), Mode::AlternateFunction);

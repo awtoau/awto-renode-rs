@@ -45,9 +45,8 @@ fn usart1_trace_replays() {
         .join("../../oracle/traces/usart1.jsonl.gz");
     let trace = load_trace(&path).expect("usart1 trace should load");
 
-    // 8 MHz is STM32_UART's C# default; the platform does not override it, and
-    // it only affects baud_rate() which nothing in the trace observes.
-    let mut h = Harness(Stm32Uart::new(8_000_000));
+    // The C# constructor default; the .repl does not override it.
+    let mut h = Harness(Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY));
     let report = run(&mut h, &trace);
 
     println!(
@@ -77,7 +76,7 @@ mod semantics_not_covered_by_the_trace {
     /// clear it. A W1C mutant survives the captured trace.
     #[test]
     fn rxne_is_write_zero_to_clear() {
-        let mut u = Stm32Uart::new(8_000_000);
+        let mut u = Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY);
         u.write(CR1, UE_RE);
         u.write_char(b'x');
         assert_ne!(u.read(SR) & (1 << 5), 0, "RXNE should set on receive");
@@ -88,7 +87,7 @@ mod semantics_not_covered_by_the_trace {
     /// C#: reading DR dequeues, and clears RXNE once the FIFO drains.
     #[test]
     fn reading_data_drains_the_fifo() {
-        let mut u = Stm32Uart::new(8_000_000);
+        let mut u = Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY);
         u.write(CR1, UE_RE);
         u.write_char(b'a');
         u.write_char(b'b');
@@ -101,7 +100,7 @@ mod semantics_not_covered_by_the_trace {
     /// C#: a character is dropped when neither UE nor RE is set.
     #[test]
     fn receive_is_dropped_when_disabled() {
-        let mut u = Stm32Uart::new(8_000_000);
+        let mut u = Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY);
         u.write_char(b'x');
         assert_eq!(u.read(SR) & (1 << 5), 0, "disabled UART must drop the character");
     }
@@ -109,7 +108,7 @@ mod semantics_not_covered_by_the_trace {
     /// C#: TXE is assumed always empty, so TXEIE alone raises the IRQ.
     #[test]
     fn txe_interrupt_is_unconditional() {
-        let mut u = Stm32Uart::new(8_000_000);
+        let mut u = Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY);
         assert!(!u.irq());
         u.write(CR1, UE_RE | (1 << 7)); // TXEIE
         assert!(u.irq(), "TXEIE alone must raise IRQ, since TXE is assumed set");
@@ -119,7 +118,7 @@ mod semantics_not_covered_by_the_trace {
     /// fraction bit. Used only for the idle-line timeout.
     #[test]
     fn baud_rate_follows_the_brr_formula() {
-        let mut u = Stm32Uart::new(8_000_000);
+        let mut u = Stm32Uart::new(renode_stm32::uart::DEFAULT_FREQUENCY);
         u.write(0x08, (0x1A << 4) | 0x1); // mantissa 26, fraction 1
         // 8e6 / (8 * 2 * (26 + 1/16)) == 19184. (Written as 19230 first time:
         // the test was wrong, not the port.)

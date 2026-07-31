@@ -80,7 +80,7 @@ struct Fields {
 }
 
 pub struct Stm32GpioPort {
-    bank: Bank,
+    bank: Bank<()>,
     f: Fields,
     /// Pin state. C# `BaseGPIOPort.State` — a bool per pin, held outside the
     /// register file because both IDR and ODR project it.
@@ -92,7 +92,7 @@ pub struct Stm32GpioPort {
 
 impl Stm32GpioPort {
     pub fn new(mode_reset: u32, output_speed_reset: u32, pull_up_pull_down_reset: u32) -> Self {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = Fields::default();
         create_registers(&mut bank, &mut f);
         let mut me = Self {
@@ -159,7 +159,7 @@ impl Stm32GpioPort {
             reg::INPUT_DATA | reg::OUTPUT_DATA => self.state_bits() as u32,
             // BSRR is write-only in the C# (FieldMode.Write), so it reads zero.
             reg::BIT_SET => 0,
-            _ => self.bank.read(offset).unwrap_or(0) as u32,
+            _ => self.bank.read(offset, &mut ()).unwrap_or(0) as u32,
         }
     }
 
@@ -184,14 +184,14 @@ impl Stm32GpioPort {
                 // IDR is read-only; the write is dropped.
             }
             _ => {
-                self.bank.write(offset, value as u64);
+                self.bank.write(offset, value as u64, &mut ());
             }
         }
     }
 }
 
 /// C# `CreateRegisters()`.
-fn create_registers(bank: &mut Bank, f: &mut Fields) {
+fn create_registers(bank: &mut Bank<()>, f: &mut Fields) {
     bank.define(reg::MODE, 0)
         .with_enum_fields(0, 2, NUMBER_OF_PINS as u32, &mut f.mode, FieldMode::READ_WRITE)
         .done();

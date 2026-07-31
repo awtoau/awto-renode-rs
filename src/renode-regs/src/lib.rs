@@ -19,23 +19,26 @@
 //! index-based bank is `Send`, which `Rc` blocks and which N-instance test
 //! parallelism needs.
 //!
-//! # Declared deviation: callbacks live in the peripheral, not the register
+//! # Callbacks
 //!
-//! The C# attaches `valueProviderCallback` / `writeCallback` closures to fields
-//! inside the register definition. Those closures capture and mutate peripheral
-//! state, which in Rust means a closure holding `&mut self` stored inside the
-//! very struct it borrows -- the classic self-referential problem, solvable only
-//! with `Rc<RefCell<>>` or unsafe.
+//! The C# attaches `valueProviderCallback` / `writeCallback` closures to fields.
+//! Those closures capture `this`, and a closure capturing `self` cannot be
+//! stored inside `self` — reaching it needs `&self.bank` while calling it needs
+//! `&mut self`.
 //!
-//! So callbacks are NOT part of this DSL. The bank stores field state; the
-//! peripheral's `read`/`write` dispatch performs the behaviour. Same semantics,
-//! same ordering, different placement.
+//! The closures capture `this` only because C# gives them no other way to reach
+//! the peripheral. **Passing it as a parameter removes the cycle entirely**, so
+//! callbacks live here in the DSL exactly as they do in the C#:
 //!
-//! This is a deliberate, recorded deviation rather than a limitation. It was
-//! surfaced by the second peripheral: `STM32_UART` hid it by hand-coding its
-//! `DR` handling, and `STM32_GPIOPort` -- where most registers carry callbacks
-//! -- made it unavoidable. The rule for callback-bearing fields therefore emits
-//! a dispatch arm, not a combinator argument.
+//! - the bank needs only `&self`, because `Cell` provides interior mutability;
+//! - peripheral state arrives as `&mut S`, a *disjoint* field borrow;
+//! - the field index arrives as a parameter, covering the C# plural
+//!   combinators' captured loop variable (`(idx, _) => mode[idx]`).
+//!
+//! An earlier version of this file claimed the callbacks could not be expressed
+//! and moved them into the peripheral's `read`/`write` dispatch. That was wrong,
+//! and it mattered: it would have made every callback-bearing field a hand-written
+//! dispatch arm rather than a rule, which is most of the corpus.
 //!
 //! # Faithfulness
 //!
@@ -45,6 +48,14 @@
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
+
+/// C# `valueProviderCallback`. Receives the bank (for sibling fields), the
+/// peripheral's state, the field index within a plural group, and the field's
+/// stored value. Returns the value to report.
+pub type ValueProvider<S> = fn(&Bank<S>, &mut S, usize, u64) -> u64;
+
+/// C# `writeCallback`, receiving the old and new values.
+pub type WriteCallback<S> = fn(&Bank<S>, &mut S, usize, u64, u64);
 
 /// How a field responds to reads and writes. Mirrors C# `FieldMode`, which is a
 /// `[Flags]` enum, so the combinations matter as much as the members.
@@ -110,8 +121,7 @@ impl ValueId {
     }
 }
 
-#[derive(Clone)]
-struct FieldDef {
+struct FieldDef<S> {
     offset: u32,
     width: u32,
     mode: FieldMode,
@@ -122,11 +132,15 @@ struct FieldDef {
     /// about writes to bits no field covers, and reproducing that requires
     /// knowing the difference between "reserved" and "not modelled".
     reserved: bool,
+    /// Index within a plural-combinator group; 0 for singular fields.
+    group_index: usize,
+    provider: Option<ValueProvider<S>>,
+    on_write: Option<WriteCallback<S>>,
 }
 
 /// One register: a bit layout over fields in the owning bank's arena.
-pub struct Register {
-    fields: Vec<FieldDef>,
+pub struct Register<S> {
+    fields: Vec<FieldDef<S>>,
     reset: u64,
     /// Bits covered by no field at all. Written values here are dropped, and
     /// Renode logs them — matching that behaviour is part of the trace oracle.
@@ -134,14 +148,22 @@ pub struct Register {
     width_bits: u32,
 }
 
-impl Register {
-    fn value(&self, bank: &Bank) -> u64 {
+impl<S> Register<S> {
+    fn value(&self, bank: &Bank<S>, state: &mut S) -> u64 {
         let mut v = 0u64;
         for f in &self.fields {
-            if f.reserved || !f.mode.contains(FieldMode::READ) {
+            if f.reserved {
                 continue;
             }
-            let raw = bank.slots[f.slot as usize].get();
+            let stored = bank.slots[f.slot as usize].get();
+            // A field with a provider reports whatever the provider returns,
+            // even without FieldMode::READ -- matching the C#, where supplying
+            // a valueProviderCallback is what makes the field readable.
+            let raw = match f.provider {
+                Some(p) => p(bank, state, f.group_index, stored),
+                None if f.mode.contains(FieldMode::READ) => stored,
+                None => continue,
+            };
             v |= (raw & mask(f.width)) << f.offset;
         }
         v
@@ -159,25 +181,25 @@ const fn mask(width: u32) -> u64 {
 
 /// A peripheral's register file: one contiguous arena of field slots plus the
 /// register layouts addressing into it.
-pub struct Bank {
+pub struct Bank<S> {
     slots: Vec<Cell<u64>>,
     resets: Vec<u64>,
-    registers: BTreeMap<u64, Register>,
+    registers: BTreeMap<u64, Register<S>>,
 }
 
-impl Default for Bank {
+impl<S> Default for Bank<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Bank {
+impl<S> Bank<S> {
     pub fn new() -> Self {
         Self { slots: Vec::new(), resets: Vec::new(), registers: BTreeMap::new() }
     }
 
     /// Begin defining the register at `offset`. Mirrors C# `Register.X.Define(this)`.
-    pub fn define(&mut self, offset: u64, reset: u64) -> RegisterBuilder<'_> {
+    pub fn define(&mut self, offset: u64, reset: u64) -> RegisterBuilder<'_, S> {
         RegisterBuilder {
             bank: self,
             offset,
@@ -212,13 +234,14 @@ impl Bank {
         }
     }
 
-    pub fn read(&self, offset: u64) -> Option<u64> {
-        self.registers.get(&offset).map(|r| r.value(self))
+    pub fn read(&self, offset: u64, state: &mut S) -> Option<u64> {
+        let reg = self.registers.get(&offset)?;
+        Some(reg.value(self, state))
     }
 
     /// Returns the bits written that no field covers, so a caller can reproduce
     /// Renode's "unhandled write" warning.
-    pub fn write(&self, offset: u64, value: u64) -> Option<u64> {
+    pub fn write(&self, offset: u64, value: u64, state: &mut S) -> Option<u64> {
         let reg = self.registers.get(&offset)?;
         for f in &reg.fields {
             if f.reserved {
@@ -226,6 +249,7 @@ impl Bank {
             }
             let incoming = (value >> f.offset) & mask(f.width);
             let slot = &self.slots[f.slot as usize];
+            let old = slot.get();
             let mode = f.mode;
             if mode.contains(FieldMode::WRITE) {
                 slot.set(incoming);
@@ -248,6 +272,10 @@ impl Bank {
                     slot.set((slot.get() == 0) as u64);
                 }
             }
+            // C# order: the field is updated, then the write callback fires.
+            if let Some(cb) = f.on_write {
+                cb(self, state, f.group_index, old, incoming);
+            }
         }
         Some(value & reg.unhandled_mask)
     }
@@ -263,16 +291,16 @@ impl Bank {
 /// Fluent register definition. Mirrors the C# combinator chain; each `with_*`
 /// consumes and returns `self`, since Rust has no `out` parameters — the field
 /// handle is returned through the `&mut` binding instead.
-pub struct RegisterBuilder<'a> {
-    bank: &'a mut Bank,
+pub struct RegisterBuilder<'a, S> {
+    bank: &'a mut Bank<S>,
     offset: u64,
     reset: u64,
-    fields: Vec<FieldDef>,
+    fields: Vec<FieldDef<S>>,
     next_bit: u32,
     width_bits: u32,
 }
 
-impl<'a> RegisterBuilder<'a> {
+impl<'a, S> RegisterBuilder<'a, S> {
     fn alloc(&mut self, reset: u64) -> u16 {
         let slot = self.bank.slots.len() as u16;
         self.bank.slots.push(Cell::new(reset));
@@ -281,9 +309,25 @@ impl<'a> RegisterBuilder<'a> {
     }
 
     fn push(&mut self, offset: u32, width: u32, mode: FieldMode, reserved: bool) -> u16 {
+        self.push_cb(offset, width, mode, reserved, 0, None, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_cb(
+        &mut self,
+        offset: u32,
+        width: u32,
+        mode: FieldMode,
+        reserved: bool,
+        group_index: usize,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> u16 {
         let reset = (self.reset >> offset) & mask(width);
         let slot = self.alloc(reset);
-        self.fields.push(FieldDef { offset, width, mode, reset, slot, reserved });
+        self.fields.push(FieldDef {
+            offset, width, mode, reset, slot, reserved, group_index, provider, on_write,
+        });
         self.next_bit = self.next_bit.max(offset + width);
         slot
     }
@@ -352,6 +396,42 @@ impl<'a> RegisterBuilder<'a> {
         self.with_value_fields(pos, width, count, out, mode)
     }
 
+    /// `WithValueField(pos, width, mode, valueProviderCallback:, writeCallback:)`.
+    pub fn with_value_cb(
+        mut self,
+        pos: u32,
+        width: u32,
+        mode: FieldMode,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> Self {
+        self.push_cb(pos, width, mode, false, 0, provider, on_write);
+        self
+    }
+
+    /// `WithEnumFields`/`WithValueFields` with per-index callbacks -- the C#
+    /// `(idx, _) => ...` form. The captured loop variable becomes the
+    /// `group_index` parameter.
+    pub fn with_fields_cb(
+        mut self,
+        pos: u32,
+        width: u32,
+        count: u32,
+        out: &mut ValueId,
+        mode: FieldMode,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> Self {
+        for i in 0..count {
+            let slot =
+                self.push_cb(pos + i * width, width, mode, false, i as usize, provider, on_write);
+            if i == 0 {
+                *out = ValueId(slot);
+            }
+        }
+        self
+    }
+
     /// Finish the register and install it in the bank.
     pub fn done(self) {
         let mut covered = 0u64;
@@ -359,7 +439,7 @@ impl<'a> RegisterBuilder<'a> {
             covered |= mask(f.width) << f.offset;
         }
         let full = mask(self.width_bits);
-        let reg = Register {
+        let reg: Register<S> = Register {
             fields: self.fields,
             reset: self.reset,
             unhandled_mask: full & !covered,
@@ -386,23 +466,23 @@ mod tests {
 
     #[test]
     fn flag_round_trips_through_the_register() {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let (mut a, mut b) = (FlagId::default(), FlagId::default());
         bank.define(0x00, 0)
             .with_flag(2, &mut a, FieldMode::READ_WRITE)
             .with_flag(5, &mut b, FieldMode::READ_WRITE)
             .done();
 
-        bank.write(0x00, 1 << 5);
+        bank.write(0x00, 1 << 5, &mut ());
         assert!(!bank.flag(a));
         assert!(bank.flag(b));
-        assert_eq!(bank.read(0x00), Some(1 << 5));
+        assert_eq!(bank.read(0x00, &mut ()), Some(1 << 5));
     }
 
     #[test]
     fn reset_value_is_applied_per_field() {
         // STM32 USART_SR resets to 0xC0: TC and TXE set.
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let (mut tc, mut txe) = (FlagId::default(), FlagId::default());
         bank.define(0x00, 0xC0)
             .with_flag(6, &mut tc, FieldMode::READ)
@@ -410,64 +490,108 @@ mod tests {
             .done();
         assert!(bank.flag(tc));
         assert!(bank.flag(txe));
-        assert_eq!(bank.read(0x00), Some(0xC0));
+        assert_eq!(bank.read(0x00, &mut ()), Some(0xC0));
     }
 
     #[test]
     fn write_one_to_clear_only_clears_on_one() {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = FlagId::default();
         bank.define(0, 0)
             .with_flag(0, &mut f, FieldMode::READ | FieldMode::WRITE_ONE_TO_CLEAR)
             .done();
         bank.set_flag(f, true);
-        bank.write(0, 0);
+        bank.write(0, 0, &mut ());
         assert!(bank.flag(f), "writing 0 must not clear a W1C flag");
-        bank.write(0, 1);
+        bank.write(0, 1, &mut ());
         assert!(!bank.flag(f));
     }
 
     #[test]
     fn reserved_bits_read_as_zero_and_absorb_writes() {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = FlagId::default();
         bank.define(0, 0)
             .with_flag(0, &mut f, FieldMode::READ_WRITE)
             .with_reserved(1, 31)
             .done();
         // Reserved bits are covered, so nothing is reported unhandled.
-        assert_eq!(bank.write(0, 0xFFFF_FFFF), Some(0));
-        assert_eq!(bank.read(0), Some(1));
+        assert_eq!(bank.write(0, 0xFFFF_FFFF, &mut ()), Some(0));
+        assert_eq!(bank.read(0, &mut ()), Some(1));
     }
 
     #[test]
     fn writes_to_uncovered_bits_are_reported() {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = FlagId::default();
         bank.define(0, 0).with_flag(0, &mut f, FieldMode::READ_WRITE).done();
         // Bits 1..31 are covered by no field: Renode warns about these, so the
         // mask is returned rather than silently dropped.
-        assert_eq!(bank.write(0, 0b110), Some(0b110));
+        assert_eq!(bank.write(0, 0b110, &mut ()), Some(0b110));
     }
 
     #[test]
     fn value_fields_allocate_consecutive_handles() {
         // GPIOPort's MODER is 16 two-bit fields; indexing pin N must be
         // first_handle + N, which is what makes index handles pay off.
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut first = ValueId::default();
         bank.define(0, 0)
             .with_value_fields(0, 2, 16, &mut first, FieldMode::READ_WRITE)
             .done();
-        bank.write(0, 0b11 << 4); // pin 2 = 0b11
+        bank.write(0, 0b11 << 4, &mut ()); // pin 2 = 0b11
         assert_eq!(bank.value(first.offset(2)), 0b11);
         assert_eq!(bank.value(first.offset(0)), 0);
-        assert_eq!(bank.read(0), Some(0b11 << 4));
+        assert_eq!(bank.read(0, &mut ()), Some(0b11 << 4));
+    }
+
+    /// Callbacks live in the DSL, receiving the bank and peripheral state as
+    /// parameters rather than capturing them. This is the C# `DR` shape:
+    /// a read that mutates peripheral state AND sibling register fields.
+    #[test]
+    fn value_provider_reads_peripheral_state_and_mutates_siblings() {
+        struct Fifo { bytes: Vec<u8> }
+        fn provider(bank: &Bank<Fifo>, st: &mut Fifo, _i: usize, _cur: u64) -> u64 {
+            // Mutates a sibling field through &Bank -- Cell makes this legal.
+            bank.slots[0].set(0);
+            st.bytes.pop().unwrap_or(0) as u64
+        }
+        let mut bank: Bank<Fifo> = Bank::new();
+        let mut flag = FlagId::default();
+        bank.define(0x00, 1).with_flag(0, &mut flag, FieldMode::READ).done();
+        bank.define(0x04, 0)
+            .with_value_cb(0, 9, FieldMode::READ, Some(provider), None)
+            .with_reserved(9, 23)
+            .done();
+
+        let mut st = Fifo { bytes: vec![b'a', b'b'] };
+        assert!(bank.flag(flag), "sibling starts set");
+        assert_eq!(bank.read(0x04, &mut st), Some(b'b' as u64));
+        assert!(!bank.flag(flag), "provider cleared the sibling field");
+        assert_eq!(bank.read(0x04, &mut st), Some(b'a' as u64));
+    }
+
+    /// The C# plural form `(idx, _) => mode[idx]` captures a loop variable;
+    /// here that arrives as the group index.
+    #[test]
+    fn plural_callbacks_receive_their_field_index() {
+        struct Pins { seen: Vec<usize> }
+        fn on_write(_b: &Bank<Pins>, st: &mut Pins, idx: usize, _old: u64, _new: u64) {
+            st.seen.push(idx);
+        }
+        let mut bank: Bank<Pins> = Bank::new();
+        let mut first = ValueId::default();
+        bank.define(0, 0)
+            .with_fields_cb(0, 2, 4, &mut first, FieldMode::READ_WRITE, None, Some(on_write))
+            .done();
+        let mut st = Pins { seen: vec![] };
+        bank.write(0, 0, &mut st);
+        assert_eq!(st.seen, vec![0, 1, 2, 3], "each field sees its own index");
     }
 
     #[test]
     fn reset_restores_every_field() {
-        let mut bank = Bank::new();
+        let mut bank: Bank<()> = Bank::new();
         let mut f = FlagId::default();
         bank.define(0, 0x1).with_flag(0, &mut f, FieldMode::READ_WRITE).done();
         bank.set_flag(f, false);

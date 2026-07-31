@@ -1,0 +1,496 @@
+{
+  "source": "awto_pdm.repl + inherited stm32f4.repl",
+  "peripherals": {
+    "adc1": {
+      "type": "Analog.STM32_ADC",
+      "address": 1073815552,
+      "params": {},
+      "detached": false
+    },
+    "bitbandPeripherals": {
+      "type": "Miscellaneous.BitBanding",
+      "address": 1107296256,
+      "params": {
+        "peripheralBase": "0x40000000"
+      },
+      "detached": false
+    },
+    "bitbandSram": {
+      "type": "Miscellaneous.BitBanding",
+      "address": 570425344,
+      "params": {
+        "peripheralBase": "0x20000000"
+      },
+      "detached": false
+    },
+    "bkpsram": {
+      "type": "Memory.MappedMemory",
+      "address": 1073889280,
+      "params": {
+        "size": "0x1000"
+      },
+      "detached": false
+    },
+    "can1": {
+      "type": "CAN.STMCAN",
+      "address": 1073767424,
+      "params": {},
+      "detached": false
+    },
+    "can2": {
+      "type": "CAN.STMCAN",
+      "address": 1073768448,
+      "params": {},
+      "detached": false
+    },
+    "ccmram": {
+      "type": "Memory.MappedMemory",
+      "address": 268435456,
+      "params": {
+        "size": "0x10000"
+      },
+      "detached": false
+    },
+    "cpu": {
+      "type": "CPU.CortexM",
+      "address": null,
+      "params": {
+        "cpuType": "\"cortex-m4f\"",
+        "nvic": "nvic"
+      },
+      "detached": false
+    },
+    "crc_f4": {
+      "type": "CRC.AwtoF4Crc",
+      "address": 1073885184,
+      "params": {},
+      "detached": false
+    },
+    "dma1": {
+      "type": "DMA.STM32DMA",
+      "address": 1073897472,
+      "params": {},
+      "detached": false
+    },
+    "dma2": {
+      "type": "DMA.STM32DMA",
+      "address": 1073898496,
+      "params": {},
+      "detached": false
+    },
+    "ethernet": {
+      "type": "Network.SynopsysEthernetMAC",
+      "address": 1073905664,
+      "params": {},
+      "detached": false
+    },
+    "exti": {
+      "type": "IRQControllers.STM32F4_EXTI",
+      "address": 1073822720,
+      "params": {
+        "numberOfOutputLines": "24"
+      },
+      "detached": false
+    },
+    "flash": {
+      "type": "flash",
+      "address": 134217728,
+      "params": {
+        "size": "0x200000"
+      },
+      "detached": false
+    },
+    "flash_ctrl": {
+      "type": "MTD.AwtoF427FlashController",
+      "address": null,
+      "params": {},
+      "detached": false
+    },
+    "fsmcBank1": {
+      "type": "Memory.MappedMemory",
+      "address": 1610612736,
+      "params": {
+        "size": "0x10000000"
+      },
+      "detached": false
+    },
+    "gpioPortA": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073872896,
+      "params": {
+        "modeResetValue": "0xA8000000",
+        "outputSpeedResetValue": "0x0C000000",
+        "pullUpPullDownResetValue": "0x64000000",
+        "numberOfAFs": "16",
+        "invertedAFPins": "[[5, 3], [7, 1, 3]]"
+      },
+      "detached": false
+    },
+    "gpioPortB": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073873920,
+      "params": {
+        "modeResetValue": "0x00000280",
+        "outputSpeedResetValue": "0x000000C0",
+        "pullUpPullDownResetValue": "0x00000100",
+        "numberOfAFs": "16",
+        "invertedAFPins": "[[0, 1, 3], [1, 1, 3], [13, 1], [14, 1, 3], [15, 1, 3]]"
+      },
+      "detached": false
+    },
+    "gpioPortC": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073874944,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortD": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073875968,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortE": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073876992,
+      "params": {
+        "numberOfAFs": "16",
+        "invertedAFPins": "[[8, 1], [10, 1], [12, 1]]"
+      },
+      "detached": false
+    },
+    "gpioPortF": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073878016,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortG": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073879040,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortH": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073880064,
+      "params": {
+        "numberOfAFs": "16",
+        "invertedAFPins": "[[13, 3], [14, 3], [15, 3]]"
+      },
+      "detached": false
+    },
+    "gpioPortI": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073881088,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortJ": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073882112,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "gpioPortK": {
+      "type": "GPIOPort.STM32_GPIOPort",
+      "address": 1073883136,
+      "params": {
+        "numberOfAFs": "16"
+      },
+      "detached": false
+    },
+    "i2c1": {
+      "type": "I2C.STM32F1_I2C",
+      "address": 1073763328,
+      "params": {},
+      "detached": false
+    },
+    "i2c2": {
+      "type": "I2C.STM32F1_I2C",
+      "address": 1073764352,
+      "params": {},
+      "detached": false
+    },
+    "i2c3": {
+      "type": "I2C.STM32F1_I2C",
+      "address": 1073765376,
+      "params": {},
+      "detached": false
+    },
+    "iwdg": {
+      "type": "Timers.STM32_IndependentWatchdog",
+      "address": 1073754112,
+      "params": {
+        "frequency": "32000",
+        "windowOption": "false",
+        "defaultPrescaler": "0x4"
+      },
+      "detached": false
+    },
+    "master": {
+      "type": "can1",
+      "address": null,
+      "params": {}
+    },
+    "nvic": {
+      "type": "IRQControllers.NVIC",
+      "address": 3758153728,
+      "params": {
+        "priorityMask": "0xF0",
+        "systickFrequency": "168000000"
+      },
+      "detached": false
+    },
+    "pwr": {
+      "type": "Miscellaneous.STM32_PWR",
+      "address": 1073770496,
+      "params": {},
+      "detached": false
+    },
+    "rcc": {
+      "type": "Miscellaneous.STM32F4_RCC",
+      "address": 1073887232,
+      "params": {
+        "rtcPeripheral": "rtc"
+      },
+      "detached": false
+    },
+    "rng": {
+      "type": "Miscellaneous.STM32_RNG",
+      "address": 1342572544,
+      "params": {
+        "series": "STM32Series.F4"
+      },
+      "detached": false
+    },
+    "rom1": {
+      "type": "Memory.MappedMemory",
+      "address": 536805376,
+      "params": {
+        "size": "0xC000"
+      },
+      "detached": false
+    },
+    "rom2": {
+      "type": "Memory.MappedMemory",
+      "address": 536855552,
+      "params": {
+        "size": "0x3C00"
+      },
+      "detached": false
+    },
+    "rtc": {
+      "type": "Timers.STM32F4_RTC",
+      "address": 1073752064,
+      "params": {},
+      "detached": false
+    },
+    "spi1": {
+      "type": "SPI.STM32SPI",
+      "address": 1073819648,
+      "params": {
+        "series": "STM32Series.F4"
+      },
+      "detached": false
+    },
+    "spi2": {
+      "type": "SPI.STM32SPI",
+      "address": 1073756160,
+      "params": {
+        "series": "STM32Series.F4"
+      },
+      "detached": false
+    },
+    "spi3": {
+      "type": "SPI.STM32SPI",
+      "address": 1073757184,
+      "params": {
+        "series": "STM32Series.F4"
+      },
+      "detached": false
+    },
+    "spi4": {
+      "type": "SPI.STM32SPI",
+      "address": 1073820672,
+      "params": {
+        "series": "STM32Series.F4"
+      },
+      "detached": false
+    },
+    "sram": {
+      "type": "Memory.MappedMemory",
+      "address": 536870912,
+      "params": {
+        "size": "0x00040000"
+      },
+      "detached": false
+    },
+    "syscfg": {
+      "type": "Miscellaneous.STM32_SYSCFG",
+      "address": 1073821696,
+      "params": {},
+      "detached": false
+    },
+    "timer1": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073807360,
+      "params": {
+        "frequency": "168000000"
+      },
+      "detached": false
+    },
+    "timer10": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073824768,
+      "params": {
+        "frequency": "168000000"
+      },
+      "detached": false
+    },
+    "timer11": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073825792,
+      "params": {
+        "frequency": "168000000"
+      },
+      "detached": false
+    },
+    "timer12": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073747968,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer13": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073748992,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer14": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073750016,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer2": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073741824,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer3": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073742848,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer4": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073743872,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer5": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073744896,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer6": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073745920,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer7": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073746944,
+      "params": {
+        "frequency": "84000000"
+      },
+      "detached": false
+    },
+    "timer8": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073808384,
+      "params": {
+        "frequency": "168000000"
+      },
+      "detached": false
+    },
+    "timer9": {
+      "type": "Timers.STM32_Timer",
+      "address": 1073823744,
+      "params": {
+        "frequency": "168000000"
+      },
+      "detached": false
+    },
+    "uart4": {
+      "type": "UART.STM32_UART",
+      "address": 1073761280,
+      "params": {},
+      "detached": false
+    },
+    "uart5": {
+      "type": "UART.STM32_UART",
+      "address": 1073762304,
+      "params": {},
+      "detached": false
+    },
+    "uart8": {
+      "type": "UART.STM32_UART",
+      "address": 1073773568,
+      "params": {},
+      "detached": false
+    },
+    "usart1": {
+      "type": "UART.STM32_UART",
+      "address": 1073811456,
+      "params": {},
+      "detached": false
+    },
+    "usart2": {
+      "type": "UART.STM32_UART",
+      "address": 1073759232,
+      "params": {},
+      "detached": false
+    },
+    "usart3": {
+      "type": "UART.STM32_UART",
+      "address": 1073760256,
+      "params": {},
+      "detached": false
+    }
+  }
+}

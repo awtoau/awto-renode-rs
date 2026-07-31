@@ -35,14 +35,19 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Peripherals to trace. Only those the Rust port will implement -- tracing
-# everything would bloat the capture and slow the boot for no benefit.
-PERIPHERALS = [
-    "usart1", "uart8", "can1", "timer2", "timer5", "timer7",
-    "rcc", "pwr", "crc_f4", "exti", "syscfg", "rtc", "iwdg", "rng",
-    "dma1", "dma2", "spi2", "spi3", "adc1", "flash_ctrl",
-    "gpioPortA", "gpioPortB", "gpioPortC", "gpioPortE", "nvic",
-]
+# Peripherals come from the platform description via scripts/parse_repl.py.
+# Hardcoding the list here would create a second source of truth: add a
+# peripheral to the .repl and the capture would silently keep missing it.
+def peripherals(root: Path) -> list[str]:
+    plat = root / "docs" / "status" / "platform.json"
+    if not plat.exists():
+        raise SystemExit("no docs/status/platform.json -- run scripts/parse_repl.py")
+    data = json.loads(plat.read_text())
+    # Memories and bit-band regions are not register peripherals and produce no
+    # useful access trace.
+    skip_types = ("Memory.MappedMemory", "Miscellaneous.BitBanding")
+    return [name for name, v in sorted(data["peripherals"].items())
+            if v.get("type") and not v["type"].startswith(skip_types)]
 
 # Emitted by Read/WriteLoggingWrapper, after DecorateWithCPUNameAndPC:
 #
@@ -106,12 +111,14 @@ def main() -> int:
     subprocess.run([sys.executable, "scripts/renode/gen_images.py"],
                    cwd=fw, check=True, capture_output=True)
 
-    enable = "; ".join(f"sysbus LogPeripheralAccess {p}" for p in PERIPHERALS)
+    periphs = peripherals(root)
+    log.info("tracing %d peripherals from the platform description", len(periphs))
+    enable = "; ".join(f"sysbus LogPeripheralAccess {p}" for p in periphs)
     script = (f'include @renode/scripts/pdm_boot.resc; {enable}; '
               f'emulation RunFor "{args.run_for}"; quit')
 
     raw = root / "tmp" / "trace_capture.log"
-    log.info("booting with access logging on %d peripherals (this is slow)", len(PERIPHERALS))
+    log.info("booting with access logging (this is slow)")
     started = time.monotonic()
     with raw.open("wb") as out:
         subprocess.run([str(renode), "-P", "-1", "--disable-xwt", "--plain", "-e", script],
@@ -121,7 +128,7 @@ def main() -> int:
     log.info("boot finished in %.0fs", wall)
 
     # --- parse ---------------------------------------------------------------
-    traces: dict[str, list[dict]] = {p: [] for p in PERIPHERALS}
+    traces: dict[str, list[dict]] = {p: [] for p in periphs}
     seen_lines = matched = 0
     with raw.open(errors="ignore") as fh:
         for line in fh:
