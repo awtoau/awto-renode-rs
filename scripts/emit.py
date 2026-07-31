@@ -93,6 +93,22 @@ def load_rules(rules_dir: Path) -> list[dict]:
     return rules
 
 
+def load_register_forms(rules_dir: Path) -> list[dict]:
+    """How to FIND a register, also data.
+
+    Renode uses at least two idioms: the `Register.X.Define(this)` extension and
+    a `Dictionary<long, DoubleWordRegister>` initialiser. Hardcoding the first
+    made the converter silently emit zero registers for every peripheral using
+    the second -- the same failure as hardcoding combinator names, one level
+    down."""
+    forms: list[dict] = []
+    if not rules_dir.exists():
+        return forms
+    for f in sorted(rules_dir.glob("*.json")):
+        forms.extend(json.loads(f.read_text()).get("register_forms", []))
+    return forms
+
+
 def to_const(name: str) -> str:
     """`Control1` -> `CONTROL1`, `BaudRate` -> `BAUD_RATE`."""
     return snake(name).upper()
@@ -121,6 +137,7 @@ class Emitter:
         self.gaps: list[str] = []
         self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
         self._flag_fields: set[str] = set()
+        self.forms = load_register_forms(rules_dir or repo_root() / "rulesdb" / "rules")
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
@@ -264,13 +281,71 @@ class Emitter:
             node = cid
         return None, None
 
+    def find_registers(self, method_id: int) -> list[tuple[str | None, int, str, int]]:
+        """(name, offset, reset, chain span start) per register, via the forms."""
+        found: list[tuple[str | None, int, str, int]] = []
+        for oid, symbol, span in self.con.execute(
+                "SELECT id, symbol, span_start FROM operation WHERE method_id=? "
+                "AND kind='Invocation' AND symbol IS NOT NULL ORDER BY span_start",
+                (method_id,)):
+            for form in self.forms:
+                if form["symbol_contains"] not in symbol:
+                    continue
+                b = self.bind(oid, symbol)
+                if form["offset_from"] == "$first_argument_enum":
+                    name, offset = self.enum_offset(oid)
+                else:
+                    name, offset = self.arg_enum(oid, form["offset_from"])
+                if offset is None:
+                    break
+                reset = "0"
+                if form.get("reset_from"):
+                    v = b.get(form["reset_from"])
+                    if v and v[2] is not None:
+                        reset = v[2]
+                if form["chain_from"] == "$self":
+                    chain_span = span
+                else:
+                    chain_span = self.arg_span(oid, form["chain_from"])
+                    if chain_span is None:
+                        break
+                found.append((name, offset, reset, chain_span))
+                break
+        return found
+
+    def arg_enum(self, oid: int, param: str) -> tuple[str | None, int | None]:
+        """Enum member passed as a NAMED parameter, e.g. the dictionary key."""
+        for aid, kind, sym, _c, _t in self.children(oid):
+            if kind != "Argument" or not sym or sym.split()[-1] != param:
+                continue
+            node = aid
+            for _ in range(4):
+                kids = self.children(node)
+                if not kids:
+                    break
+                cid, ckind, csym, cconst, _ct = kids[0]
+                if ckind == "FieldReference" and cconst is not None:
+                    return (csym.split(".")[-1] if csym else None), int(cconst)
+                node = cid
+        return None, None
+
+    def arg_span(self, oid: int, param: str) -> int | None:
+        """Span start of a named argument's expression -- the chain root."""
+        for aid, kind, sym, _c, _t in self.children(oid):
+            if kind != "Argument" or not sym or sym.split()[-1] != param:
+                continue
+            kids = self.con.execute(
+                "SELECT span_start FROM operation WHERE parent_id=? ORDER BY ordinal LIMIT 1",
+                (aid,)).fetchone()
+            return kids[0] if kids else None
+        return None
+
     def emit_registers(self, type_name: str, method_name: str) -> tuple[list[str], list[str], list[str]]:
         """Emit a whole register-layout function.
 
-        Returns (register statements, field names, gaps). Calls are grouped into
-        registers by SPAN START: every call in a fluent chain shares the start of
-        the chain's root expression, which is what associates a combinator with
-        its `Define`."""
+        Registers are located by the FORMS in rulesdb/rules/; combinator calls
+        are associated with one by SPAN START, since every call in a fluent chain
+        shares the start of the chain's root expression."""
         row = self.con.execute("""
             SELECT m.member_id FROM method m
             JOIN member mb ON mb.id = m.member_id
@@ -291,23 +366,12 @@ class Emitter:
         fields: list[str] = []
         gaps: list[str] = []
 
-        for start in sorted(chains):
-            calls = sorted(chains[start])
-            define = next((c for c in calls if ".Define(" in c[2]), None)
-            if define is None:
-                continue
-            _e, define_oid, define_sym = define
-            name, offset = self.enum_offset(define_oid)
-            if offset is None:
-                gaps.append(f"register at span {start}: offset not resolvable")
-                continue
-            b = self.bind(define_oid, define_sym)
-            reset = b.get("resetValue", (None, None, None))[2] or "0"
-
-            self.gaps = []
+        for name, offset, reset, chain_span in sorted(
+                self.find_registers(method_id), key=lambda r: r[1]):
             body: list[str] = []
-            for _end, oid, symbol in calls:
-                if oid == define_oid:
+            self.gaps = []
+            for _end, oid, symbol in sorted(chains.get(chain_span, [])):
+                if self.combinator(symbol) is None:
                     continue
                 line = self.emit_call(oid, symbol)
                 gaps.extend(f"{name}: {g}" for g in self.gaps)
@@ -320,7 +384,8 @@ class Emitter:
                     if self.combinator(symbol) == "WithFlag":
                         self._flag_fields.add(f)
                 body.append(line)
-
+            if not body:
+                continue
             const_name = to_const(name or f"REG_{offset:X}")
             stmts.append(f"    bank.define(reg::{const_name}, {reset})")
             stmts.extend(f"        {l}" for l in body)
@@ -381,7 +446,12 @@ class Emitter:
         return "FlagId" if name in self._flag_fields else "ValueId"
 
     def register_offsets(self, type_name: str, method_name: str) -> list[tuple[str, int]]:
-        """Offsets, recovered from the enum member each `Define` references."""
+        """Offsets via the same discovery path as the layout.
+
+        This previously had its OWN `.Define(` search, so when register discovery
+        became rule-driven the layout found six registers and the offset module
+        found none -- generating code that referenced constants it had not
+        emitted. One discovery path, used by both."""
         row = self.con.execute("""
             SELECT m.member_id FROM method m
             JOIN member mb ON mb.id = m.member_id
@@ -389,13 +459,7 @@ class Emitter:
             WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
         if not row:
             return []
-        seen: dict[str, int] = {}
-        for (oid,) in self.con.execute(
-                "SELECT id FROM operation WHERE method_id=? AND kind='Invocation' "
-                "AND symbol LIKE '%.Define(%' ORDER BY span_start", (row[0],)):
-            name, off = self.enum_offset(oid)
-            if name and off is not None:
-                seen[name] = off
+        seen = {name: off for name, off, _r, _s in self.find_registers(row[0]) if name}
         return sorted(seen.items(), key=lambda kv: kv[1])
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:

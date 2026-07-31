@@ -52,7 +52,9 @@
       "matches": "WithValueFields|WithEnumFields",
       "when": "field",
       "emit": ".with_fields_cb({pos}, {width}, {count}, &mut f.{field}, {mode}, None, None)",
-      "bindings": { "count": "count" }
+      "bindings": {
+        "count": "count"
+      }
     },
     {
       "name": "WITH_TAGGED_FLAG",
@@ -75,6 +77,24 @@
       "emit": null,
       "gap": "register-level callback: dispatch, not layout",
       "note": "Deliberately emits nothing. These carry behaviour, not register shape, and a plausible-looking guess would leave the oracle checking generated guesswork."
+    }
+  ],
+  "register_forms": [
+    {
+      "name": "DEFINE_EXTENSION",
+      "note": "`Register.Status.Define(this, 0xC0, name: \"USART_SR\")` -- the offset is the enum member passed as the first argument, which Roslyn records as a constant.",
+      "symbol_contains": ".Define(",
+      "offset_from": "$first_argument_enum",
+      "reset_from": "resetValue",
+      "chain_from": "$self"
+    },
+    {
+      "name": "DICTIONARY_ADD",
+      "note": "`{(long)Registers.Mode, new DoubleWordRegister(this).With...}` -- a dictionary initialiser, which desugars to Dictionary.Add(key, value). Offset is the key; the combinator chain is inside the value.",
+      "symbol_contains": "Dictionary<TKey, TValue>.Add",
+      "offset_from": "key",
+      "reset_from": null,
+      "chain_from": "value"
     }
   ]
 }

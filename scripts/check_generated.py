@@ -51,13 +51,16 @@ GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/uart_registers.rs",
      ["scripts/emit.py", "--type", "STM32_UART", "--method", "DefineRegisters",
       "--file", "uart_registers"]),
+    ("src/renode-stm32/src/gpio_registers.rs",
+     ["scripts/emit.py", "--type", "STM32_GPIOPort", "--method", "CreateRegisters",
+      "--file", "gpio_registers"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is
 # the outstanding debt, and the scorecard reports it.
 MUST_BECOME_GENERATED = [
     "src/renode-stm32/src/uart.rs        (behaviour only; layout is generated)",
-    "src/renode-stm32/src/gpio_port.rs   (layout still hand-written)",
+    "src/renode-stm32/src/gpio_port.rs   (behaviour only; layout is generated)",
 ]
 
 

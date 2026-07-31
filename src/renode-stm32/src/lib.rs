@@ -7,3 +7,4 @@ pub mod uart;
 pub mod gpio_port;
 pub mod platform;
 pub mod uart_registers;
+pub mod gpio_registers;
