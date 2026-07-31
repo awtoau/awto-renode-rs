@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T12:42:38+10:00 from `7656c71` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T12:54:55+10:00 from `fe63d50` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -19,7 +19,7 @@ averaged 1.87 validation instances each.
 |---|---:|---:|
 | methods ingested | 1,102 | — |
 | operation nodes | 65,775 | — |
-| pattern clusters | 0 | — |
+| pattern clusters | 11,279 | — |
 | stubbed | 0 | 0.0% |
 | translated | 0 | 0.0% |
 | verified | 0 | 0.0% |
@@ -32,7 +32,7 @@ Genuine stop points. A failed gate means stop, not retry.
 | gate | status | evidence |
 |---|---|---|
 | **P1** — is the Rust MMIO path faster? | PASS | [docs/perf-spike.md](docs/perf-spike.md) |
-| **R3** — does the corpus collapse into clusters? | — | blocked on R2 |
+| **R3** — does the corpus collapse into clusters? | done | [docs/census.md](docs/census.md) |
 | **10** — do one peripheral's rules cover an unseen second? | — | blocked on R6 |
 
 ## Oracle tiers

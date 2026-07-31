@@ -198,11 +198,29 @@ CREATE INDEX IF NOT EXISTS idx_fp ON method_fingerprint(fingerprint);
 CREATE TABLE IF NOT EXISTS pattern_cluster (
     id           INTEGER PRIMARY KEY,
     run_id       INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
+    -- 'method'    whole-method shape: how many distinct method shapes exist
+    -- 'statement' statement-level idiom: what rules actually match against
+    granularity  TEXT    NOT NULL,
     fingerprint  TEXT    NOT NULL,
     member_count INTEGER NOT NULL,
+    node_count   INTEGER NOT NULL,   -- AST size of the exemplar
     exemplar_id  INTEGER NOT NULL REFERENCES method(member_id),
-    UNIQUE (run_id, fingerprint)
+    exemplar_op  INTEGER REFERENCES operation(id),   -- set for statement clusters
+    UNIQUE (run_id, granularity, fingerprint),
+    CHECK (granularity IN ('method','statement'))
 );
+CREATE INDEX IF NOT EXISTS idx_cluster_size
+    ON pattern_cluster(run_id, granularity, member_count DESC);
+
+-- Which cluster each operation belongs to, so a rule proposed from an exemplar
+-- can be applied to every sibling by query rather than by search.
+CREATE TABLE IF NOT EXISTS cluster_member (
+    cluster_id   INTEGER NOT NULL REFERENCES pattern_cluster(id) ON DELETE CASCADE,
+    operation_id INTEGER REFERENCES operation(id),
+    method_id    INTEGER REFERENCES method(member_id),
+    PRIMARY KEY (cluster_id, operation_id, method_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cluster_member_op ON cluster_member(operation_id);
 
 -- The work queue: leaves first, simplest first within each level. Ordering rule
 -- DISCOVERY only -- rule APPLICATION is order-independent and fully parallel.
