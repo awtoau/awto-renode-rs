@@ -22,7 +22,7 @@ Draft only — nothing filed yet. Reviewed and approved text becomes the issue
 bodies verbatim. Ordering is the intended dependency order; `blocked by` is
 noted where it is not simply the previous issue.
 
-Labels used: `phase-0` … `phase-5`, `oracle`, `rules`, `decision`, `frontend`,
+Labels used: `phase-0` … `phase-7`, `oracle`, `rules`, `decision`, `frontend`,
 `peripheral`, `gate`, `epic`.
 
 ---
@@ -49,8 +49,14 @@ one-off patch. The rule DB is the product; the emulator is the proof.
 - tlib (the CPU) is 227k lines of **C**, not C#. We FFI to it unchanged — that
   is also what makes the lockstep oracle exact.
 
-**Phase gates.** #8 (does rule leverage exist?) and #11 (does the census support
-the thesis at corpus scale?) are genuine stop points, not milestones.
+**Phase gates**, all genuine stop points rather than milestones: **P1**
+(is the Rust MMIO path actually faster?), **R3** (does the corpus collapse into
+clusters?) and **10** (does one peripheral's rules cover an unseen second one?).
+
+**Method discipline.** Tooling and corpus ingestion come *before* translation.
+`linux-rs` skipped that ordering and its rule track reached 1.87 validation
+instances per rule with an empty `functions` table; the track that did ingest at
+corpus scale worked. See [docs/rulesdb-design.md](../docs/rulesdb-design.md).
 
 ---
 
@@ -447,13 +453,157 @@ engines — GitHub alone misses a lot.
 
 ---
 
-# Phase 1 — the register DSL and one peripheral by hand
+# Phase 1 — the corpus database
+
+Exit: the whole corpus is queryable, clustered, and ordered into a work queue.
+
+> **Tooling before translation, and the ordering is evidenced rather than
+> stylistic.** `linux-rs` skipped its own census gate; its rule track reached 31
+> rules across 58 validation instances — **1.87 instances per rule** — with the
+> `functions` and `statement_families` tables at **0 rows**. Its other track,
+> which did ingest at corpus scale (897,814 rows), worked as designed. With no
+> corpus in the DB, "validate this rule against all occurrences" is not a runnable
+> operation, so rules degrade to patches and per-file review becomes the only
+> remaining quality mechanism. Full analysis and schema:
+> [docs/rulesdb-design.md](rulesdb-design.md).
+
+## R1 — Corpus database schema and the Roslyn ingest tool
+
+`phase-1` `frontend` `rules`
+
+Build the C# host that walks Renode's F427 cut with `Microsoft.CodeAnalysis` and
+writes the corpus into SQLite. Schema is specified in
+[docs/rulesdb-design.md](rulesdb-design.md).
+
+**Why `IOperation` rather than the syntax tree.** It is a lowered,
+language-agnostic tree with `foreach`, `using`, `lock`, LINQ query syntax, object
+initialisers and pattern matching already desugared, carrying full type
+resolution and nullability. It is already the typed IR c2rust had to hand-build —
+which is why forking c2rust for C# would be wasted effort.
+
+**Tasks**
+- Implement the schema: `corpus_run`, `file`, `type`, `type_implements`,
+  `member`, `method`, `parameter`, `local`, `operation`, `call_site`,
+  `field_access`.
+- One `operation` row per `IOperation` node, with parent, ordinal, kind, resolved
+  type, resolved symbol and source span.
+- `call_site` records one row per candidate for virtual dispatch, flagged.
+- **Every row carries `run_id`.** A run is one ingest of one Renode commit, so
+  regressions are attributable to a rule version rather than re-reviewed wholesale.
+- Round-trip checks: node counts against Roslyn, spans re-resolve to source.
+
+**Exit** — schema committed; ingest runs clean over the F427 cut.
+
+## R2 — Ingest the whole corpus, and derive the analysis
+
+`phase-1` `rules`
+
+Blocked by #R1. **The whole cut, not a hand-picked subset** — cherry-picking is
+how the leverage measurement becomes unavailable.
+
+**Tasks**
+- Ingest every in-corpus file: ~22 peripherals, the ARM core bindings
+  (`NVIC`, `CortexM`), the register DSL, sysbus, time framework, custom
+  peripherals.
+- Derive `method_metrics`: AST nodes, cyclomatic, depth, locals, calls, field
+  writes, `is_leaf`.
+- Derive `is_pure` as a fixpoint over the call graph — no field writes, no impure
+  callees, no I/O. Pure leaves are the cheapest things to test exhaustively and
+  the best source of general rules.
+- Build `translation_order`: topological sort of the call graph, leaves first,
+  ranked by `ast_nodes` within each level. **This is the work queue.**
+
+**Exit** — corpus fully ingested; `translation_order` populated; row counts
+published in `docs/census.md`.
+
+## R3 — Fingerprint, cluster, and GATE the collapse
+
+`phase-1` `gate` `rules`
+
+Blocked by #R2. **A genuine stop point** — and the gate `linux-rs` skipped.
+
+Normalise (names, typedef aliases, commutative reordering), fingerprint every
+method, cluster by fingerprint.
+
+**Deliverable** — *the F427 corpus by pattern*: how many clusters cover 50% /
+80% / 95% of methods, the size and shape of the unmatched tail, and the split
+between the DSL-style and legacy populations. The density measurement (RCC 240
+`With*` calls in 404 lines versus STMCAN 1 in 1957) predicts a sharp bimodal
+split; if the census does not show one, the central assumption is wrong.
+
+- **Pass** — the corpus collapses into hundreds of clusters, not thousands.
+  Proceed.
+- **Fail** — the tail dominates. The rule thesis is wrong for this corpus.
+  **Stop**, having spent only tooling, and write up why. Hand-translating ~22
+  peripherals may still be worth doing — but without a rule pipeline behind it.
+
+**Exit** — `docs/census.md` with the coverage curve and the go/no-go verdict.
+
+---
+
+# Phase 2 — stubs and the harness
+
+Exit: the crate builds, CI is real, progress is measurable.
+
+## R4 — Stub the entire corpus so the crate builds on day one
+
+`phase-2` `frontend`
+
+Blocked by #R3. Emit a Rust `todo!()` stub for **every** method in the corpus
+before translating any of them.
+
+This is not scaffolding — it buys four specific things:
+
+1. **A crate that compiles from commit one**, so CI is real immediately rather
+   than after the first peripheral lands.
+2. **rustc validates the whole type mapping up front.** Signature errors surface
+   corpus-wide before a single body is written, instead of being rediscovered per
+   file.
+3. **Call sites are pre-wired**, so translating a method needs no plumbing.
+4. **An exact progress metric**: stubs remaining.
+
+**Tasks**
+- Emit module structure mirroring the C# namespaces, with the name manager
+  handling reserved-word collisions.
+- Emit struct definitions, trait definitions for interfaces, and method
+  signatures with `todo!()` bodies.
+- Record each as a `translation` row with `status='stub'`.
+- `cargo build` clean; `cargo clippy` clean.
+
+**Exit** — the crate builds with every corpus method stubbed.
+
+## R5 — Test harness and the progress dashboard
+
+`phase-2` `oracle`
+
+Blocked by #R4 and #6 (trace capture).
+
+**Tasks**
+- Generate a per-method test from the tier-2 trace fixtures; a stub fails its
+  test, a correct translation passes it.
+- CI gate: crate builds, generated tests pass, `n_patches` has not increased, and
+  **`instances_per_rule` has not fallen**.
+- Dashboard from `progress_snapshot`. The headline number is
+  **instances-per-rule**, not files translated.
+
+**Why that metric is the headline.** "38 TUs translated" is exactly the figure
+that looked healthy in `linux-rs` while rules were averaging 1.87 instances. A
+count of finished files cannot distinguish a working rule pipeline from per-file
+hand translation; instances-per-rule can, and it does it in the week the drift
+starts.
+
+**Exit** — CI green on the all-stubs crate, with the dashboard live and
+deliberately reading 0% translated.
+
+---
+
+# Phase 3 — the register DSL and rule-driven translation
 
 Exit: the rule thesis is tested on a second, unseen peripheral.
 
 ## 8 — Implement the register DSL in Rust
 
-`phase-1` `rules`
+`phase-3` `rules`
 
 The single highest-leverage translation in the project: 2,538 lines of C#
 (`PeripheralRegister` 836, `PeripheralRegisterExtensions` 580,
@@ -481,9 +631,56 @@ returns the field handle, the peripheral binds it.
 **Exit** — DSL compiles, every combinator has a test, `FieldMode` semantics match
 the C# implementation.
 
+## R6 — The rule engine: match, emit, validate against ALL occurrences
+
+`phase-3` `rules`
+
+Blocked by #R3 and #12. **This is the machine the whole project rests on.**
+
+The loop, and every step is mechanical:
+
+```
+take next method from translation_order (leaves first, simplest first)
+  → match committed rules against its operation tree
+      ├─ full cover → emit Rust, run its generated test
+      └─ residue   → cluster the unmatched subtree with similar misses
+                     corpus-wide
+                   → ONE LLM call per cluster proposes a GENERAL rule
+                   → query the corpus for ALL matches of that rule
+                   → validate each match against the oracle
+                   → ≥3 validated instances?  commit the rule
+                       else                    record as a `patch`
+```
+
+**Tasks**
+- Matcher over the `operation` tree; rules are patterns plus constraints, not
+  regexes over text.
+- `rule_match` populated by **querying the corpus**, never by hand. This is the
+  operation that was unavailable to `linux-rs` and the reason its rules stayed
+  one-offs.
+- Enforce the commit threshold in the tool, not in review:
+  `status='committed'` is unreachable while
+  `COUNT(rule_instance) < min_instances_required` (default 3).
+- `rule_negative` — shapes the rule must *not* match — to guard against
+  over-generalisation. A rule that matches too much is worse than one that
+  matches too little, because the oracle may not catch it.
+- `requires_human_gate` forced on for semantics-bearing families: anything
+  touching time, IRQ delivery ordering, or the D1/D3 decisions. Those get human
+  review **regardless of oracle tier**, because no automated tier catches a wrong
+  ordering mapping.
+- LLM invocation is **per cluster**. A per-function invocation path must not
+  exist in the tool.
+
+**Cost model this exists to deliver:** ~200–400 LLM invocations for the corpus
+rather than ~2,000, and the committed rules carry forward to the other 419
+DSL-style peripheral files (208,580 lines) at no further LLM cost.
+
+**Exit** — engine runs the queue end to end; threshold enforced mechanically;
+`instances_per_rule` reported per run.
+
 ## 9 — Hand-translate `STM32_UART` as the calibration file
 
-`phase-1` `peripheral` `rules`
+`phase-3` `peripheral` `rules`
 
 295 lines, 56 DSL calls. Representative: declarative register block plus real
 logic (receive FIFO, IRQ aggregation in `Update()`, an idle-line timeout
@@ -503,7 +700,7 @@ UART itself.
 
 ## 10 — GATE: does rule leverage exist?
 
-`phase-1` `gate`
+`phase-3` `gate`
 
 **A genuine stop point.** Translate `STM32_GPIOPort` (376 lines, 48 DSL calls) —
 a second, unseen peripheral — using only the DSL from #8 and the rules from #9.
@@ -529,7 +726,7 @@ Exit: DSL-style peripherals translate automatically.
 
 ## 11 — Roslyn `IOperation` frontend
 
-`phase-2` `frontend`
+`phase-1` `frontend`
 
 Blocked by #10.
 
@@ -558,7 +755,7 @@ or LINQ).
 
 ## 12 — GATE: pattern census of the F427 corpus
 
-`phase-2` `gate` `rules`
+`phase-1` `gate` `rules`
 
 Blocked by #11.
 
@@ -577,7 +774,7 @@ one, the plan's central assumption is wrong.
 
 ## 13 — Automate translation of the DSL-style population
 
-`phase-2` `rules`
+`phase-4` `rules`
 
 Blocked by #12.
 
@@ -600,7 +797,7 @@ Exit: the firmware reaches its shell prompt under renode-rs.
 
 ## 14 — Port machine, sysbus and GPIO routing
 
-`phase-3`
+`phase-5`
 
 The core plumbing: address decoding, peripheral registration, access-width
 translation (`AllowedTranslations` — the UART alone needs word- and
@@ -612,7 +809,7 @@ dropped as debug-only.
 
 ## 15 — Port NVIC and the CortexM binding
 
-`phase-3`
+`phase-5`
 
 `NVIC` 2292 lines + `CortexM` 1385. Interrupt priority, masking, SysTick, and the
 binding between tlib's exception model and the NVIC.
@@ -622,7 +819,7 @@ SYSCLK or every delay in the firmware is wrong by the ratio.
 
 ## 16 — Port the time framework
 
-`phase-3`
+`phase-5`
 
 Blocked by #5 (D3).
 
@@ -634,7 +831,7 @@ ordering are exactly where an automated tier will pass a wrong translation.
 
 ## 17 — Port `STMCAN`
 
-`phase-3` `peripheral`
+`phase-5` `peripheral`
 
 The legacy outlier: 1957 lines, one DSL call, switch-on-offset throughout. Low
 rule leverage, hand-translated, human review.
@@ -653,7 +850,7 @@ Both are worth reporting upstream to Antmicro independently of this port.
 
 ## 18 — Port the project's custom peripherals
 
-`phase-3` `peripheral`
+`phase-5` `peripheral`
 
 ~1,600 lines: a dual-bank F427 flash controller (the in-tree one stops at sector
 11 with a 4-bit `SNB` where F42x/43x is 5), an F4 CRC unit (~30 lines — the F4
@@ -665,7 +862,7 @@ These are the test harness — without them there is nothing to drive.
 
 ## 19 — Oracle tier 3: instruction-lockstep state diff
 
-`phase-3` `oracle`
+`phase-5` `oracle`
 
 Run both emulators to instruction count N on the same ELF; diff CPU registers,
 RAM and peripheral state; bisect any divergence to the first differing
@@ -677,7 +874,7 @@ re-entrancy panics at an exact instruction rather than as a mystery.
 
 ## 20 — Oracle tier 4: boot-log equivalence
 
-`phase-3` `oracle`
+`phase-5` `oracle`
 
 The documented boot sequence, in order: clock config → CAN init → RTC/LSI →
 shell UART → OTP identity → FreeRTOS started → banner → shell commands ready →
@@ -692,7 +889,7 @@ under renode-rs.**
 
 ## 21 — Oracle tier 5: drive the CLI test suite
 
-`phase-4` `oracle`
+`phase-6` `oracle`
 
 `help`, `otp`, `info`, the auto-discovered command smoke sweep, and the CAN
 ISO-TP path — all already proven under C# Renode, including a 512-byte `otp`
@@ -703,7 +900,7 @@ Renode.
 
 ## 22 — Performance baseline
 
-`phase-4`
+`phase-6`
 
 Compare wall-clock against C# Renode's ~0.3× real time (from #1, now a real
 benchmark rather than a single measurement).
@@ -722,7 +919,7 @@ Only against a clean differential record.
 
 ## 23 — Stage-3 lift: `Rc<RefCell<T>>` → arena + typed index handles
 
-`phase-5`
+`phase-7`
 
 D1's named successor. Start with register fields (D2), which are the most
 numerous and the most uniform. Representation change only — no algorithm change
@@ -730,7 +927,7 @@ numerous and the most uniform. Representation change only — no algorithm chang
 
 ## 25 — Scope out "the rest of Renode"
 
-`phase-5`
+`phase-7`
 
 Blocked by #12 (census) and #21 (tests passing). Not a commitment — a costing,
 written once the method is either proven or dead.
@@ -769,7 +966,7 @@ to pursue it.
 
 ## 24 — Revisit D3, and the tlib question
 
-`phase-5` `decision`
+`phase-7` `decision`
 
 Two deferred decisions, reopened only if Phase 4 data justifies it:
 

@@ -28,11 +28,13 @@ DRAFT = "docs/issues-draft.md"
 LABELS = {
     "epic":       ("7057ff", "Tracking issue spanning multiple phases"),
     "phase-0":    ("0e8a16", "Environment, decisions, performance gate"),
-    "phase-1":    ("1d76db", "Register DSL and the calibration peripheral"),
-    "phase-2":    ("1d76db", "Roslyn frontend and the corpus census"),
-    "phase-3":    ("1d76db", "Boot the firmware"),
-    "phase-4":    ("1d76db", "Drive the CLI test suite"),
-    "phase-5":    ("1d76db", "Optimisation, against a clean differential record"),
+    "phase-1":    ("1d76db", "The corpus database: ingest, analyse, cluster"),
+    "phase-2":    ("1d76db", "Stubs and the test harness"),
+    "phase-3":    ("1d76db", "Register DSL and rule-driven translation"),
+    "phase-4":    ("1d76db", "Corpus-wide rule application"),
+    "phase-5":    ("1d76db", "Boot the firmware"),
+    "phase-6":    ("1d76db", "Drive the CLI test suite"),
+    "phase-7":    ("1d76db", "Optimisation, against a clean differential record"),
     "gate":       ("b60205", "A genuine stop point -- failure means stop, not retry"),
     "decision":   ("d93f0b", "Whole-program decision needing a written verdict"),
     "oracle":     ("fbca04", "Differential validation against C# Renode"),
@@ -44,7 +46,7 @@ LABELS = {
     "research":   ("d4c5f9", "Investigation, not implementation"),
 }
 
-HEADING = re.compile(r"^## ([EP]?\d+) — (.+)$")
+HEADING = re.compile(r"^## ([EPR]?\d+) — (.+)$")
 LABEL_LINE = re.compile(r"^`[a-z0-9-]+`(?: `[a-z0-9-]+`)*\s*$")
 
 

@@ -506,30 +506,68 @@ performance premise validated or killed**.
 - Prior-art sweep: C#→Rust translators beyond toy scale; existing Rust
   deterministic-emulator frameworks worth building on.
 
-### Phase 1 — the register DSL and one peripheral by hand (exit: thesis tested)
+### Phase 1 — the corpus database (exit: whole corpus queryable, clustered, ordered)
+
+**Tooling before translation. This ordering is not negotiable**, and the reason
+is evidenced: `linux-rs` skipped its own census gate, and its rule track reached
+31 rules across 58 validation instances — **1.87 instances per rule** — with
+`functions` and `statement_families` both at **0 rows**. Its *other* track, which
+did build corpus-scale tooling (897,814 decl outcomes ingested), worked exactly
+as designed. With no corpus in the database, "validate this rule against all
+occurrences" is not a runnable operation, so every rule collapses into a patch
+and per-file review becomes the only remaining quality mechanism.
+
+Full schema and process defences: **[docs/rulesdb-design.md](docs/rulesdb-design.md)**.
+
+- Build the Roslyn `IOperation` ingest tool and the schema.
+- **Ingest the entire F427 corpus** — files, types, members, methods, parameters,
+  locals, and the full operation tree, one row per node.
+- Derive: metrics, purity fixpoint, call graph, field-access graph.
+- Fingerprint and cluster every method. *The census is now a query, not a
+  project.*
+- Emit the topological work queue: leaves first, simplest first within each level.
+
+### Phase 2 — stubs and the harness (exit: the crate builds, CI is real)
+
+- Emit a `todo!()` stub for **every** method in the corpus. The crate compiles on
+  day one, rustc validates the whole type mapping before a single body is
+  written, and every call site is pre-wired.
+- Wire the tier-2 trace fixtures into generated per-method tests.
+- Stand up the progress dashboard. The headline metric is
+  **instances-per-rule**, not files translated — a fall toward 1 means the
+  process has drifted, and it must be visible the week it happens.
+
+### Phase 3 — the register DSL and rule-driven translation (exit: thesis tested)
 
 - Implement the 20-combinator register DSL in Rust, plus `PeripheralRegister` /
   `RegisterCollection` / `RegisterField` semantics (2,538 lines of C# — the
   single highest-leverage translation in the project).
-- Hand-translate **`STM32_UART`** (295 lines, 56 DSL calls) as the calibration
-  file. Every decision made here becomes a rule.
-- Pass oracle tier 2 against the recorded UART trace.
-- **Go/no-go gate:** does the DSL implementation plus the rules derived from one
-  peripheral mechanically cover most of a *second, unseen* peripheral
-  (`STM32_GPIOPort`, 376 lines / 48 DSL calls)? If translating file two is as
-  expensive as file one, the rule thesis has failed and we stop, having spent one
-  peripheral.
+- Build the **rule engine**: match against the operation tree → emit → query
+  *all* matches in the corpus → validate each → commit only at ≥3 validated
+  instances. Below that threshold it is recorded honestly as a `patch`, and
+  patches are a tracked metric that must trend to zero.
+- **Work the queue bottom-up** — leaves first, simplest first. Simple methods
+  produce general rules; starting from a 300-node method produces over-specific
+  ones, which is how a rule DB ends up at 1.87 instances per rule.
+- The LLM is invoked **once per unmatched cluster**, never per function. That is
+  the entire cost argument: ~200–400 invocations for the corpus rather than
+  ~2,000, and the rules carry forward to the other 419 DSL-style peripheral
+  files at no further cost.
+- **Go/no-go gate:** on a *second, unseen* peripheral (`STM32_GPIOPort`, 376
+  lines / 48 DSL calls), what fraction is covered by rules already committed from
+  the first? If file two costs what file one cost, the thesis has failed and we
+  stop.
 
-### Phase 2 — the Roslyn frontend and the census (exit: automated translation of DSL-style peripherals)
+### Phase 4 — corpus-wide rule application (exit: DSL-style population translated)
 
-- Build the Roslyn `IOperation` walker and the serialised IR.
-- Run the census over the F427 corpus: fingerprint every method, cluster,
-  measure how many rules cover what fraction. Publish the number.
-- Automate translation for the **DSL-style population** (RCC, Timer, RTC, ADC,
-  SPI, DMA, GPIO, UART).
-- Every manual fix lands as a rule, never a file patch.
+- Run the queue to completion over the DSL-style population (RCC, Timer, RTC,
+  ADC, SPI, DMA, GPIO, UART).
+- Every manual fix lands as a rule, never a file patch. A landed translation must
+  be recreatable from the C# source plus committed rules and scripts alone —
+  file-specific hand edits are evidence the generic process is incomplete, and
+  are counted as such.
 
-### Phase 3 — boot (exit: firmware reaches the shell prompt in Rust)
+### Phase 5 — boot (exit: firmware reaches the shell prompt in Rust)
 
 - Port the machine, sysbus, GPIO routing, NVIC, time framework (D3), and
   `MappedMemory`.
@@ -540,16 +578,16 @@ performance premise validated or killed**.
   justified deviations rather than silent fixes).
 - Oracle tiers 3 and 4: instruction-lockstep, then boot-log equivalence.
 
-### Phase 4 — drive the tests (exit: the CLI test suite runs against renode-rs)
+### Phase 6 — drive the tests (exit: the CLI test suite runs against renode-rs)
 
 - Oracle tier 5: `help`, `otp`, `info`, the command smoke sweep, CAN ISO-TP.
 - Compare wall-clock against C# Renode's measured ~0.3× real time. Beating it is
   expected but is **not** a Phase-4 goal — equivalence is.
 
-### Phase 5 — the optimisation pass (exit criteria set from Phase 4 data)
+### Phase 7 — the optimisation pass (exit criteria set from Phase 6 data)
 
 Only now, and only against a clean differential record. Note that D2 already
-took the largest layout win up front, so this phase is about what the Phase-4
+took the largest layout win up front, so this phase is about what the Phase-6
 profile actually shows rather than a predetermined list:
 
 - **Stage-3 lift for the coarse object graph**: `Rc<RefCell<T>>` → arena +
