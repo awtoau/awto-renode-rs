@@ -1,0 +1,11 @@
+[package]
+name = "renode-stm32"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renode-regs = { path = "../renode-regs" }
+
+[dev-dependencies]
+renode-oracle = { path = "../renode-oracle" }
