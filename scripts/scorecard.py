@@ -143,15 +143,36 @@ def build(root: Path) -> str:
     a("")
     a("| metric | value | target | status |")
     a("|---|---:|---:|---|")
+    # These two are reported INDEPENDENTLY. Gating the patch count on rules
+    # existing is what let the scorecard report "no translations yet" while
+    # every translated method was a hand-written patch -- the metric designed to
+    # detect drift was blind to the only drift present.
     if rules and rules["rules_committed"]:
         ipr = rules["instances_per_rule"]
         ok = ipr >= MIN_INSTANCES_PER_RULE
         a(f"| **instances per rule** | {ipr:.2f} | ≥ {MIN_INSTANCES_PER_RULE:.0f} | {mark(ok)} |")
-        a(f"| patches outstanding | {rules['patches']} | 0 | {mark(rules['patches'] == 0)} |")
     else:
-        a(f"| **instances per rule** | — | ≥ {MIN_INSTANCES_PER_RULE:.0f} | no rules yet |")
-        a("| patches outstanding | — | 0 | no translations yet |")
+        a(f"| **instances per rule** | — | ≥ {MIN_INSTANCES_PER_RULE:.0f} | no committed rules |")
+
+    if rules:
+        done = rules["translated"] + rules["verified"]
+        pat = rules["patches"]
+        if done:
+            pct = 100 * pat / done
+            a(f"| **patches outstanding** | {pat} of {done} translated ({pct:.0f}%) | 0 | "
+              f"{mark(pat == 0)} |")
+        else:
+            a("| **patches outstanding** | 0 | 0 | nothing translated yet |")
+    else:
+        a("| **patches outstanding** | — | 0 | corpus not ingested |")
     a("")
+    if rules and rules["patches"]:
+        a(f"> **{rules['patches']} of {rules['translated'] + rules['verified']} translated "
+          "methods are hand-written patches, not rule output.** No rule is committed and no")
+        a("> emitter exists, so nothing translated so far would regenerate. Recorded rather")
+        a("> than implied: this is the metric that detects exactly this drift, and it read")
+        a('> "no translations yet" until the translations were entered.')
+        a("")
 
     # --- Corpus -------------------------------------------------------------
     a("## Corpus")

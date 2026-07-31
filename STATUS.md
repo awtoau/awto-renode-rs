@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-07-31T14:47:05+10:00 from `7daa335` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-07-31T14:58:16+10:00 from `7583d30` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -10,8 +10,13 @@ averaged 1.87 validation instances each.
 
 | metric | value | target | status |
 |---|---:|---:|---|
-| **instances per rule** | — | ≥ 3 | no rules yet |
-| patches outstanding | — | 0 | no translations yet |
+| **instances per rule** | — | ≥ 3 | no committed rules |
+| **patches outstanding** | 48 of 48 translated (100%) | 0 | FAIL |
+
+> **48 of 48 translated methods are hand-written patches, not rule output.** No rule is committed and no
+> emitter exists, so nothing translated so far would regenerate. Recorded rather
+> than implied: this is the metric that detects exactly this drift, and it read
+> "no translations yet" until the translations were entered.
 
 ## Corpus
 
@@ -21,7 +26,7 @@ averaged 1.87 validation instances each.
 | operation nodes | 65,775 | — |
 | pattern clusters | 11,279 | — |
 | stubbed | 0 | 0.0% |
-| translated | 0 | 0.0% |
+| translated | 48 | 4.4% |
 | verified | 0 | 0.0% |
 | **rules committed** | 0 | — |
 

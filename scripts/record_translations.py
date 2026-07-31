@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Record what has actually been translated, and how. Issue #35 follow-up.
+
+Written because the scorecard was silently flattering the project. It reported
+"patches outstanding: —" not because there are none, but because no translation
+had ever been recorded — so the metric designed to detect hand-written drift was
+blind to the fact that **100% of the translated code is hand-written**.
+
+The standard in PLAN.md is explicit: *a landed translation must be recreatable
+from the C# source plus committed rules and scripts alone. File-specific hand
+edits are evidence the generic process is incomplete.* By that standard both
+peripherals translated so far are patches, and the database should say so.
+
+Run:  python3 scripts/record_translations.py
+Log:  ./tmp/logs/record_translations.log
+"""
+
+from __future__ import annotations
+
+import logging
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+# What exists, and its honest provenance. `rule_versions` is empty because no
+# rule produced any of it.
+TRANSLATIONS = [
+    # (C# type name, rust path, rust symbol, is_patch, reason)
+    ("STM32_UART", "src/renode-stm32/src/uart.rs", "uart::Stm32Uart", 1,
+     "hand-written; no committed rule or emitter exists yet"),
+    ("STM32_GPIOPort", "src/renode-stm32/src/gpio_port.rs", "gpio_port::Stm32GpioPort", 1,
+     "hand-written; no committed rule or emitter exists yet"),
+    ("PeripheralRegister", "src/renode-regs/src/lib.rs", "renode_regs::Bank", 1,
+     "hand-written; the DSL is the substrate rules will emit against, "
+     "not itself rule-generated"),
+]
+
+
+def repo_root() -> Path:
+    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                               capture_output=True, text=True, check=True).stdout.strip())
+
+
+def main() -> int:
+    root = repo_root()
+    logdir = root / "tmp" / "logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    log = logging.getLogger("record_translations")
+    log.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    for h in (logging.FileHandler(logdir / "record_translations.log", mode="w"),
+              logging.StreamHandler(sys.stdout)):
+        h.setFormatter(fmt)
+        log.addHandler(h)
+
+    db = root / "rulesdb" / "patterns.db"
+    if not db.exists():
+        log.error("no corpus database -- run the ingest first")
+        return 1
+
+    con = sqlite3.connect(db)
+    run_id, = con.execute("SELECT MAX(id) FROM corpus_run").fetchone()
+
+    recorded = skipped = 0
+    for type_name, path, symbol, is_patch, reason in TRANSLATIONS:
+        # One row per method of the translated type: the corpus counts methods,
+        # so counting whole files would overstate coverage.
+        rows = con.execute("""
+            SELECT m.member_id FROM method m
+            JOIN member mb ON mb.id = m.member_id
+            JOIN type t ON t.id = mb.type_id
+            WHERE t.name = ? AND m.has_body = 1""", (type_name,)).fetchall()
+        if not rows:
+            log.warning("%s: not in the corpus -- skipped", type_name)
+            skipped += 1
+            continue
+        con.executemany("""
+            INSERT OR REPLACE INTO translation
+                (method_id, run_id, status, rule_versions, rust_path, rust_symbol,
+                 oracle_tier, is_patch, patch_reason)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            [(mid, run_id, "translated", "", path, symbol, 2, is_patch, reason)
+             for (mid,) in rows])
+        log.info("%-18s %3d methods -> %s%s", type_name, len(rows), path,
+                 "  [PATCH]" if is_patch else "")
+        recorded += len(rows)
+    con.commit()
+
+    total, = con.execute("SELECT COUNT(*) FROM method WHERE has_body=1").fetchone()
+    patches, = con.execute("SELECT COUNT(*) FROM translation WHERE is_patch=1").fetchone()
+    done, = con.execute("SELECT COUNT(*) FROM translation").fetchone()
+    con.close()
+
+    log.info("")
+    log.info("%d of %d body-bearing methods translated (%.1f%%)", done, total, 100 * done / total)
+    log.info("%d of those are PATCHES (%.0f%%) -- hand-written, will not regenerate",
+             patches, 100 * patches / max(done, 1))
+    log.info("")
+    log.info("The target is zero. Every patch is a hole in the ability to")
+    log.info("regenerate, and regeneration is the project's main asset.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
