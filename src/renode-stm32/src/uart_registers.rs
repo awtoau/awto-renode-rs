@@ -11,7 +11,6 @@
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - calls base-class method `Reset` on `BasicDoubleWordPeripheral`, which is not translated
 //!   - conditional access `?.` needs nullability analysis
-//!   - get_BaudRate: withheld, reaches state this peripheral does not have: st.by16
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 
@@ -50,6 +49,64 @@ pub struct Fields {
     pub dma_reception_request: FlagId,
 }
 
+/// C# `enum OversamplingMode`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum OversamplingMode {
+    #[default] By16 = 0,
+    By8 = 1,
+}
+
+impl OversamplingMode {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::By16,
+            1 => Self::By8,
+            _ => Self::default(),
+        }
+    }
+}
+
+/// C# `enum ParitySelection`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum ParitySelection {
+    #[default] Even = 0,
+    Odd = 1,
+}
+
+impl ParitySelection {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::Even,
+            1 => Self::Odd,
+            _ => Self::default(),
+        }
+    }
+}
+
+/// C# `enum StopBitsValues`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum StopBitsValues {
+    #[default] One = 0,
+    Half = 1,
+    Two = 2,
+    OneAndAHalf = 3,
+}
+
+impl StopBitsValues {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::One,
+            1 => Self::Half,
+            2 => Self::Two,
+            3 => Self::OneAndAHalf,
+            _ => Self::default(),
+        }
+    }
+}
+
 /// The peripheral's own state: every C# instance member that actually
 /// stores something. Computed properties are excluded -- they hold
 /// nothing, so a field here would invent storage the C# lacks.
@@ -68,6 +125,12 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
+fn baud_rate(bank: &Bank<State>, st: &mut State) -> u32 {
+    let mut fraction = if (bank.value(st.f.oversampling_mode) == OversamplingMode::By16 as u64) { bank.value(st.f.divider_fraction) } else { (bank.value(st.f.divider_fraction) & 7) };
+    let mut divisor = ((8 * (2 - bank.value(st.f.oversampling_mode))) as f64 * (bank.value(st.f.divider_mantissa) as f64 + (fraction as f64 / 16.0)));
+    return if (divisor == 0 as f64) { 0 } else { (st.frequency as f64 / divisor) as u32 };
+}
+
 fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc<std::cell::Cell<bool>>) -> () {
     if !ct.get() {
         bank.set_flag(st.f.idle_line_detected, true);

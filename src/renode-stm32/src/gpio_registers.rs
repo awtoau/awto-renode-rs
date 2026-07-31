@@ -12,15 +12,12 @@
 //!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: st.get_value_from_bits_array, st.state
-//!   - ChangeMode: parameter `newMode` has no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode`
+//!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
-//!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
-//!   - OutputSpeed: callback for bit 0 needs peer method(s) not yet emitted: st.output_speed
-//!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down
 //!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.registers
 //!   - Reset: withheld, cannot emit stmt:Loop
 //!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.registers
@@ -29,9 +26,6 @@
 //!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
-//!   - state field `mode`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode[]`
-//!   - state field `outputSpeed`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.OutputSpeed[]`
-//!   - state field `pullUpPullDown`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.PullUpPullDown[]`
 //!   - state field `registers`: no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.DoubleWordRegisterCollection`
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
@@ -56,6 +50,72 @@ pub mod reg {
 pub struct Fields {
 }
 
+/// C# `enum Mode`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum Mode {
+    #[default] Input = 0,
+    Output = 1,
+    AlternateFunction = 2,
+    AnalogMode = 3,
+}
+
+impl Mode {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::Input,
+            1 => Self::Output,
+            2 => Self::AlternateFunction,
+            3 => Self::AnalogMode,
+            _ => Self::default(),
+        }
+    }
+}
+
+/// C# `enum OutputSpeed`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum OutputSpeed {
+    #[default] Low1 = 0,
+    Medium = 1,
+    Low2 = 2,
+    High = 3,
+}
+
+impl OutputSpeed {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::Low1,
+            1 => Self::Medium,
+            2 => Self::Low2,
+            3 => Self::High,
+            _ => Self::default(),
+        }
+    }
+}
+
+/// C# `enum PullUpPullDown`, discriminants as declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u64)]
+pub enum PullUpPullDown {
+    #[default] No = 0,
+    Up = 1,
+    Down = 2,
+    Reserved = 3,
+}
+
+impl PullUpPullDown {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::No,
+            1 => Self::Up,
+            2 => Self::Down,
+            3 => Self::Reserved,
+            _ => Self::default(),
+        }
+    }
+}
+
 /// The peripheral's own state: every C# instance member that actually
 /// stores something. Computed properties are excluded -- they hold
 /// nothing, so a field here would invent storage the C# lacks.
@@ -63,9 +123,12 @@ pub struct Fields {
 pub struct State {
     /// Register field handles, bound by the C# `out` parameters.
     pub f: Fields,
+    pub mode: Vec<Mode>,
     pub mode_reset_value: u32,
     pub number_of_a_fs: u32,
+    pub output_speed: Vec<OutputSpeed>,
     pub output_speed_reset_value: u32,
+    pub pull_up_pull_down: Vec<PullUpPullDown>,
     pub pull_up_pull_down_reset_value: u32,
 }
 
@@ -79,6 +142,28 @@ fn write_state(bank: &Bank<State>, st: &mut State, value: u16) -> () {
 // Callbacks for computed fields. C# writes these as lambdas capturing
 // `this`; a closure cannot live inside the object it borrows, so each
 // becomes a free fn over (bank, state). See rulesdb/rules/.
+fn mode_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
+    return st.mode[idx as usize] as u64;
+}
+
+fn output_speed_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
+    return st.output_speed[idx as usize] as u64;
+}
+
+fn output_speed_0_writer(bank: &Bank<State>, st: &mut State, idx: usize, _old: u64, val: u64) -> () {
+    st.output_speed[idx as usize] = OutputSpeed::from_u64(val);
+    return;
+}
+
+fn pull_up_pull_down_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
+    return st.pull_up_pull_down[idx as usize] as u64;
+}
+
+fn pull_up_pull_down_0_writer(bank: &Bank<State>, st: &mut State, idx: usize, _old: u64, val: u64) -> () {
+    st.pull_up_pull_down[idx as usize] = PullUpPullDown::from_u64(val);
+    return;
+}
+
 fn output_data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, val: u64) -> () {
     write_state(bank, st, val as u16);
     return;

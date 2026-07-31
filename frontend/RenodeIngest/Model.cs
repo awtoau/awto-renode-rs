@@ -50,6 +50,9 @@ public sealed class MemberRec
     /// field, so it is not storage. See schema.sql member.has_storage.
     public bool HasStorage { get; init; } = true;
 
+    /// Constant value for a const field or enum member; null otherwise.
+    public string? ConstValue { get; init; }
+
     // Present only when Kind is method or ctor.
     public MethodRec? Method { get; init; }
 }

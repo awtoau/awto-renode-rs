@@ -169,6 +169,12 @@ public static class Walker
                     DeclaredType = f.Type.ToDisplayString(),
                     Accessibility = f.DeclaredAccessibility.ToString().ToLowerInvariant(),
                     IsStatic = f.IsStatic, IsReadOnly = f.IsReadOnly,
+                    // Enum discriminants land here; they are written into
+                    // registers, so losing them would renumber the hardware.
+                    ConstValue = f.HasConstantValue
+                        ? Convert.ToString(f.ConstantValue,
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        : null,
                 };
             case IPropertySymbol p:
                 return new MemberRec

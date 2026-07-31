@@ -165,7 +165,8 @@ def render_mode(const: str | None) -> str:
 
 
 class Emitter:
-    PROJECT_KEYS = ("state_struct", "peripheral_methods", "callback_naming", "logging")
+    PROJECT_KEYS = ("state_struct", "peripheral_methods", "callback_naming",
+                    "logging", "enums")
 
     def __init__(self, con: sqlite3.Connection, log: logging.Logger,
                  rules_dir: Path | None = None):
@@ -179,6 +180,8 @@ class Emitter:
         self._emitted_fns: set[str] = set()
         self._state_names: set[str] = set()
         self._current_type: str | None = None
+        self._enum_names: set[str] = set()
+        self._enum_slots: set[str] = set()
         self._current_reg: str | None = None
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
         self.forms = load_register_forms(rd)
@@ -522,6 +525,15 @@ class Emitter:
             # Assignment in expression position; C# yields the assigned value.
             return self.emit_assignment(oid).rstrip(";")
 
+        if kind == "FieldReference" and symbol and self._enum_names:
+            # `OversamplingMode.By16` is an enum MEMBER, not state. Without this
+            # it fell through to the field rule and emitted `st.by16`.
+            parts = symbol.split("(")[0].split(".")
+            if len(parts) >= 2 and parts[-2] in self._enum_names:
+                return self.project.get("enums", {}).get(
+                    "reference", "{type}::{member}").format(
+                    type=parts[-2], member=parts[-1])
+
         if kind in ("PropertyReference", "FieldReference") and symbol:
             return self.emit_reference(kind, symbol, kids)
 
@@ -538,6 +550,10 @@ class Emitter:
                 num = json.loads(detail or "{}").get("numeric", False)
             except json.JSONDecodeError:
                 num = False
+            # An explicit cast to a generated enum needs from_u64: Rust has no
+            # numeric-to-enum cast. See enums.from_u64.
+            if (rtype or "").split(".")[-1] in self._enum_names:
+                return f"{(rtype or '').split('.')[-1]}::from_u64({inner})"
             tgt = self.rust_type(rtype or "") if num else None
             if num and tgt:
                 return self.language.get("conversions", {}).get(
@@ -567,6 +583,15 @@ class Emitter:
             ty = symbol.split("(")[0].split(".")[-1]
             return f"{ty}::new({', '.join(self.emit_expr(a) for a in args)})"
         if kind == "ParameterReference" and symbol:
+            # A WithEnumFields callback slot is declared u64 in Rust but typed
+            # as the enum in C#; convert where it is used. Only for lambda
+            # slots -- see enums.typed_callback_param.
+            nm = snake(symbol.split()[-1])
+            ety = (rtype or "").split(".")[-1]
+            if nm in self._enum_slots and ety in self._enum_names:
+                return self.project.get("enums", {}).get(
+                    "typed_callback_param", {}).get(
+                    "emit", "{type}::from_u64({name})").format(type=ety, name=nm)
             # The symbol is "byte value" -- type then name. Splitting on "."
             # returned the whole thing and emitted `enqueue(byte value)`.
             return snake(symbol.split()[-1])
@@ -644,6 +669,11 @@ class Emitter:
             return f'"{escaped}"'
         if rtype == "char":
             return f"'{const}'"
+        if rtype in ("double", "float") and "." not in const and "e" not in const.lower():
+            # `16.0` arrives from Roslyn as the constant 16; emitting it bare
+            # turns an f64 division into integer division and silently changes
+            # the result. See language rule `literals`.
+            return const + self.language.get("literals", {}).get("float_suffix", ".0")
         return const
 
     def receiver_field(self, oid: int) -> str | None:
@@ -693,6 +723,8 @@ class Emitter:
                          if det else [])
             for slot, nm in zip(tail, raw_names[-len(tail):]):
                 slot[0] = nm if nm != "_" else "_" + slot[0]
+        prev_slots = self._enum_slots
+        self._enum_slots = {n for n, _ in slots if not n.startswith("_")}
         used = self.lambda_uses(oid)
         for slot in slots:
             if not slot[0].startswith("_") and slot[0] not in used:
@@ -700,9 +732,13 @@ class Emitter:
         params = sigs["fixed"].format(state="State") + "".join(
             f", {n if n.startswith('_') else n}: {ty}" for n, ty in slots)
         prev = getattr(self, "_coerce_ret", None)
-        self._coerce_ret = ("bool_to_u64"
-                            if sigs["ret"] == "u64" and self.returns_bool(oid)
-                            else None)
+        self._coerce_ret = None
+        if sigs["ret"] == "u64":
+            rt = self.lambda_return_type(oid)
+            if rt and "bool" in rt.lower():
+                self._coerce_ret = "bool_to_u64"
+            elif rt and rt.split(".")[-1] in self._enum_names:
+                self._coerce_ret = "enum_to_u64"
         body: list[str] = []
         for cid, kind, _s, _c, _t in self.children(oid):
             if kind == "Block":
@@ -715,6 +751,7 @@ class Emitter:
         # Rewrite the captured `this`. In the C# the closure reaches the
         # peripheral through `this`; as a free fn it receives `bank` and `st`
         # instead, so references must be redirected to the parameters.
+        self._enum_slots = prev_slots
         body = self.rewrite_this(body)
         text = lam.get("free_fn", "fn {name}({params}) -> {ret} {{\n{body}\n}}").format(
             name=name, params=params, ret=sigs["ret"], body="\n".join(body))
@@ -769,6 +806,21 @@ class Emitter:
                     out.add(sym.split()[-1])
                 stack.append(cid)
         return out
+
+    def lambda_return_type(self, oid: int) -> str | None:
+        """The C# type this lambda yields, from the corpus's recorded operation
+        types rather than inferred from emitted text."""
+        for sql in (
+            "SELECT o.type FROM operation o WHERE o.kind='Return' "
+            "AND o.parent_id IN (SELECT id FROM operation WHERE parent_id=?)",
+            "SELECT c.type FROM operation r JOIN operation c ON c.parent_id=r.id "
+            "WHERE r.kind='Return' AND r.parent_id IN "
+            "(SELECT id FROM operation WHERE parent_id=?)",
+        ):
+            for (ty,) in self.con.execute(sql, (oid,)).fetchall():
+                if ty:
+                    return ty
+        return None
 
     def returns_bool(self, oid: int) -> bool:
         """Does this lambda's body yield a bool? Read from the corpus's recorded
@@ -1069,6 +1121,7 @@ class Emitter:
         boundary rather than a convention -- which is what lets check_generated.py
         enforce it byte-for-byte.
         """
+        self._enum_names = self.enum_names(type_name)
         state, state_gaps = self.state_fields(type_name)
         self._callbacks = []
         # Peripheral methods first: a callback may call one, and the converter
@@ -1077,6 +1130,7 @@ class Emitter:
         self._emitted_fns = set()
         self._state_names = {n for n, _ in state}
         self._current_type = type_name
+        self._enum_names = self.enum_names(type_name)
         self.gaps = []
         method_gaps: list[str] = []
         names = [r[0] for r in self.con.execute(
@@ -1152,6 +1206,26 @@ class Emitter:
             a(f"    pub {f}: {self.field_type(f)},")
         a("}")
         a("")
+        # The offset enum is already `mod reg`; identified by content.
+        off_names = {n for n, _ in offsets}
+        enums = [(n, m) for n, m in self.nested_enums(type_name)
+                 if not (off_names and {x for x, _ in m} >= off_names)]
+        for ename, members in enums:
+            spec = self.project.get("enums", {})
+            a(f"/// C# `enum {ename}`, discriminants as declared.")
+            a(spec.get("decl", "pub enum {name} {{").format(name=ename))
+            for i, (mname, val) in enumerate(members):
+                a(spec.get("member", "    {default}{name} = {value},").format(
+                    default=spec.get("default_marker", "#[default] ") if i == 0 else "",
+                    name=mname, value=val))
+            a("}")
+            a("")
+            conv = spec.get("from_u64", {})
+            if conv.get("impl"):
+                arms = "\n".join(conv.get("arm", "            {value} => Self::{member},")
+                                  .format(value=v, member=m) for m, v in members)
+                a(conv["impl"].format(name=ename, arms=arms))
+                a("")
         a("/// The peripheral's own state: every C# instance member that actually")
         a("/// stores something. Computed properties are excluded -- they hold")
         a("/// nothing, so a field here would invent storage the C# lacks.")
@@ -1192,6 +1266,13 @@ class Emitter:
         cs = cs.strip()
         if cs in prim:
             return prim[cs]
+        if cs.endswith("[]"):
+            inner = self.rust_type(cs[:-2])
+            return (std.get("array_form", "Vec<{inner}>").format(inner=inner)
+                    if inner else None)
+        # A nested enum this peripheral declares is a real Rust type.
+        if cs.split(".")[-1] in self._enum_names:
+            return cs.split(".")[-1]
         if "<" in cs:
             outer = cs.split("<")[0].split(".")[-1]
             inner = cs[cs.index("<") + 1:cs.rindex(">")]
@@ -1204,6 +1285,26 @@ class Emitter:
                 return std.get("generic_form", "{outer}<{inner}>").format(outer=o, inner=i)
             return None
         return types.get(cs.split(".")[-1])
+
+    def nested_enums(self, type_name: str) -> list[tuple[str, list[tuple[str, str]]]]:
+        """Enums declared inside the peripheral, with their C# discriminants."""
+        out = []
+        # Keyed on the type's ID, never its name: the corpus holds many types
+        # called `Registers` and two called `Mode`, and matching by name merged
+        # all of them into one enum with duplicate discriminants.
+        for tid, ename in self.con.execute(
+                "SELECT t.id, t.name FROM type t WHERE t.kind='enum' "
+                "AND t.key LIKE ? ORDER BY t.name", (f"%.{type_name}.%",)):
+            members = self.con.execute(
+                "SELECT mb.name, mb.const_value FROM member mb "
+                "WHERE mb.type_id=? AND mb.const_value IS NOT NULL "
+                "ORDER BY CAST(mb.const_value AS INTEGER), mb.name", (tid,)).fetchall()
+            if members:
+                out.append((ename, members))
+        return out
+
+    def enum_names(self, type_name: str) -> set[str]:
+        return {n for n, _ in self.nested_enums(type_name)}
 
     def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
         """The peripheral's State, from its non-handle instance fields."""

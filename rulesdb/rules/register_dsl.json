@@ -240,5 +240,26 @@
       "Debug": "debug",
       "Noisy": "trace"
     }
+  },
+  "enums": {
+    "note": "C# enums nested in the peripheral are generated alongside it. Discriminants are emitted EXPLICITLY from the corpus, never renumbered by declaration order: the values are written into registers, so a renumbering is a silent hardware change the oracle would catch late.",
+    "decl": "#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]\n#[repr(u64)]\npub enum {name} {{",
+    "member": "    {default}{name} = {value},",
+    "default_marker": "#[default] ",
+    "default_note": "Default is the LOWEST discriminant, matching C#, where an enum field's default is 0 rather than its first declared member.",
+    "reference": "{type}::{member} as u64",
+    "skip_offset_enum": {
+      "note": "The register-offset enum is already emitted as `mod reg`, so emitting it again as a Rust enum duplicates it. Identified by CONTENT -- its members match the emitted offsets -- rather than by being called `Register` or `Registers`, which differs per peripheral and would be a name check pretending to be a rule."
+    },
+    "reference_note": "Emitted as the DISCRIMINANT. A register stores the numeric value, and the bank reads and writes u64, so an enum-typed field compares against its discriminant -- which is what the hardware holds. Recorded as a representation deviation: C# keeps the enum type through `.Value`, Rust keeps the number.",
+    "from_u64": {
+      "note": "C# casts a register value straight to the enum: `(OutputSpeed)val`. Rust has no such cast, so each generated enum gets a from_u64. DEVIATION: C# keeps an out-of-range discriminant (`(OutputSpeed)7` stays 7), which Rust cannot represent, so an unmatched value falls back to the default. In practice the field width bounds the value -- a 2-bit field over a 4-member enum is total -- but the fallback is recorded rather than assumed unreachable.",
+      "impl": "impl {name} {{\n    pub fn from_u64(v: u64) -> Self {{\n        match v {{\n{arms}\n            _ => Self::default(),\n        }}\n    }}\n}}",
+      "arm": "            {value} => Self::{member},"
+    },
+    "typed_callback_param": {
+      "note": "WithEnumFields gives C# a STRONGLY TYPED callback -- `(idx, val)` where val is already the enum, with no cast node anywhere. The Rust callback signature is u64, so the conversion belongs at the parameter's uses inside the body. Scoped to lambda slots: a peripheral method that genuinely takes an enum parameter declares it as the enum and must not be wrapped.",
+      "emit": "{type}::from_u64({name})"
+    }
   }
 }

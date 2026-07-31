@@ -184,11 +184,14 @@
     "delegates": {
       "note": "A C# event or Action field is a callback slot. C# allows many subscribers; Renode's peripherals attach exactly one, so a single Option<Box<dyn FnMut>> is faithful for this corpus and is recorded as such rather than silently narrowing multicast semantics.",
       "Action": "Option<Box<dyn FnMut({inner})>>"
-    }
+    },
+    "array_form": "Vec<{inner}>",
+    "array_note": "A C# array maps to Vec, not a fixed-size Rust array: the lengths here come from constructor arguments rather than the type, so a fixed size is not available at the declaration."
   },
   "coercions": {
-    "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation.",
-    "bool_to_u64": "u64::from({expr})"
+    "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation. A computed ENUM field is the same case: C# returns the enum and the DSL widens it to the register's value, so Rust spells the discriminant conversion.",
+    "bool_to_u64": "u64::from({expr})",
+    "enum_to_u64": "{expr} as u64"
   },
   "conversions": {
     "note": "C# widens numerically without being asked (`uint value = receiveFifo.Dequeue()` on a Queue<byte>). Rust never does, so an implicit NUMERIC conversion becomes an explicit cast. Non-numeric implicit conversions -- boxing, interface upcasts -- are still transparent, because they have no Rust spelling and inserting one would be noise. The corpus records both flags on the Conversion node.",
@@ -204,5 +207,9 @@
   "delegates_expr": {
     "note": "`_ => Foo(x)` in argument position becomes a Rust closure. This is the one place a lambda stays a closure rather than becoming a free fn: it is passed straight to a call and never stored on the peripheral, so it cannot outlive the borrow it captures.",
     "closure": "|{params}| {body}"
+  },
+  "literals": {
+    "note": "A C# floating literal must keep its fraction in Rust: `16.0` emitted as `16` turns an f64 division into integer division, silently changing the result.",
+    "float_suffix": ".0"
   }
 }

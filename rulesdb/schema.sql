@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS member (
     -- C# does not have. Roslyn answers this via the backing field's
     -- AssociatedSymbol; it is recorded rather than re-derived per consumer.
     has_storage   INTEGER NOT NULL DEFAULT 1,
+    -- Constant value, for `const` fields and ENUM MEMBERS. Enum discriminants
+    -- are written into registers, so translating an enum without them would
+    -- renumber the hardware.
+    const_value   TEXT,
     UNIQUE (run_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_member_type ON member(type_id);
