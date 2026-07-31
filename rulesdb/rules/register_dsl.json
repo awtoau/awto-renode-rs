@@ -20,9 +20,8 @@
       "name": "WITH_FLAG_COMPUTED",
       "matches": "WithFlag",
       "when": "provider or writer",
-      "emit": ".with_tagged_flag({pos})",
-      "gap": "computed field: needs a dispatch arm",
-      "note": "A callback with no `out` parameter has no storage. Emitting a field handle here would fabricate one, so the rule emits a tag and reports the gap."
+      "emit": ".with_value_cb({pos}, 1, {mode}, {provider_fn}, {writer_fn})",
+      "note": "A flag is a 1-bit value, so a computed flag routes through the same combinator rather than needing a parallel with_flag_cb."
     },
     {
       "name": "WITH_FLAG_TAG",
@@ -39,8 +38,8 @@
       "name": "WITH_VALUE_COMPUTED",
       "matches": "WithValueField|WithEnumField",
       "when": "provider or writer",
-      "emit": ".with_tag({pos}, {width})",
-      "gap": "computed field: needs a dispatch arm"
+      "emit": ".with_value_cb({pos}, {width}, {mode}, {provider_fn}, {writer_fn})",
+      "note": "The callbacks become free fns emitted alongside; see peripheral_methods for why they cannot be closures."
     },
     {
       "name": "WITH_VALUE_TAG",
@@ -137,13 +136,37 @@
     }
   ],
   "callback_signatures": {
-    "note": "The DSL's callback types. A lambda bound to one of these parameters is emitted as a free fn with this signature; `bank` and `state` are what the C# closure captured via `this`.",
+    "note": "The DSL's callback types. `bank` and `state` are what the C# closure captured via `this`; `{state}` is the peripheral's generated State, because a callback must reach `st.receive_fifo` and a generic S cannot. The remaining SLOTS are named by the C# lambda itself -- `(idx, val) => ...` -- so the source's names are bound onto the trailing slots and the defaults below apply only where C# names nothing.",
     "valueProviderCallback": {
-      "params": "bank: &Bank<S>, st: &mut S, _idx: usize, _current: u64",
+      "fixed": "bank: &Bank<{state}>, st: &mut {state}",
+      "slots": [
+        [
+          "idx",
+          "usize"
+        ],
+        [
+          "current",
+          "u64"
+        ]
+      ],
       "ret": "u64"
     },
     "writeCallback": {
-      "params": "bank: &Bank<S>, st: &mut S, _idx: usize, _old: u64, new: u64",
+      "fixed": "bank: &Bank<{state}>, st: &mut {state}",
+      "slots": [
+        [
+          "idx",
+          "usize"
+        ],
+        [
+          "old",
+          "u64"
+        ],
+        [
+          "new",
+          "u64"
+        ]
+      ],
       "ret": "()"
     }
   },
@@ -152,7 +175,11 @@
     "decl": "fn {name}(bank: &Bank<S>, st: &mut S{extra}) -> {ret}",
     "call": "{name}(bank, st{args})",
     "field_handles": "st.f.{field}",
-    "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see."
+    "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see.",
+    "unemitted_dependency": {
+      "note": "A callback body may call a peer method the converter cannot yet emit. Emitting the call anyway produces a file that does not compile and LOOKS finished; emitting a plausible stub is worse. So the callback is withheld, the combinator falls back to no callback, and the gap is reported by name. The register's layout is still correct -- only its behaviour is missing, and visibly so. The same applies when a body reaches a State field the converter could not type (GPIO's arrays of nested enums): the callback is withheld and the missing field named, rather than emitted against a struct that lacks it.",
+      "action": "withhold callback, report gap"
+    }
   },
   "state_struct": {
     "note": "The peripheral's non-register instance fields. The declared type decides: an IFlagRegisterField/IValueRegisterField/IEnumRegisterField is a HANDLE and already lives in `Fields`; anything else is real data and belongs in State. Derivable from the corpus, so State is generated rather than hand-declared -- which is what lets a callback reach `st.receive_fifo` in generated code.",
@@ -171,12 +198,30 @@
       ]
     },
     "type_map": {
-      "note": "Renode types with no BCL equivalent. `Core.GPIO` is an output line; the peripheral only ever sets its level, so `bool` carries it. Consistent with the IRQ_SET expression rule, which assigns a bool.",
-      "Antmicro.Renode.Core.GPIO": "bool"
+      "note": "Renode types with no BCL equivalent. `Core.GPIO` is an output line; the peripheral only ever sets its level, so `bool` carries it -- consistent with the IRQ_SET expression rule. `CancellationTokenSource` cancels a scheduled action, and under D3 (single-threaded) that is a shared flag, not a threading primitive: Cancel() sets it and the scheduled closure checks it before firing. This is a DEVIATION in mechanism with identical observable behaviour, recorded here rather than left to look like a faithful mapping.",
+      "Antmicro.Renode.Core.GPIO": "bool",
+      "System.Threading.CancellationTokenSource": "Option<std::rc::Rc<std::cell::Cell<bool>>>"
     },
     "requires_storage": {
       "note": "Only members that actually store go in State. `STM32_UART.BaudRate` computes from two register fields and holds nothing; emitting it as a field would invent storage the C# does not have -- the same error class as the invented `.with_reserved(9, 23)`. Derived from member.has_storage, so it is not a hand-maintained skip list.",
       "column": "has_storage"
+    }
+  },
+  "callback_naming": {
+    "note": "Deterministic from the register name and bit position -- both content, never emission order, so output stays byte-identical at -j1 and -j31.",
+    "template": "{reg}_{pos}_{kind}"
+  },
+  "logging": {
+    "note": "Renode's `this.Log(LogLevel.X, format, args...)`. A STATIC extension on IEmulationElement, so argument 0 is the peripheral and argument 1 the level -- binding from the front would log at level `self`. Kept out of `expressions` because it needs the level argument decoded, which a flat template cannot express.",
+    "symbol_contains": "Logging.Logger.Log(",
+    "emit": "log::{level}!({args})",
+    "default_level": "info",
+    "levels": {
+      "Warning": "warn",
+      "Error": "error",
+      "Info": "info",
+      "Debug": "debug",
+      "Noisy": "trace"
     }
   }
 }

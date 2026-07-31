@@ -7,10 +7,24 @@
 //! Source: STM32_GPIOPort.CreateRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - BitReset: WithValueField: computed field: needs a dispatch arm
-//!   - BitSet: WithValueField: computed field: needs a dispatch arm
-//!   - InputData: WithValueField: computed field: needs a dispatch arm
-//!   - OutputData: WithValueField: computed field: needs a dispatch arm
+//!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state, st.write_state
+//!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
+//!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
+//!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode
+//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array, st.state
+//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - OutputSpeed: callback for bit 0 needs peer method(s) not yet emitted: st.output_speed
+//!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down
+//!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
+//!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
+//!   - state field `mode`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.Mode[]`
+//!   - state field `outputSpeed`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.OutputSpeed[]`
+//!   - state field `pullUpPullDown`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.PullUpPullDown[]`
+//!   - state field `registers`: no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.DoubleWordRegisterCollection`
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -34,8 +48,21 @@ pub mod reg {
 pub struct Fields {
 }
 
+/// The peripheral's own state: every C# instance member that actually
+/// stores something. Computed properties are excluded -- they hold
+/// nothing, so a field here would invent storage the C# lacks.
+#[derive(Default)]
+pub struct State {
+    /// Register field handles, bound by the C# `out` parameters.
+    pub f: Fields,
+    pub mode_reset_value: u32,
+    pub number_of_a_fs: u32,
+    pub output_speed_reset_value: u32,
+    pub pull_up_pull_down_reset_value: u32,
+}
+
 /// C# `DefineRegisters()`, field for field.
-pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {
+pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::OUTPUT_TYPE, 0)
         .with_tagged_flag(0)
         .with_tagged_flag(1)
@@ -57,18 +84,18 @@ pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {
         .done();
 
     bank.define(reg::INPUT_DATA, 0)
-        .with_tag(0, 16)
+        .with_value_cb(0, 16, FieldMode::READ, None, None)
         .with_reserved(16, 16)
         .done();
 
     bank.define(reg::OUTPUT_DATA, 0)
-        .with_tag(0, 16)
+        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, None)
         .with_reserved(16, 16)
         .done();
 
     bank.define(reg::BIT_SET, 0)
-        .with_tag(0, 16)
-        .with_tag(16, 16)
+        .with_value_cb(0, 16, FieldMode::WRITE, None, None)
+        .with_value_cb(16, 16, FieldMode::WRITE, None, None)
         .done();
 
     bank.define(reg::CONFIGURATION_LOCK, 0)
@@ -93,7 +120,7 @@ pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {
         .done();
 
     bank.define(reg::BIT_RESET, 0)
-        .with_tag(0, 16)
+        .with_value_cb(0, 16, FieldMode::WRITE, None, None)
         .with_reserved(16, 16)
         .done();
 

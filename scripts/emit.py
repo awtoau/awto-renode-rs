@@ -165,6 +165,8 @@ def render_mode(const: str | None) -> str:
 
 
 class Emitter:
+    PROJECT_KEYS = ("state_struct", "peripheral_methods", "callback_naming", "logging")
+
     def __init__(self, con: sqlite3.Connection, log: logging.Logger,
                  rules_dir: Path | None = None):
         self.con = con
@@ -173,6 +175,10 @@ class Emitter:
         self.gaps: list[str] = []
         self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
         self._flag_fields: set[str] = set()
+        self._callbacks: list[str] = []
+        self._emitted_fns: set[str] = set()
+        self._state_names: set[str] = set()
+        self._current_reg: str | None = None
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
         self.forms = load_register_forms(rd)
         self.assignments = load_assignments(rd)
@@ -190,7 +196,7 @@ class Emitter:
         for f in sorted(rd.glob("*.json")):
             doc = json.loads(f.read_text())
             if doc.get("family") or doc.get("layer") != "language":
-                for k in ("state_struct", "peripheral_methods"):
+                for k in self.PROJECT_KEYS:
                     if k in doc:
                         self.project[k] = doc[k]
 
@@ -294,6 +300,41 @@ class Emitter:
             "provider": present("valueProviderCallback"),
             "writer": present("writeCallback"),
         }
+        # A computed field's callbacks become free fns emitted beside the
+        # layout. Named from register + bit position so the name is content-
+        # derived and never depends on emission order.
+        naming = self.project.get("callback_naming", {}).get(
+            "template", "{reg}_{pos}_{kind}")
+        for param, kind, key in (("valueProviderCallback", "provider", "provider_fn"),
+                                 ("writeCallback", "writer", "writer_fn")):
+            env[key] = "None"
+            if not flags[kind]:
+                continue
+            lam = self.find_lambda(oid, param)
+            if lam is None:
+                continue
+            fname = naming.format(reg=snake(self._current_reg or "reg"),
+                                  pos=env["pos"], kind=kind)
+            body = self.emit_lambda(lam, fname, param)
+            if not body:
+                continue
+            # Does the body call a peer method we cannot emit yet? If so the
+            # file would not compile, and a stub would look finished. Withhold
+            # the callback and name the gap instead.
+            text = "\n".join(body)
+            missing = sorted({
+                m for m in re.findall(r"\b([a-z_][a-z0-9_]*)\(bank, st", text)
+                if m not in self._emitted_fns})
+            missing += sorted({
+                f"st.{m}" for m in re.findall(r"\bst\.([a-z_][a-z0-9_]*)", text)
+                if m != "f" and m not in self._state_names})
+            if missing:
+                self.gaps.append(
+                    "callback for bit {} needs peer method(s) not yet emitted: {}"
+                    .format(env["pos"], ", ".join(missing)))
+                continue
+            self._callbacks.append("\n".join(body))
+            env[key] = f"Some({fname})"
 
         for rule in self.rules:
             if name not in rule["matches"].split("|"):
@@ -370,6 +411,33 @@ class Emitter:
             tmpl = table.get(symbol or "")
             if tmpl and kids:
                 return tmpl.format(operand=self.emit_expr(kids[0]))
+        logrule = self.project.get("logging", {})
+        if (kind == "Invocation" and symbol
+                and logrule.get("symbol_contains", "\0") in symbol):
+            # Renode's Log extension: (this, level, format, args...). It is
+            # STATIC, so arg 0 is the peripheral and arg 1 the level -- taking
+            # the arguments from the front would log at level "self".
+            levels = logrule.get("levels", {})
+            vals = [self.emit_expr(a) for a in args]
+            lvl, rest = logrule.get("default_level", "info"), vals[2:]
+            if len(vals) > 1:
+                # The level is a FieldReference BELOW the Argument node, so the
+                # argument's own symbol is the parameter and never the level.
+                raw = ""
+                stack = [args[1]]
+                while stack:
+                    cur = stack.pop()
+                    for cid, sym in self.con.execute(
+                            "SELECT id, symbol FROM operation WHERE parent_id=?", (cur,)):
+                        if sym and "LogLevel." in sym:
+                            raw = sym
+                            stack = []
+                            break
+                        stack.append(cid)
+                lvl = levels.get(raw.split(".")[-1], lvl)
+            return logrule.get("emit", "log::{level}!({args})").format(
+                level=lvl, args=", ".join(rest))
+
         if kind == "Invocation" and symbol:
             # Generic call. Project rules were tried above, so reaching here
             # means no idiom claimed it.
@@ -402,6 +470,12 @@ class Emitter:
 
         if kind in ("PropertyReference", "FieldReference") and symbol:
             return self.emit_reference(kind, symbol, kids)
+
+        if kind == "ArrayElementReference" and len(kids) >= 2:
+            tmpl = self.language.get("references", {}).get(
+                "ArrayElementReference", {}).get("emit", "{array}[{index} as usize]")
+            return tmpl.format(array=self.emit_expr(kids[0]),
+                               index=self.emit_expr(kids[1]))
 
         if kind in ("Conversion", "Parenthesized", "Argument"):
             # Transparent: an implicit conversion is not written by anyone.
@@ -503,12 +577,47 @@ class Emitter:
             self.unhandled[f"lambda:{param}"] = 1
             return []
         lam = self.language.get("lambdas", {})
+        # A computed flag returns bool; the value callback returns u64. Rust
+        # will not widen implicitly, so the conversion is emitted.
+        # Bind the C# lambda's OWN parameter names onto the trailing slots.
+        # `(idx, val) => ...` must emit a body that references idx and val, so
+        # the source's names win and unbound slots keep an underscore.
+        det = (self.con.execute("SELECT detail FROM operation WHERE id=?", (oid,))
+               .fetchone() or [None])[0]
+        cs_params = []
+        if det:
+            try:
+                raw = json.loads(det).get("params", "")
+                cs_params = [x for x in raw.split() if x and x != "_"]
+                n_declared = len(raw.split()) if raw else 0
+            except json.JSONDecodeError:
+                n_declared = 0
+        else:
+            n_declared = 0
+        slots = [list(s) for s in sigs.get("slots", [])]
+        if n_declared:
+            tail = slots[-n_declared:] if n_declared <= len(slots) else slots
+            raw_names = (json.loads(det).get("params", "").split()
+                         if det else [])
+            for slot, nm in zip(tail, raw_names[-len(tail):]):
+                slot[0] = nm if nm != "_" else "_" + slot[0]
+        used = self.lambda_uses(oid)
+        for slot in slots:
+            if not slot[0].startswith("_") and slot[0] not in used:
+                slot[0] = "_" + slot[0]
+        params = sigs["fixed"].format(state="State") + "".join(
+            f", {n if n.startswith('_') else n}: {ty}" for n, ty in slots)
+        prev = getattr(self, "_coerce_ret", None)
+        self._coerce_ret = ("bool_to_u64"
+                            if sigs["ret"] == "u64" and self.returns_bool(oid)
+                            else None)
         body: list[str] = []
         for cid, kind, _s, _c, _t in self.children(oid):
             if kind == "Block":
                 body.extend(self.emit_block(cid, 1))
             else:
                 body.extend(self.emit_stmt(cid, 1))
+        self._coerce_ret = prev
         if not body:
             return []
         # Rewrite the captured `this`. In the C# the closure reaches the
@@ -536,8 +645,39 @@ class Emitter:
             rewritten.append(line)
         body = rewritten
         text = lam.get("free_fn", "fn {name}({params}) -> {ret} {{\n{body}\n}}").format(
-            name=name, params=sigs["params"], ret=sigs["ret"], body="\n".join(body))
+            name=name, params=params, ret=sigs["ret"], body="\n".join(body))
         return text.splitlines()
+
+    def lambda_uses(self, oid: int) -> set[str]:
+        """Parameter names actually referenced in this lambda's body, so unused
+        slots can carry an underscore instead of a rustc warning."""
+        out: set[str] = set()
+        stack = [oid]
+        while stack:
+            cur = stack.pop()
+            for cid, kind, sym in self.con.execute(
+                    "SELECT id, kind, symbol FROM operation WHERE parent_id=?", (cur,)):
+                if kind == "ParameterReference" and sym:
+                    out.add(sym.split()[-1])
+                stack.append(cid)
+        return out
+
+    def returns_bool(self, oid: int) -> bool:
+        """Does this lambda's body yield a bool? Read from the corpus's recorded
+        operation types rather than inferred from the emitted text."""
+        rows = self.con.execute(
+            "SELECT o.type FROM operation o WHERE o.kind='Return' "
+            "AND o.parent_id IN (SELECT id FROM operation WHERE parent_id=?)",
+            (oid,)).fetchall()
+        for (ty,) in rows:
+            if ty and "bool" in ty.lower():
+                return True
+        # The Return node may carry no type; consult its value child.
+        rows = self.con.execute(
+            "SELECT c.type FROM operation r JOIN operation c ON c.parent_id=r.id "
+            "WHERE r.kind='Return' AND r.parent_id IN "
+            "(SELECT id FROM operation WHERE parent_id=?)", (oid,)).fetchall()
+        return any(ty and "bool" in ty.lower() for (ty,) in rows)
 
     def find_lambda(self, oid: int, param: str) -> int | None:
         """The AnonymousFunction passed as a given named parameter."""
@@ -575,8 +715,13 @@ class Emitter:
         if kind == "Return":
             tmpl = stmts.get("Return", {})
             if kids:
+                val = self.emit_expr(kids[0][0])
+                coerce = getattr(self, "_coerce_ret", None)
+                if coerce:
+                    val = self.language.get("coercions", {}).get(
+                        coerce, "{expr}").format(expr=val)
                 return [pad + tmpl.get("with_value", "return {value};")
-                        .format(value=self.emit_expr(kids[0][0]))]
+                        .format(value=val)]
             return [pad + tmpl.get("bare", "return;")]
 
         if kind == "Conditional" and len(kids) >= 2:
@@ -767,6 +912,7 @@ class Emitter:
             return [], [], [f"{type_name}.{method_name} not in the corpus"]
         method_id, = row
 
+        self._state_names = {n for n, _ in self.state_fields(type_name)[0]}
         chains: dict[int, list[tuple[int, int, str]]] = {}
         for oid, symbol, start, end in self.con.execute(
                 "SELECT id, symbol, span_start, span_start + span_len FROM operation "
@@ -782,6 +928,7 @@ class Emitter:
                 self.find_registers(method_id), key=lambda r: r[1]):
             body: list[str] = []
             self.gaps = []
+            self._current_reg = name or f"reg_{offset:x}"
             for _end, oid, symbol in sorted(chains.get(chain_span, [])):
                 if self.combinator(symbol) is None:
                     continue
@@ -813,8 +960,11 @@ class Emitter:
         boundary rather than a convention -- which is what lets check_generated.py
         enforce it byte-for-byte.
         """
+        self._callbacks = []
         stmts, fields, gaps = self.emit_registers(type_name, method_name)
         offsets = self.register_offsets(type_name, method_name)
+        state, state_gaps = self.state_fields(type_name)
+        gaps.extend(state_gaps)
 
         L: list[str] = []
         a = L.append
@@ -832,6 +982,8 @@ class Emitter:
                 a(f"//!   - {g}")
         a("")
         a("use renode_regs::{Bank, FieldMode, FlagId, ValueId};")
+        if any("VecDeque" in ty for _, ty in state):
+            a("use std::collections::VecDeque;")
         a("")
         a("/// Register offsets, from the C# `enum Register`.")
         a("pub mod reg {")
@@ -846,8 +998,26 @@ class Emitter:
             a(f"    pub {f}: {self.field_type(f)},")
         a("}")
         a("")
+        a("/// The peripheral's own state: every C# instance member that actually")
+        a("/// stores something. Computed properties are excluded -- they hold")
+        a("/// nothing, so a field here would invent storage the C# lacks.")
+        a("#[derive(Default)]")
+        a("pub struct State {")
+        a("    /// Register field handles, bound by the C# `out` parameters.")
+        a("    pub f: Fields,")
+        for n, ty in state:
+            a(f"    pub {n}: {ty},")
+        a("}")
+        a("")
+        if self._callbacks:
+            a("// Callbacks for computed fields. C# writes these as lambdas capturing")
+            a("// `this`; a closure cannot live inside the object it borrows, so each")
+            a("// becomes a free fn over (bank, state). See rulesdb/rules/.")
+            for cb in self._callbacks:
+                a(cb)
+                a("")
         a("/// C# `DefineRegisters()`, field for field.")
-        a("pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {")
+        a("pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {")
         for line in stmts:
             a(line.rstrip())
         a("}")

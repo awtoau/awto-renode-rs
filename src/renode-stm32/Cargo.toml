@@ -5,6 +5,8 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Renode's this.Log(LogLevel.X, ...) maps to the log crate's macros.
+log = "0.4"
 renode-regs = { path = "../renode-regs" }
 
 [dev-dependencies]

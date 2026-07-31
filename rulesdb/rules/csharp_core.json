@@ -132,6 +132,10 @@
       "instance": "{receiver}.{name}",
       "self": "self.{name}",
       "static": "{type}::{name}"
+    },
+    "ArrayElementReference": {
+      "note": "`a[i]`. Rust indexes with usize, and C# array indices are int/uint here, so the index is converted at the site.",
+      "emit": "{array}[{index} as usize]"
     }
   },
   "stdlib": {
@@ -179,5 +183,9 @@
       "note": "A C# event or Action field is a callback slot. C# allows many subscribers; Renode's peripherals attach exactly one, so a single Option<Box<dyn FnMut>> is faithful for this corpus and is recorded as such rather than silently narrowing multicast semantics.",
       "Action": "Option<Box<dyn FnMut({inner})>>"
     }
+  },
+  "coercions": {
+    "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation.",
+    "bool_to_u64": "u64::from({expr})"
   }
 }

@@ -38,7 +38,7 @@
 //! - `BaudRate` is computed but used for nothing except the idle-line timeout.
 //!   Renode models no transmission rate at all.
 
-use crate::uart_registers::{define_registers, reg, Fields};
+use crate::uart_registers::{define_registers, reg, Fields, State};
 use renode_regs::Bank;
 
 /// C# `STM32_UART(IMachine machine, uint frequency = 8000000)`. This is the
@@ -49,8 +49,11 @@ use renode_regs::Bank;
 pub const DEFAULT_FREQUENCY: u32 = 8_000_000;
 
 pub struct Stm32Uart {
-    bank: Bank<()>,
+    bank: Bank<State>,
     f: Fields,
+    /// Peripheral state, GENERATED from the C# instance members. Held here so
+    /// the register callbacks can reach it.
+    st: State,
     receive_fifo: std::collections::VecDeque<u8>,
     frequency: u32,
     /// Raised IRQ line state, so transitions can be compared against the C#.
@@ -61,12 +64,13 @@ pub struct Stm32Uart {
 
 impl Stm32Uart {
     pub fn new(frequency: u32) -> Self {
-        let mut bank: Bank<()> = Bank::new();
+        let mut bank: Bank<State> = Bank::new();
         let mut f = Fields::default();
         define_registers(&mut bank, &mut f);
         Self {
             bank,
             f,
+            st: State::default(),
             receive_fifo: Default::default(),
             frequency,
             irq: false,
@@ -80,9 +84,10 @@ impl Stm32Uart {
 
     /// Status register without the read side effects, for assertions.
     /// `read(STATUS)` has none in the C# either -- only `read(DATA)` does --
-    /// but this takes `&self`, which tests want.
-    pub fn read_sr(&self) -> u32 {
-        self.bank.read(reg::STATUS, &mut ()).unwrap_or(0) as u32 | (1 << 7)
+    /// but the bank now threads `&mut State` for the generated callbacks, so
+    /// this takes `&mut self` despite reading nothing.
+    pub fn read_sr(&mut self) -> u32 {
+        self.bank.read(reg::STATUS, &mut self.st).unwrap_or(0) as u32 | (1 << 7)
     }
 
     /// C# `BaudRate` property. Computed from BRR and used for exactly one thing:
@@ -140,7 +145,7 @@ impl Stm32Uart {
         match offset {
             reg::STATUS => {
                 // ORE reads 0 and TXE reads 1, neither backed by a field.
-                let mut v = self.bank.read(offset, &mut ()).unwrap_or(0);
+                let mut v = self.bank.read(offset, &mut self.st).unwrap_or(0);
                 v |= 1 << 7; // TXE
                 v as u32
             }
@@ -154,7 +159,7 @@ impl Stm32Uart {
                 self.update();
                 value as u32
             }
-            _ => self.bank.read(offset, &mut ()).unwrap_or(0) as u32,
+            _ => self.bank.read(offset, &mut self.st).unwrap_or(0) as u32,
         }
     }
 
@@ -173,12 +178,12 @@ impl Stm32Uart {
                 self.update();
             }
             reg::STATUS | reg::CONTROL1 => {
-                self.bank.write(offset, value as u64, &mut ());
+                self.bank.write(offset, value as u64, &mut self.st);
                 // Both registers carry a write callback that ends in Update().
                 self.update();
             }
             _ => {
-                self.bank.write(offset, value as u64, &mut ());
+                self.bank.write(offset, value as u64, &mut self.st);
             }
         }
     }

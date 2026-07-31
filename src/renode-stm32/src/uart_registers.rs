@@ -7,10 +7,11 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - Data: WithValueField: computed field: needs a dispatch arm
-//!   - Status: WithFlag: computed field: needs a dispatch arm
+//!   - Data: callback for bit 0 needs peer method(s) not yet emitted: update
+//!   - Data: conditional access `?.` needs nullability analysis
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
+use std::collections::VecDeque;
 
 /// Register offsets, from the C# `enum Register`.
 pub mod reg {
@@ -44,24 +45,50 @@ pub struct Fields {
     pub dma_reception_request: FlagId,
 }
 
+/// The peripheral's own state: every C# instance member that actually
+/// stores something. Computed properties are excluded -- they hold
+/// nothing, so a field here would invent storage the C# lacks.
+#[derive(Default)]
+pub struct State {
+    /// Register field handles, bound by the C# `out` parameters.
+    pub f: Fields,
+    pub char_received: Option<Box<dyn FnMut(u8)>>,
+    pub dma_request: bool,
+    pub irq: bool,
+    pub frequency: u32,
+    pub idle_line_detected_cancellation_token_src: Option<std::rc::Rc<std::cell::Cell<bool>>>,
+    pub receive_fifo: VecDeque<u8>,
+}
+
+// Callbacks for computed fields. C# writes these as lambdas capturing
+// `this`; a closure cannot live inside the object it borrows, so each
+// becomes a free fn over (bank, state). See rulesdb/rules/.
+fn status_3_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
+    return u64::from(false);
+}
+
+fn status_7_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
+    return u64::from(true);
+}
+
 /// C# `DefineRegisters()`, field for field.
-pub fn define_registers<S>(bank: &mut Bank<S>, f: &mut Fields) {
+pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::STATUS, 192)
         .with_tagged_flag(0)
         .with_tagged_flag(1)
         .with_tagged_flag(2)
-        .with_tagged_flag(3)
+        .with_value_cb(3, 1, FieldMode::READ, Some(status_3_provider), None)
         .with_flag(4, &mut f.idle_line_detected, FieldMode::READ)
         .with_flag(5, &mut f.read_fifo_not_empty, FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR)
         .with_flag(6, &mut f.transmission_complete, FieldMode::READ | FieldMode::WRITE_ZERO_TO_CLEAR)
-        .with_tagged_flag(7)
+        .with_value_cb(7, 1, FieldMode::READ, Some(status_7_provider), None)
         .with_tagged_flag(8)
         .with_tagged_flag(9)
         .with_reserved(10, 22)
         .done();
 
     bank.define(reg::DATA, 0)
-        .with_tag(0, 9)
+        .with_value_cb(0, 9, FieldMode::READ_WRITE, None, None)
         .done();
 
     bank.define(reg::BAUD_RATE, 0)

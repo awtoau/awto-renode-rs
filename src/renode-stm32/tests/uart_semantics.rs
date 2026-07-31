@@ -108,7 +108,7 @@ mod irq_aggregation {
         // correct silicon behaviour, since no transmission is ongoing. Written
         // as its own test because it invalidated a first attempt at the TC
         // interrupt test below.
-        let u = uart();
+        let mut u = uart();
         assert_ne!(u.read_sr() & (1 << 6), 0, "TC is set out of reset");
     }
 

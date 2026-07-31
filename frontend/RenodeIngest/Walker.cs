@@ -276,6 +276,12 @@ public static class Walker
                     break;
                 case IAnonymousFunctionOperation af:
                     Add("lambda", af.Symbol.ToDisplayString());
+                    // The lambda's OWN parameter names. Without them a callback
+                    // body referencing `(idx, val) =>` cannot be emitted: the
+                    // signature's names are the DSL's, not the source's.
+                    // Roslyn had these all along on af.Symbol.Parameters.
+                    Add("params", string.Join(" ", af.Symbol.Parameters.Select(pp => pp.Name)));
+                    Add("returns", af.Symbol.ReturnType.ToDisplayString());
                     break;
                 case IInstanceReferenceOperation ir:
                     Add("refkind", ir.ReferenceKind.ToString());
