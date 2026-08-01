@@ -79,6 +79,20 @@ public static class CorpusCut
         // cannot be translated without it, since Rust has no inheritance and
         // the base is flattened into the derived peripheral.
         "Main/Peripherals/GPIOPort/BaseGPIOPort.cs", // base of STM32_GPIOPort
+        // The scheduling primitives peripherals reach through IMachine. We had
+        // the INTERFACE and not the implementation, which made a missing
+        // dependency look like an open design question -- twice.
+        //
+        // Deliberately NOT Machine.cs: it is 2,271 lines and the hub of the
+        // emulator, referencing LocalTimeSource, SystemBus and EmulationManager,
+        // which PLAN.md sizes at ~6,277 and ~9,832 lines. These three are 535
+        // lines and self-contained -- BaseClockSource refers only to
+        // TimeInterval, ClockEntry and its own members. The converter's
+        // withholding will name whatever else is genuinely required, rather
+        // than us guessing and importing the whole emulator to find out.
+        "Main/Time/TimeInterval.cs",      // ScheduleAction's delay type
+        "Main/Time/ClockEntry.cs",        // one queue entry
+        "Main/Time/BaseClockSource.cs",   // the queue itself
         "Main/Peripherals/UART/IUART.cs",            // Parity/Bits, returned by STM32_UART
         "Main/Peripherals/IPeripheral.cs",
         "Main/Peripherals/IMachine.cs",
