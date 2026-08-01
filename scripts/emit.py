@@ -56,24 +56,6 @@ def repo_root() -> Path:
                                capture_output=True, text=True, check=True).stdout.strip())
 
 
-def snake(name: str) -> str:
-    """C# camelCase field name -> Rust snake_case.
-
-    A naming rule, not a cosmetic one: emitted code must be idiomatic Rust or it
-    will not survive review, and hand-fixing every name afterwards is exactly the
-    per-file patching this pipeline exists to avoid.
-    """
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper():
-            prev_lower = i > 0 and name[i - 1].islower()
-            next_lower = i + 1 < len(name) and name[i + 1].islower()
-            if i > 0 and (prev_lower or next_lower):
-                out.append("_")
-            out.append(ch.lower())
-        else:
-            out.append(ch)
-    return "".join(out)
 
 
 def load_rules(rules_dir: Path) -> list[dict]:
@@ -164,7 +146,13 @@ def render_mode(const: str | None) -> str:
     return " | ".join(parts) if parts else "FieldMode::default()"
 
 
-class Emitter:
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emitter.core import snake  # noqa: E402
+from emitter.lang.statements import Statements  # noqa: E402
+from emitter.plugins.renode_expressions import RenodeExpressions  # noqa: E402
+
+
+class Emitter(RenodeExpressions, Statements):
     PROJECT_KEYS = ("state_struct", "peripheral_methods", "callback_naming",
                     "logging", "enums", "register_collection", "inheritance")
 
@@ -381,26 +369,15 @@ class Emitter:
         # than the value passed to it.
         args = [c[0] for c in all_kids if c[1] == "Argument"]
 
-        # Project idioms first: they are more specific than the language rules.
-        for rule in self.expressions:
-            if rule["kind"] != kind:
-                continue
-            if rule.get("symbol_contains") and (
-                    not symbol or rule["symbol_contains"] not in symbol):
-                continue
-            if rule.get("type_is") and rtype != rule["type_is"]:
-                continue
-            env: dict[str, str] = {}
-            if "{field}" in rule["emit"]:
-                env["field"] = self.receiver_field(oid) or "UNKNOWN"
-            for i, k in enumerate(args):
-                env[f"arg{i}"] = self.emit_expr(k)
-            try:
-                return rule["emit"].format(**env)
-            except KeyError:
-                self.unhandled[f"{rule['name']}:binding"] = 1
+        # Corpus idioms first: they are more specific than the language rules,
+        # and live in scripts/emitter/plugins/ so the language layer can be
+        # checked for purity. See check_layering.py.
+        claimed = self.plugin_expr(oid, kind, symbol, const, rtype, detail,
+                                   kids, args, all_kids)
+        if claimed is not None:
+            return claimed
 
-        # Language layer.
+        # Language layer: generic C# to Rust, valid for any corpus.
         if kind == "Literal":
             return self.literal(const, rtype)
         if kind == "Binary":
@@ -415,70 +392,6 @@ class Emitter:
             tmpl = table.get(symbol or "")
             if tmpl and kids:
                 return tmpl.format(operand=self.emit_expr(kids[0]))
-        rc = self.project.get("register_collection", {})
-        if (kind == "Invocation" and symbol
-                and rc.get("symbol_contains", "\0") in symbol):
-            meth = symbol.split("(")[0].split(".")[-1]
-            tmpl = rc.get("members", {}).get(meth)
-            if tmpl:
-                vals = [self.emit_expr(a) for a in args]
-                fmt = {f"arg{i}": v for i, v in enumerate(vals)}
-                fmt["args"] = ", ".join(vals)
-                return tmpl.format(**fmt)
-
-        logrule = self.project.get("logging", {})
-        if (kind == "Invocation" and symbol
-                and logrule.get("symbol_contains", "\0") in symbol):
-            # Renode's Log extension: (this, level, format, args...). It is
-            # STATIC, so arg 0 is the peripheral and arg 1 the level -- taking
-            # the arguments from the front would log at level "self".
-            levels = logrule.get("levels", {})
-            vals = [self.emit_expr(a) for a in args]
-            lvl, rest = logrule.get("default_level", "info"), vals[2:]
-            if len(vals) > 1:
-                # The level is a FieldReference BELOW the Argument node, so the
-                # argument's own symbol is the parameter and never the level.
-                raw = ""
-                stack = [args[1]]
-                while stack:
-                    cur = stack.pop()
-                    for cid, sym in self.con.execute(
-                            "SELECT id, symbol FROM operation WHERE parent_id=?", (cur,)):
-                        if sym and "LogLevel." in sym:
-                            raw = sym
-                            stack = []
-                            break
-                        stack.append(cid)
-                lvl = levels.get(raw.split(".")[-1], lvl)
-            # log! takes format arguments itself; a nested format!() is a
-            # compile error (the macro needs a literal). See unwrap_format.
-            if len(rest) == 1 and rest[0].startswith("format!(") and rest[0].endswith(")"):
-                rest = [rest[0][len("format!("):-1]]
-            return logrule.get("emit", "log::{level}!({args})").format(
-                level=lvl, args=", ".join(rest))
-
-        if kind == "Invocation" and symbol and self._current_type:
-            # A call on `this` whose target is declared on a BASE type is
-            # `base.Foo()`. Emitting it as a self-call is unbounded recursion
-            # that compiles -- see peripheral_methods.base_call.
-            decl = symbol.split("(")[0].rsplit(".", 1)[0].split(".")[-1]
-            recv0 = next((c[0] for c in all_kids if c[1] != "Argument"), None)
-            rk = self.kind_of(recv0) if recv0 is not None else None
-            if decl and decl != self._current_type and rk == "InstanceReference":
-                mname = symbol.split("(")[0].rsplit(".", 1)[-1]
-                qual = self.project.get("inheritance", {}).get(
-                    "qualified_call", "{base}_{name}").format(
-                    base=snake(decl), name=snake(mname))
-                if qual in self._emitted_fns or snake(mname) in self._emitted_fns:
-                    target = qual if qual in self._emitted_fns else snake(mname)
-                    arg_txt = ", ".join(self.emit_expr(a) for a in args)
-                    return (f"{target}(bank, st, {arg_txt})" if arg_txt
-                            else f"{target}(bank, st)")
-                spec = self.project.get("peripheral_methods", {}).get("base_call", {})
-                self.gaps.append(spec.get("gap", "base call to {name}").format(
-                    name=mname, type=decl))
-                return "/* GAP: base-class call */"
-
         if kind == "Invocation" and symbol:
             # Generic call. Project rules were tried above, so reaching here
             # means no idiom claimed it.
@@ -884,143 +797,6 @@ class Emitter:
                     return cid
                 node = cid
         return None
-
-    def emit_stmt(self, oid: int, indent: int = 0) -> list[str]:
-        """One statement, possibly nested. Structure from the LANGUAGE rules."""
-        pad = "    " * indent
-        row = self.con.execute(
-            "SELECT kind, symbol, detail FROM operation WHERE id=?", (oid,)).fetchone()
-        if row is None:
-            return []
-        kind, _symbol, detail = row
-        kids = self.children(oid)
-
-        if kind == "Loop":
-            return self.emit_loop(oid, indent)
-
-        if kind in ("Increment", "Decrement") and kids:
-            tmpl = self.language.get("increment", {}).get(kind)
-            if tmpl:
-                return [pad + tmpl.format(target=self.emit_expr(kids[0][0]))]
-        stmts = self.language.get("statements", {})
-
-        if kind == "ExpressionStatement":
-            if not kids:
-                return []
-            # An Increment here is in STATEMENT position, where prefix and
-            # postfix are indistinguishable; route it to the statement rule
-            # rather than the expression one, which reports a gap.
-            if self.kind_of(kids[0][0]) in ("Increment", "Decrement"):
-                return self.emit_stmt(kids[0][0], indent)
-            return [pad + self.emit_expr(kids[0][0]) + ";"]
-
-        if kind == "SimpleAssignment":
-            return [pad + self.emit_assignment(oid)]
-
-        if kind == "Return":
-            tmpl = stmts.get("Return", {})
-            if kids:
-                val = self.emit_expr(kids[0][0])
-                coerce = getattr(self, "_coerce_ret", None)
-                if coerce:
-                    val = self.language.get("coercions", {}).get(
-                        coerce, "{expr}").format(expr=val)
-                return [pad + tmpl.get("with_value", "return {value};")
-                        .format(value=val)]
-            return [pad + tmpl.get("bare", "return;")]
-
-        if kind == "Conditional" and len(kids) >= 2:
-            cond = self.emit_expr(kids[0][0])
-            then = self.emit_block(kids[1][0], indent + 1)
-            out = [f"{pad}if {cond} {{"] + then
-            if len(kids) >= 3:
-                out.append(f"{pad}}} else {{")
-                out.extend(self.emit_block(kids[2][0], indent + 1))
-            out.append(pad + "}")
-            return out
-
-        if kind in ("VariableDeclarationGroup", "VariableDeclaration"):
-            out: list[str] = []
-            for cid, _k, _s, _c, _t in kids:
-                out.extend(self.emit_stmt(cid, indent))
-            return out
-
-        if kind == "VariableDeclarator":
-            name = "value"
-            if detail:
-                try:
-                    name = snake(json.loads(detail).get("local", "value"))
-                except json.JSONDecodeError:
-                    pass
-            init = None
-            for cid, ckind, _s, _c, _t in kids:
-                if ckind == "VariableInitializer":
-                    inner = self.children(cid)
-                    if inner:
-                        init = self.emit_expr(inner[0][0])
-            tmpl = stmts.get("VariableDeclarator", {})
-            if init is not None:
-                return [pad + tmpl.get("with_init", "let mut {name} = {init};")
-                        .format(name=name, init=init)]
-            return [pad + tmpl.get("bare", "let mut {name};").format(name=name)]
-
-        self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
-        return [f"{pad}/* {kind} */"]
-
-    def emit_loop(self, oid: int, indent: int) -> list[str]:
-        """A C# loop. The kind comes from the corpus (LoopKind), not from the
-        child shape, so a For and a ForEach are never confused."""
-        pad = "    " * indent
-        rules = self.language.get("loops", {})
-        det = (self.con.execute("SELECT detail FROM operation WHERE id=?", (oid,))
-               .fetchone() or [None])[0]
-        info = {}
-        if det:
-            try:
-                info = json.loads(det)
-            except json.JSONDecodeError:
-                info = {}
-        lk = info.get("loop")
-        kids = list(self.children(oid))
-        body_id = next((c[0] for c in kids if c[1] == "Block"), None)
-        body = self.emit_block(body_id, indent + 1) if body_id is not None else []
-
-        if lk == "ForEach" and len(kids) >= 2:
-            coll = self.emit_expr(kids[0][0])
-            var = snake(info.get("var") or "item")
-            return [pad + f"for {var} in {coll} {{", *body, pad + "}"]
-
-        if lk == "While":
-            cond = self.emit_expr(kids[0][0]) if kids else "true"
-            return [pad + f"while {cond} {{", *body, pad + "}"]
-
-        if lk == "For":
-            init = [c for c in kids if c[1] == "VariableDeclarationGroup"]
-            cond = [c for c in kids if c[1] == "Binary"]
-            incr = [c for c in kids if c[1] == "ExpressionStatement"]
-            out = []
-            for c in init:
-                out.extend(self.emit_stmt(c[0], indent))
-            cond_txt = self.emit_expr(cond[0][0]) if cond else "true"
-            out.append(pad + f"while {cond_txt} {{")
-            out.extend(body)
-            for c in incr:
-                out.extend(self.emit_stmt(c[0], indent + 1))
-            out.append(pad + "}")
-            return out
-
-        self.unhandled[f"loop:{lk}"] = self.unhandled.get(f"loop:{lk}", 0) + 1
-        return []
-
-    def emit_block(self, oid: int, indent: int) -> list[str]:
-        """A Block, or a single statement used as one."""
-        row = self.con.execute("SELECT kind FROM operation WHERE id=?", (oid,)).fetchone()
-        if row and row[0] == "Block":
-            out: list[str] = []
-            for cid, _k, _s, _c, _t in self.children(oid):
-                out.extend(self.emit_stmt(cid, indent))
-            return out
-        return self.emit_stmt(oid, indent)
 
     def emit_assignment(self, oid: int) -> str:
         """`x = y`, with project rules for register-field targets."""

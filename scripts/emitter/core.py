@@ -29,6 +29,26 @@ from __future__ import annotations
 
 from typing import Callable
 
+def snake(name: str) -> str:
+    """C# camelCase field name -> Rust snake_case.
+
+    A naming rule, not a cosmetic one: emitted code must be idiomatic Rust or it
+    will not survive review, and hand-fixing every name afterwards is exactly the
+    per-file patching this pipeline exists to avoid.
+    """
+    out: list[str] = []
+    for i, ch in enumerate(name):
+        if ch.isupper():
+            prev_lower = i > 0 and name[i - 1].islower()
+            next_lower = i + 1 < len(name) and name[i + 1].islower()
+            if i > 0 and (prev_lower or next_lower):
+                out.append("_")
+            out.append(ch.lower())
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 # kind -> [(priority, handler)]. Lower priority number wins; plugins register
 # at 0 and the language layer at 100, so a corpus idiom is always tried first.
 PLUGIN = 0
