@@ -93,6 +93,10 @@ public static class CorpusCut
         "Main/Time/TimeInterval.cs",      // ScheduleAction's delay type
         "Main/Time/ClockEntry.cs",        // one queue entry
         "Main/Time/BaseClockSource.cs",   // the queue itself
+        // The bus interface peripherals reach through IMachine.GetSystemBus --
+        // the single most-called member of IMachine in this corpus (9 sites),
+        // and the last type the converter reported as outside the cut.
+        "Main/Peripherals/Bus/IBusController.cs",
         "Main/Peripherals/UART/IUART.cs",            // Parity/Bits, returned by STM32_UART
         "Main/Peripherals/IPeripheral.cs",
         "Main/Peripherals/IMachine.cs",

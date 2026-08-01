@@ -13,7 +13,7 @@
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
-//!   - state field `sysbus`: interface `IBusController` is not in the corpus cut (12 call sites reference it) -- add it before the trait can be generated
+//!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 17
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
