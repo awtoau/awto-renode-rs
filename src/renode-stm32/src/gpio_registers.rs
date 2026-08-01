@@ -28,10 +28,10 @@
 //!   - WriteState: withheld, reaches state this peripheral does not have: st.number_of_pins
 //!   - base_gpio_port_reset: withheld, calls withheld method(s): connections, unset
 //!   - set_connections_state_using_bits: withheld, calls withheld method(s): connections, set, unset
-//!   - state field `Connections`: no Rust mapping for `System.Collections.Generic.IReadOnlyDictionary<int, Antmicro.Renode.Core.IGPIO>`
+//!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
-//!   - state field `machine`: no Rust mapping for `Antmicro.Renode.Core.IMachine`
+//!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

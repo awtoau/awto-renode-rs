@@ -998,6 +998,34 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                                                      "std::sync::Mutex<()>")))
                 continue
             if rt is None:
+                # An interface-typed field is D1's case and has a settled
+                # mapping; what is missing is the TRAIT. Say so, with the size
+                # of the decision, rather than reporting it as an unknown type.
+                # Strip generic punctuation: this name may come from INSIDE a
+                # generic argument (`IReadOnlyDictionary<int, IGPIO>`), and
+                # `IGPIO>` is not a trait anyone can generate.
+                short = (dt or "").split(".")[-1].strip("<>[] ").split("<")[0]
+                if short.startswith("I") and len(short) > 1 and short[1].isupper():
+                    total = self.con.execute(
+                        "SELECT COUNT(*) FROM member mb JOIN type t ON t.id=mb.type_id "
+                        "WHERE t.name=?", (short,)).fetchone()[0]
+                    used = self.con.execute(
+                        "SELECT COUNT(DISTINCT symbol) FROM operation "
+                        "WHERE kind='Invocation' AND symbol LIKE ?",
+                        (f"%{short}.%",)).fetchone()[0]
+                    if total == 0:
+                        # Not in the corpus at all -- a CUT problem, not a
+                        # trait problem, and the two need different work.
+                        gaps.append(
+                            f"state field `{n}`: interface `{short}` is not in "
+                            f"the corpus cut ({used} call sites reference it) "
+                            f"-- add it before the trait can be generated")
+                    else:
+                        gaps.append(
+                            f"state field `{n}`: needs trait `{short}` (D1 maps "
+                            f"the field; the trait is issue #41). {short} "
+                            f"declares {total} members, the corpus calls {used}")
+                    continue
                 gaps.append(f"state field `{n}`: no Rust mapping for `{dt}`")
                 continue
             if n in locked:

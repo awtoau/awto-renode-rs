@@ -294,5 +294,11 @@
     },
     "symbol_contains": "BaseRegisterCollection",
     "cast_note": "C# types the bus offset as `long` and the value as `uint`; the bank uses u64 for both, so the casts are at the boundary. Faithful: the C# signature is what the bus calls, and the width is not narrowed."
+  },
+  "object_graph": {
+    "note": "D1: every C# reference-typed field becomes Rc<RefCell<T>>, Option<...> where C# permits null. Renode's graph is cyclic by construction -- the machine owns peripherals and peripherals hold IMachine back-references -- so cycles are unavoidable and LEAKING them is correct: the machine is built once and lives for the process, which then exits.",
+    "field": "Option<std::rc::Rc<std::cell::RefCell<dyn {trait}>>>",
+    "blocked_on": "An INTERFACE-typed field needs the trait to exist. Generating it is issue #41's recommendation and carries a real decision this rule does not make: IMachine declares 112 members and the corpus calls 6. A full trait is faithful but mostly untranslatable; a used-subset trait compiles but is not IMachine, and would quietly redefine what the type means. Recorded here so the field mapping is settled while the trait question stays visible.",
+    "risk": "D1 records the known risk: RefCell panics on re-entrant borrow, and the real exposure is peripheral -> sysbus -> peripheral. A panic there is NOT necessarily a C# bug -- it can be re-entrancy C# tolerates. PLAN.md calls this the highest-risk item and wants a borrow discipline decided in Phase 0."
   }
 }
