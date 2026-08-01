@@ -25,7 +25,7 @@
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
-//!   - WriteState: withheld, cannot emit expr:CompoundAssignment
+//!   - WriteState: withheld, reaches state this peripheral does not have: st.number_of_pins
 //!   - base_gpio_port_reset: withheld, calls withheld method(s): connections, unset
 //!   - set_connections_state_using_bits: withheld, calls withheld method(s): connections, set, unset
 //!   - state field `Connections`: no Rust mapping for `System.Collections.Generic.IReadOnlyDictionary<int, Antmicro.Renode.Core.IGPIO>`

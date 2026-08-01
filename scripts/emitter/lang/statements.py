@@ -99,9 +99,30 @@ class Statements:
             # An Increment here is in STATEMENT position, where prefix and
             # postfix are indistinguishable; route it to the statement rule
             # rather than the expression one, which reports a gap.
-            if self.kind_of(kids[0][0]) in ("Increment", "Decrement"):
+            # These kinds are STATEMENTS in every position we see them, but
+            # they arrive wrapped in an ExpressionStatement, so without this
+            # they fall through to emit_expr and are reported unhandled. The
+            # list is the fix generalised: `Increment` alone was fixed once,
+            # and `CompoundAssignment` then repeated the identical failure.
+            if self.kind_of(kids[0][0]) in (
+                    "Increment", "Decrement", "CompoundAssignment"):
                 return self.emit_stmt(kids[0][0], indent)
             return [pad + self.emit_expr(kids[0][0]) + ";"]
+
+        if kind == "CompoundAssignment" and len(kids) >= 2:
+            # `x += y`. The operator is the same OperatorKind the binary table
+            # carries, so `+=` is DERIVED from `+` rather than tabulated twice;
+            # two tables drift and a compound assignment quietly using the
+            # wrong operator is invisible in review.
+            spec = self.language.get("compound_assignment", {})
+            binop = self.language.get("operators", {}).get("binary", {}).get(
+                _symbol or "")
+            if binop:
+                op = binop.replace("{lhs}", "").replace("{rhs}", "").strip()
+                return [pad + spec.get("template", "{target} {op}= {value};")
+                        .format(target=self.emit_expr(kids[0][0]), op=op,
+                                value=self.emit_expr(kids[1][0]))]
+            self.unhandled[f"CompoundAssignment:{_symbol}"] = 1
 
         if kind == "SimpleAssignment":
             return [pad + self.emit_assignment(oid)]
