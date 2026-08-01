@@ -136,6 +136,10 @@
     "ArrayElementReference": {
       "note": "`a[i]`. Rust indexes with usize, and C# array indices are int/uint here, so the index is converted at the site.",
       "emit": "{array}[{index} as usize]"
+    },
+    "ArrayElementReference2D": {
+      "note": "`a[i, j]` on a rectangular array. Two indices arrive as two index children, which is how a 2D access is told apart from a 1D one without consulting the declared type.",
+      "emit": "{array}.get({row} as usize, {col} as usize)"
     }
   },
   "stdlib": {
@@ -194,8 +198,9 @@
     "iteration_order_note": "Dictionary maps to BTreeMap, not HashMap. C# Dictionary enumeration order is unspecified but in practice stable for a given insertion sequence, and translated code DOES iterate dictionaries. Rust's HashMap randomises per process via SipHash, so the same program would produce a different order on every run -- a behavioural difference the trace oracle would see as nondeterminism rather than as a bug, which is the worst way to find it. BTreeMap is deterministic. Recorded as a DEVIATION: ordering is by key rather than by insertion, so it is not identical to C#, only stable. From Bun's PORTING.md, which bans HashMap for the same reason.",
     "nullable_form": "Option<{inner}>",
     "nullable_note": "`T?` on a VALUE type is System.Nullable<T>, which has an exact Rust spelling and needs no inference: the C# type system already states the value may be absent. This is the half of nullability that is free. It is NOT the reference-type case -- `string?` on an unannotated corpus says nothing, and that is the deferred D4 analysis.",
-    "multidim_form": "Vec<Vec<{inner}>>",
-    "multidim_note": "C# `T[,]` is a RECTANGULAR array -- one allocation with two indices -- and arrives from Roslyn as `T[*,*]`. Vec<Vec<T>> is jagged, so this is a DEVIATION in representation: every row is separately allocated and rows could in principle differ in length, which C# forbids. Recorded because the observable behaviour matches for indexed access, which is all this corpus does with them, and a faithful rectangular type would need a wrapper carrying its own stride."
+    "multidim_form": "csharp_rt::Array2D<{inner}>",
+    "multidim_note": "C# `T[,]` is RECTANGULAR -- one allocation, two indices, every row the same length -- and arrives from Roslyn as `T[*,*]`. Vec<Vec<T>> is the obvious mapping and is wrong three ways: raggedness becomes representable when C# forbids it, `new T[3,4]` yields 12 usable slots where a Vec<Vec<T>> starts EMPTY and panics on first index unless every construction site remembers to fill it, and `a.Length` is rows*cols rather than the row count. csharp-rt::Array2D carries its stride, makes raggedness unrepresentable, and forces initialisation in the constructor. Runtime support is the standard answer here -- IL2CPP ships libil2cpp for exactly this class of thing.",
+    "runtime_crate_note": "`csharp-rt` holds types C# has and Rust does not. A type earns a place there only when the approximation is OBSERVABLY different: Queue<T> does not qualify because VecDeque matches it, T[,] does. Nothing in the crate knows what is being translated."
   },
   "coercions": {
     "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation. A computed ENUM field is the same case: C# returns the enum and the DSL widens it to the register's value, so Rust spells the discriminant conversion.",

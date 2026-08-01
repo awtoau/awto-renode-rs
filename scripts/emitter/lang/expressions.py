@@ -171,6 +171,16 @@ class Expressions:
         if kind in ("PropertyReference", "FieldReference") and symbol:
             return self.emit_reference(kind, symbol, kids)
 
+        if kind == "ArrayElementReference" and len(kids) >= 3:
+            # Two index children means a rectangular access -- told apart by
+            # arity rather than by consulting the declared type.
+            tmpl = self.language.get("references", {}).get(
+                "ArrayElementReference2D", {}).get(
+                "emit", "{array}.get({row} as usize, {col} as usize)")
+            return tmpl.format(array=self.emit_expr(kids[0]),
+                               row=self.emit_expr(kids[1]),
+                               col=self.emit_expr(kids[2]))
+
         if kind == "ArrayElementReference" and len(kids) >= 2:
             tmpl = self.language.get("references", {}).get(
                 "ArrayElementReference", {}).get("emit", "{array}[{index} as usize]")
