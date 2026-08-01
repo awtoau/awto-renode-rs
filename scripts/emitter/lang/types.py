@@ -34,6 +34,17 @@ class Types:
             bare = std.get("delegates", {}).get("bare_action")
             if bare:
                 return bare
+        # `T?` on a value type is Nullable<T> -- the C# type system already
+        # says the value may be absent, so no inference is needed.
+        if cs.endswith("?") and not cs.endswith("??"):
+            inner = self.rust_type(cs[:-1])
+            return (std.get("nullable_form", "Option<{inner}>").format(inner=inner)
+                    if inner else None)
+        # `T[,]` is rectangular in C#; Vec<Vec<T>> is jagged. See multidim_note.
+        if cs.endswith("[*,*]"):
+            inner = self.rust_type(cs[:-5])
+            return (std.get("multidim_form", "Vec<Vec<{inner}>>").format(inner=inner)
+                    if inner else None)
         if cs.endswith("[]"):
             inner = self.rust_type(cs[:-2])
             return (std.get("array_form", "Vec<{inner}>").format(inner=inner)
