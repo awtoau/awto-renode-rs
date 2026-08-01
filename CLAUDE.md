@@ -126,26 +126,55 @@ scripts alone". Saying it was not enough, so it is now checked.
 These are hard rules for the conversion pipeline. Full rationale and schema:
 [docs/rulesdb-design.md](docs/rulesdb-design.md).
 
-### Breadth is a health check, never a source of work
+### Breadth discovers; only the cut validates
 
-`--all` / `scripts/check_breadth.py` runs the ingest over the whole Renode tree
-(~448k lines, ~50s). It exists to answer one question: **does the tooling crash
-or lose data silently?** It is cheap enough to run routinely only because Renode
-is small; the kernel corpus this method came from is 70x larger.
+*Amended. The original rule said breadth "must never produce rules, clusters,
+coverage numbers, or work items" — written when the deliverable was ~16k lines
+of F427 code. The deliverable is now a general C#-to-Rust transpiler, and that
+changes what breadth is for. Reasoning recorded on the decision issue; do not
+re-litigate it here.*
 
-**It must never produce rules, clusters, coverage numbers, or work items.** The
-deliverable is ~16k lines of F427 code. Breadth data would generate hundreds of
-clusters from EFR32xG2, Xtensa and RISC-V peripherals that will never be
-translated — polluting the rule DB, inflating coverage, and spending LLM budget
-on patterns that are not the deliverable.
+`--all` runs the ingest over the whole Renode tree (~448k lines, ~57s, 308 MB).
+It answers two questions now.
 
-Enforced structurally: `--all` refuses to write `rulesdb/patterns.db` and tags
-`corpus_run.config = 'breadth'`. The rule engine must reject any run so tagged.
+**1. Does the tooling crash or lose data silently?** A breadth failure is a
+**bug in our tooling**, not a fact about Renode. It found one on its first run:
+5,123 methods (24.7%) claimed a body while emitting no operations, with zero
+exceptions thrown, because `partial void Foo();` is neither abstract nor extern.
 
-A breadth failure is a **bug in our tooling**, not a fact about Renode. It found
-one on its first run: 5,123 methods (24.7%) claimed a body while emitting no
-operations, with zero exceptions thrown, because `partial void Foo();` is
-neither abstract nor extern.
+**2. What C# exists that the cut cannot show us?** The tree is 22x the code but
+only 1.3x the operation kinds (71 → 90) — and those 19 extra kinds are
+`SwitchExpression`, `RelationalPattern`, `Await`, `Tuple`,
+`DeconstructionAssignment` and friends. Modern C# that any real transpiler must
+handle and that the cut would never reveal. The BCL surface is 4.6x larger
+(531 → 2,420 members). For **discovery**, and for **negative examples** showing
+where a rule over-matches, breadth is the best source we have.
+
+**What breadth still may not do: claim correctness.**
+
+> Breadth can prove a rule EMITS. It can never prove the output is RIGHT.
+
+The oracle is trace replay, and traces exist only for the cut. A rule matched a
+thousand times across the tree has produced *plausible* output a thousand times
+— which is exactly how the invented `.with_reserved(9, 23)` survived a
+33,000-access trace: behaviourally inert wrong code is invisible.
+
+So the rule DB has **two validated tiers**, enforced by triggers in
+`rulesdb/schema.sql`, not by review:
+
+| tier | threshold | guarantee |
+|---|---|---|
+| `general` | ≥3 instances **anywhere**, breadth included | emits on real code; correctness unknown |
+| `committed` | ≥3 instances **in the cut**, each oracle-backed | the output is right |
+
+`rule_commit_threshold` counts only instances whose `corpus_run.config <>
+'breadth'`, so breadth cannot manufacture confidence it has no way to supply.
+
+**Metrics report the tiers separately.** Coverage and instances-per-rule mean
+"validated", never "emitted". Blur the two and the headline metric quietly
+becomes a measure of how much we produced rather than how much works — which is
+the failure the original rule was guarding against, and the part of it that
+still stands.
 
 ### Corpus before translation
 

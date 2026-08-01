@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS rule (
     description    TEXT    NOT NULL,
     matcher        TEXT    NOT NULL,   -- operation-tree pattern
     emitter        TEXT    NOT NULL,   -- Rust emission template
-    status         TEXT    NOT NULL DEFAULT 'proposed',  -- proposed|validated|committed|retired
+    status         TEXT    NOT NULL DEFAULT 'proposed',  -- proposed|validated|general|committed|retired
     min_instances_required INTEGER NOT NULL DEFAULT 3,
     requires_human_gate    INTEGER NOT NULL DEFAULT 0,
     created_run_id INTEGER NOT NULL REFERENCES corpus_run(id),
@@ -264,7 +264,25 @@ CREATE TABLE IF NOT EXISTS rule (
     -- Defence 2 from docs/rulesdb-design.md, enforced by the schema rather than
     -- by review: a rule cannot claim 'committed' status while its threshold is
     -- unmet. The trigger below checks the instance count.
-    CHECK (status IN ('proposed','validated','committed','retired')),
+    --
+    -- TWO validated tiers, because there are two different guarantees:
+    --
+    --   general    >=3 instances ANYWHERE, including the breadth corpus. The
+    --              rule demonstrably EMITS on real code. It carries NO
+    --              correctness guarantee, because the oracle is trace replay
+    --              and traces exist only for the cut -- so a rule matched a
+    --              thousand times outside it has been shown to produce
+    --              plausible output, never correct output. That is exactly the
+    --              failure mode of the invented `.with_reserved(9, 23)`, which
+    --              survived a 33k-access trace by being behaviourally inert.
+    --
+    --   committed  >=3 instances IN THE CUT, each backed by an oracle tier.
+    --              This is the only tier that claims the output is right.
+    --
+    -- Keeping them apart is what lets breadth improve rule GENERALITY without
+    -- inflating any number that claims correctness. Blur them and the coverage
+    -- metric silently becomes a measure of how much we emitted.
+    CHECK (status IN ('proposed','validated','general','committed','retired')),
     CHECK (min_instances_required >= 1)
 );
 
@@ -305,14 +323,36 @@ CREATE TABLE IF NOT EXISTS rule_deviation (
 );
 
 -- Enforce the commit threshold in the database, not in review.
+--
+-- `committed` counts only instances from a NON-BREADTH run. A rule may match a
+-- thousand times across the whole tree and still not be committable, because
+-- none of those matches can be validated: the oracle replays traces, and the
+-- traces are of the cut. Counting them here would let breadth manufacture
+-- confidence it cannot supply.
 CREATE TRIGGER IF NOT EXISTS rule_commit_threshold
 BEFORE UPDATE OF status ON rule
 WHEN NEW.status = 'committed'
+     AND (SELECT COUNT(*) FROM rule_instance ri
+          JOIN operation o   ON o.id = ri.operation_id
+          JOIN corpus_run cr ON cr.id = o.run_id
+          WHERE ri.rule_id = NEW.id AND cr.config <> 'breadth')
+         < NEW.min_instances_required
+BEGIN
+    SELECT RAISE(ABORT,
+        'rule cannot be committed below min_instances_required validated instances IN THE CUT -- breadth matches do not count; record it as a patch, or as general');
+END;
+
+-- `general` has a threshold too, just a weaker one: instances from anywhere.
+-- Without this a rule could claim generality from a single site, which is the
+-- hand-written file wearing a rule's name that this whole schema exists to stop.
+CREATE TRIGGER IF NOT EXISTS rule_general_threshold
+BEFORE UPDATE OF status ON rule
+WHEN NEW.status = 'general'
      AND (SELECT COUNT(*) FROM rule_instance WHERE rule_id = NEW.id)
          < NEW.min_instances_required
 BEGIN
     SELECT RAISE(ABORT,
-        'rule cannot be committed below min_instances_required -- record it as a patch');
+        'rule cannot be general below min_instances_required matches -- one site is a patch');
 END;
 
 -- ===========================================================================

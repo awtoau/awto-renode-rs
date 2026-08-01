@@ -83,13 +83,28 @@ def rules_stats(root: Path) -> dict | None:
             except sqlite3.Error:
                 return 0
         rules = count("rule", "WHERE status='committed'")
-        inst = count("rule_instance")
+        general = count("rule", "WHERE status='general'")
+        # Instances-per-rule is the headline metric, so both sides of the
+        # division must mean the same thing. Counting ALL instances (breadth
+        # included) against COMMITTED rules would inflate it with matches the
+        # oracle cannot validate -- the exact blur decision D5 forbids.
+        try:
+            inst = con.execute(
+                "SELECT COUNT(*) FROM rule_instance ri "
+                "JOIN operation o ON o.id = ri.operation_id "
+                "JOIN corpus_run cr ON cr.id = o.run_id "
+                "WHERE cr.config <> 'breadth'").fetchone()[0]
+        except sqlite3.Error:
+            inst = 0
+        all_inst = count("rule_instance")
         return {
             "methods": count("method"),
             "operations": count("operation"),
             "clusters": count("pattern_cluster"),
             "rules_committed": rules,
+            "rules_general": general,
             "instances": inst,
+            "instances_all": all_inst,
             "instances_per_rule": (inst / rules) if rules else None,
             "stubbed": count("translation", "WHERE status='stub'"),
             "translated": count("translation", "WHERE status='translated'"),
@@ -147,6 +162,9 @@ def build(root: Path) -> str:
     # existing is what let the scorecard report "no translations yet" while
     # every translated method was a hand-written patch -- the metric designed to
     # detect drift was blind to the only drift present.
+    if rules and rules.get("rules_general"):
+        a(f"| rules at `general` | {rules['rules_general']} | — | "
+          f"emit on real code; correctness unverified (D5) |")
     if rules and rules["rules_committed"]:
         ipr = rules["instances_per_rule"]
         ok = ipr >= MIN_INSTANCES_PER_RULE
