@@ -191,6 +191,8 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         self._state_names: set[str] = set()
         self._current_type: str | None = None
         self._enum_names: set[str] = set()
+        # Nodes marked by a normalisation pass: rule name -> set of node ids.
+        self.normalised: dict[str, set[int]] = {}
         self._enum_slots: set[str] = set()
         self._current_reg: str | None = None
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
@@ -1055,6 +1057,12 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                     f"for `{ptype}`")
                 return []
             extra += f", {snake(pname)}: {rt}"
+
+        # Normalise before emitting: rewrite the tree into shapes the emit
+        # rules already handle. Ordered by data, run to a fixpoint, capped.
+        from emitter import core as _core
+        _core.run_normalisations(
+            self, method_id, self.language.get("normalisations", {}))
 
         root = self.con.execute(
             "SELECT id FROM operation WHERE method_id=? AND parent_id IS NULL",

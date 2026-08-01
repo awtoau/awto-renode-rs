@@ -65,6 +65,54 @@ def _register(table: dict, kinds: tuple[str, ...], priority: int, fn: Callable):
     return fn
 
 
+# Normalisation passes, keyed by rule name. A pass rewrites the operation
+# tree into an equivalent shape BEFORE the emit rules see it; it returns True
+# if it changed anything, which is what drives the fixpoint.
+_NORMALISE: dict[str, Callable] = {}
+
+
+def normalise(name: str):
+    """Register a normalisation pass under its name in the rules data.
+
+    Order comes from the DATA (`normalisations.passes[].order`), never from
+    registration order or dict iteration -- two passes matching the same node
+    give different results depending on which ran first, and output must be
+    byte-identical at -j1 and -j31.
+    """
+    def deco(fn):
+        _NORMALISE[name] = fn
+        return fn
+    return deco
+
+
+def normalise_pass(name: str):
+    return _NORMALISE.get(name)
+
+
+def run_normalisations(em, method_id: int, spec: dict) -> int:
+    """Apply every registered pass in declared order, to a fixpoint.
+
+    Returns the number of passes run. Raises if the cap is exceeded: a rule set
+    that never settles is a bug, and emitting the half-normalised tree would
+    hide it behind plausible output.
+    """
+    passes = sorted(spec.get("passes", []), key=lambda p: (p.get("order", 0),
+                                                          p.get("name", "")))
+    cap = int(spec.get("max_passes", 8))
+    for n in range(1, cap + 1):
+        changed = False
+        for rule in passes:
+            fn = _NORMALISE.get(rule.get("name", ""))
+            if fn is not None and fn(em, method_id, rule):
+                changed = True
+        if not changed:
+            return n
+    raise RuntimeError(
+        f"normalisation did not reach a fixpoint in {cap} passes on method "
+        f"{method_id}; a rule set that never settles is a bug -- see "
+        f"normalisations.max_passes_why")
+
+
 def expr(*kinds: str, priority: int = LANGUAGE):
     """Register an EXPRESSION handler for one or more operation kinds.
 

@@ -65,14 +65,18 @@ class Statements:
         stmts = self.language.get("statements", {})
 
         if kind == "ExpressionStatement" and kids and \
-                self.kind_of(kids[0][0]) == "ConditionalAccess":
+                kids[0][0] in self.normalised.get("ConditionalAccessStatement", ()):
             # NORMALISATION, not a mapping. `x?.Foo();` in statement position
             # discards its result, so the short-circuit IS an if-guard -- an
             # exact rewrite needing no decision about whether x is nullable,
             # because the C# already said it might be. Expression position is
             # NOT this: `y = x?.Foo()` yields null and needs D4.
-            spec = self.language.get("normalisations", {}).get(
-                "ConditionalAccessStatement", {})
+            # Passes are an ORDERED LIST keyed by `name`, not a dict -- order
+            # is data. Looking it up as a dict key silently yielded {} and the
+            # branch fell through to the gap, with no error anywhere.
+            spec = next((x for x in self.language.get("normalisations", {})
+                         .get("passes", [])
+                         if x.get("name") == "ConditionalAccessStatement"), {})
             ca = list(self.children(kids[0][0]))
             if len(ca) >= 2 and spec.get("emit"):
                 recv = self.emit_expr(ca[0][0])

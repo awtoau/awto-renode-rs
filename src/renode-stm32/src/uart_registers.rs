@@ -7,7 +7,7 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - Data: callback for bit 0: withheld, cannot emit expr:EventReference
+//!   - Data: conditional access `?.` needs nullability analysis
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
@@ -185,6 +185,17 @@ fn data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u6
     return value as u64;
 }
 
+fn data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, value: u64) -> () {
+    if (!bank.flag(st.f.usart_enabled) && !bank.flag(st.f.transmitter_enabled)) {
+        log::warn!("Trying to transmit a character, but the transmitter is not enabled. dropping.");
+        return;
+    }
+    /* GAP: `?.` needs nullability analysis (D4) */;
+    bank.set_flag(st.f.transmission_complete, true);
+    update(bank, st);
+    return;
+}
+
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::STATUS, 192)
@@ -202,7 +213,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::DATA, 0)
-        .with_value_cb(0, 9, FieldMode::READ_WRITE, Some(data_0_provider), None)
+        .with_value_cb(0, 9, FieldMode::READ_WRITE, Some(data_0_provider), Some(data_0_writer))
         .done();
 
     bank.define(reg::BAUD_RATE, 0)
