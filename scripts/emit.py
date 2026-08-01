@@ -896,8 +896,14 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         A base outside the cut cannot be flattened; callers report that rather
         than silently translating a peripheral with half its state missing."""
         out: list[str] = []
+        # Entry point keyed on name, which is ambiguous: the corpus holds
+        # `PeripheralRegister` and `PeripheralRegister<T>` as distinct types
+        # with the same name, and several `Registers`. Disambiguated by
+        # preferring a type that HAS a base -- the same defect nested_enums
+        # was already fixed for, missed here.
         row = self.con.execute(
-            "SELECT id, base_type_id, base_extern FROM type WHERE name=?",
+            "SELECT id, base_type_id, base_extern FROM type WHERE name=? "
+            "ORDER BY (base_type_id IS NOT NULL) DESC, id LIMIT 1",
             (type_name,)).fetchone()
         seen = set()
         while row and row[1] and row[1] not in seen:

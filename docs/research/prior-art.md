@@ -54,7 +54,7 @@ is listed. Run date: 2026-08-01.
 | `"csharp to rust" in:name,description,readme` | search API | 13, none a translator |
 | `"C# to Rust" transpiler` | search API | 15, every one C-to-Rust |
 | `rust transpiler language:C#` | search API | 2, both SQL-dialect transpilers |
-| `topic:transpiler csharp` | search API | 47 — the main seam, see §5 |
+| `topic:transpiler csharp` | search API | 47 — the main seam, see §5 and §8 |
 | `"C# subset" transpiler` | search API | 2 (CS2X, and a KerboScript toy) |
 | `"Roslyn" rust in:name,description` | search API | 6 — includes both previously-dismissed lookalikes |
 | `transpile "to Rust" in:description` | search API | 27 — sources are C, Elm, Lua, QBasic, Ruby, F#. Not C# |
@@ -105,8 +105,8 @@ language pairs that repository search misses.
   `port C# Rust` (1034 hits, none a tool).
 
 Non-GitHub forges (GitLab, Codeberg, sr.ht, Bitbucket, SourceForge, grep.app,
-SearchCode, crates.io, NuGet) and the academic literature were surveyed
-separately; see §7 and §8.
+SearchCode, crates.io, NuGet, Software Heritage) and the academic literature
+were surveyed separately; see **§9** and **§11**.
 
 ---
 
@@ -133,7 +133,8 @@ attacking the actual problem, and it demonstrates precisely the cost model this
 project rejected:
 
 **[arikdutta/CSharp-toRUST-Assistant](https://github.com/arikdutta/CSharp-toRUST-Assistant)**
-(0 stars, created and last pushed 2026-06-28 — one day of work, 47 KB).
+(0 stars, 47 KB; created 2026-06-28T18:23Z and last pushed 2026-06-28T19:27Z —
+about an hour of work, and untouched since).
 
 > "Tree-sitter handles **structure** (splitting source into one translatable
 > unit at a time); an LLM handles **meaning** (the actual translation, including
@@ -262,6 +263,15 @@ entire C++ product line, generated monthly from the C# sources. **Millions of
 lines per library, released to paying customers.** This is the largest
 real-world C#-to-unmanaged-language source translation that exists, and the
 team wrote it up in detail.
+
+Still shipping, verified on NuGet:
+[`CodePorting.Translator.Cs2Cpp.Framework`](https://www.nuget.org/packages/CodePorting.Translator.Cs2Cpp.Framework/)
+**v26.7.0, 314,888 downloads**, plus `Cs2Cpp.Control` and the legacy
+`CodePorting.Native.Cs2Cpp.API` (440,487 downloads). **There is no
+`Cs2Rust`** — a NuGet query for `Cs2` and for `CodePorting` returns no Rust
+package, and `csharp to rust` on NuGet returns zero results. The organisation
+with more C#-source-translation experience than anyone else has not attempted
+Rust.
 
 Primary sources:
 [Part 1](https://www.codeporting.com/blog/from_csharp_to_cpp_how_we_have_automated_project_conversion_part1) ·
@@ -422,10 +432,16 @@ front. It is also the answer that keeps the translation faithful, which is this
 project's stated priority; ownership inference is where fidelity gets traded
 for idiom.
 
-**What to note as a warning**: Fable has had a Rust backend since 2022 and it
-is still Alpha, with 259 KB of emitter for a language far simpler than C# — no
-inheritance, no mutable-by-default fields, no `unsafe`, no `partial`. Emitter
-size is not the risk; the long tail of semantics is.
+**What to note as a warning**: the first commit to `Fable2Rust.fs` is
+**2021-05-25** ("Fable2Rust WIP"), and that one file has since taken **384
+commits**. Five years and 259 KB of emitter later the target is still *Alpha* —
+for a source language far simpler than C#: no inheritance, no
+mutable-by-default fields, no `unsafe`, no `partial`, no properties, no
+overload resolution. Emitter size is not the risk; the long tail of semantics
+is. A translator for *all* of C# is a multi-year project by this evidence, and
+the only reason this one is tractable is that it is not translating all of C# —
+it is translating one corpus, with a scorecard that makes the withheld
+remainder visible.
 
 ### Related, smaller
 
@@ -454,7 +470,7 @@ None target Rust; several are architecturally instructive.
 | [ASDAlexander77/cs2cpp](https://github.com/ASDAlexander77/cs2cpp) | C++ | Roslyn | 298★, last push 2024-06 |
 | [yanghuan/CSharp.lua](https://github.com/yanghuan/CSharp.lua) | Lua | Roslyn | 1,280★, **active** (2026-07) |
 | [afrog33k/SharpNative](https://github.com/afrog33k/SharpNative) | D, C++11, Java, Swift | Roslyn | 67★, dead since 2015 |
-| [AlexAlbala/Alter-Native](https://github.com/AlexAlbala/Alter-Native) | C++ | ILSpy/NRefactory | 162★, dead since 2020 |
+| [AlexAlbala/Alter-Native](https://github.com/AlexAlbala/Alter-Native) | C++ | **ILSpy + Mono.Cecil — decompiled assembly, not source** | 162★, dead since 2020 |
 | [rogeralsing/ProjectExodus](https://github.com/rogeralsing/ProjectExodus) | Kotlin | Roslyn | 79★ |
 | [jindraivanek/cs2fs](https://github.com/jindraivanek/cs2fs) | F# | Roslyn | 64★ |
 | [CoderNate/CSharpToPython](https://github.com/CoderNate/CSharpToPython) | Python | Roslyn | 53★ |
@@ -469,6 +485,25 @@ Two observations from the table.
 on it uses Roslyn; the ones that went to IL (IL2C, CoreRT's CppCodeGen, IL2X)
 are a separate, smaller family. Nobody built a C# parser. That is a settled
 question and this project settled it the same way.
+
+**AlterNative is the one with academic backing**, and it is worth a paragraph
+because its stated assumptions are the exact opposite of this project's.
+[Its site](https://alexalbala.github.io/Alter-Native/) records it as "a research
+project […] with the collaboration of UPC - BarcelonaTech and AlterAid S.L.",
+funded by the Spanish Ministry of Science and Innovation (CloudARM,
+IPT-2011-1834-430000). Two design assumptions are stated up front:
+
+> "**Translatable source code**: Theoretically any source code can be
+> translated from one machine to another.
+> **Readability and Usability**: The developer should be able to understand and
+> modify the generated code, or even replace some parts."
+
+The second is precisely the property `check_generated.py` forbids. Generated
+code you are expected to hand-modify is generated code that will not
+regenerate — which is why AlterNative is a dead 2020 repository and CodePorting,
+which chose the opposite, is still shipping monthly. It also reads
+**decompiled assemblies** via ILSpy and `Mono.Cecil` rather than C# source, and
+its runtime library links **Boehm gc** (see §10).
 
 **OneLang is the cautionary one.** Its README is unusually candid:
 
@@ -610,3 +645,817 @@ corpus. Async and exceptions are largely not, which is a point in favour of the
 chosen corpus.
 
 ---
+
+## 10. The IL2CPP premise, corrected
+
+Issue #43 says IL2CPP is "especially relevant — it solves C# semantics on a
+non-garbage-collected target, which is most of our problem."
+
+**That premise is wrong, and the correction is the most useful thing in this
+note.** IL2CPP targets an unmanaged *language*. It does not target a
+*non-garbage-collected runtime*. From Unity's own
+[IL2CPP internals](https://unity.com/blog/engine-platform/an-introduction-to-ilcpp-internals)
+(Josh Peterson, 2015):
+
+> "The technology that we refer to as IL2CPP has two distinct parts. An
+> ahead-of-time (AOT) compiler [and] a runtime library to support the virtual
+> machine. […] **One key part of the runtime is the garbage collector.** We're
+> shipping Unity 5 with **libgc, the Boehm-Demers-Weiser garbage collector**."
+
+IL2CPP compiles IL to C++ and then links `libil2cpp`, a static library
+containing a GC, thread and file abstractions, and internal calls. C++ is the
+*code generation* target; the memory model is unchanged.
+
+Check that against everything else found:
+
+| project | source → target | what happened to the GC |
+|---|---|---|
+| **IL2CPP** (Unity) | IL → C++ | **Kept.** Boehm `libgc`, linked into the player |
+| **CS2X** (Roslyn, C89) | C# → C89 | **Kept**, or punted. Boehm binding, or `malloc`-and-never-free; the promised "micro deterministic GC" is `return 0;// TODO` |
+| **bflat** (Roslyn + NativeAOT) | C# → native | **Kept.** CoreCLR GC in the binary. `--stdlib:zero` gives "not much more than primitive types" for UEFI — i.e. avoid allocating, not manage it |
+| **CoreRT / NativeAOT** | IL → native | **Kept** |
+| **AlterNative** (UPC BarcelonaTech) | .NET assembly → C++ | **Kept.** Its support library links **Boost + Boehm gc** |
+| **CodePorting Cs2Cpp** | C# → C++ | **Replaced** with `SharedPtr`/`WeakPtr` refcounting — *"the task was not solved in a fully automatic mode"* |
+| **Fable** | F# → Rust | **Replaced** with `Lrc`/`LrcPtr` (`Rc`/`Arc`) refcounting plus a `byref` fast path. Alpha after five years |
+
+**Five of the seven kept a garbage collector or forbade allocation outright.
+The two that replaced it both landed on reference counting, and both needed
+manual help to make it correct.**
+
+This is the finding. Nobody has automatically converted C# object lifetime into
+statically-checked ownership, and the people best placed to do it chose not to
+try. Rust has no third option: there is no "link a GC" escape hatch that keeps
+the code idiomatic and safe.
+
+**Therefore the load-bearing question for this project is not "can we translate
+C# syntax" — that is settled, repeatedly, by Roslyn. It is "what does the
+Renode peripheral corpus actually do with object lifetime?"** If the answer is
+"peripherals hold `IValueRegisterField` handles, a reference to the machine, and
+a few `Action` callbacks, with no cyclic ownership and no allocation in the
+MMIO path", the project sidesteps the thing that defeated every predecessor and
+should say so explicitly as a scope claim in PLAN.md. If the answer is anything
+else, the `Rc`/`Weak` decision plus a leak oracle needs budgeting now, on
+CodePorting's evidence, rather than discovered at emit time.
+
+That question is answerable from data the corpus DB already holds, and it is
+the single highest-value follow-up this survey produces.
+
+---
+
+## 11. The academic literature
+
+### 11.1 Coverage, and its limits
+
+| index | queries | note |
+|---|---|---|
+| **arXiv** API + web UI | 49 attempted, 3 completed via API (HTTP 429), remainder via browser | **arXiv's indexer strips `#`**, so the literal token `C#` cannot be queried there at all |
+| **DBLP** | 21 queries, all completed | Title-word matching only |
+| **Semantic Scholar** | Graph API 429 on every call; 2 queries via web UI | |
+| **Google Scholar** | exact phrase `"C# to Rust" translation` | **2 results total** |
+
+**Stated honestly**: ACM DL and IEEE Xplore full-text were not swept. The
+negative rests principally on the Google Scholar and Semantic Scholar
+exact-phrase results plus DBLP. Given the strength of the corroborating
+evidence in §2 and §9 that is sufficient, but it is the softest leg of the
+argument and is recorded as such.
+
+### 11.2 (A) C# to Rust: confirmed absent
+
+**No academic paper on C#-to-Rust translation exists.** Google Scholar's exact
+phrase `"C# to Rust"` returns exactly two documents, neither a translation
+method: an AMOS 2022 space-situational-awareness application paper that mentions
+having **manually** ported a C# orbit propagator ("Porting from C# to Rust
+requires many changes to the baseline"), and a 2024 URI thesis that uses a
+C#↔Rust FFI callback.
+
+The Rust-translation literature is roughly **95% C-sourced**, with small Go,
+Java, Python and C++ tails. C# is absent as a *source* in the Rust literature
+and Rust is absent as a *target* in the C# literature.
+
+### 11.3 A second confirmed gap: emulator and peripheral-model translation
+
+Nothing exists on translating peripheral models, device models or simulator
+code between languages. The adjacent field is **peripheral-model inference** —
+P2IM (USENIX Security 2020), [FirmGuide](https://dl.acm.org/doi/abs/10.1109/ASE51524.2021.9678653)
+(ASE 2021), Fuzzware, Jetset, [*What Your Firmware Tells You Is Not How You
+Should Emulate It*](https://arxiv.org/pdf/2208.07833) — which **synthesises**
+peripheral behaviour from firmware traces rather than translating an existing
+model. Those papers face the same "is this model faithful?" question the oracle
+here answers, and are worth reading for that, but they are not prior art for
+translation.
+
+Renode itself has only a workshop paper (Speiser & Szalay, *Embedded System
+Simulation Using Renode*) and a [thesis on Renode in CI](https://www.diva-portal.org/smash/record.jsf?pid=diva2:1900246).
+
+### 11.4 The one closely-matched research line — and it used C#
+
+**Tien N. Nguyen's group (Iowa State), 2010–2016**, mined translation rules
+from a corpus, and used **Java↔C#** as that corpus precisely because paired
+ports exist (db4o, Lucene, Spring/Spring.NET, Neodatis). This is the closest
+methodological ancestor of the rulesdb design and it deserves citation in
+`docs/rulesdb-design.md`.
+
+| paper | year | why it matters here |
+|---|---|---|
+| [*Mining API mapping for language migration*](https://doi.org/10.1145/1806799.1806831) (MAM) | ICSE 2010 | The founding paper of corpus-mined mapping rules: align corresponding methods across a ported pair, extract rules from the alignment |
+| [*StaMiner*](https://doi.org/10.1145/2642937.2643010) | ASE 2014 | Mines **many-to-many API usage-sequence mappings**, not 1:1 name pairs. Renode's register DSL is a many-to-many shape mapping, not a token substitution |
+| [*mppSMT*](https://doi.org/10.1109/ASE.2015.74) | ASE 2015 | Decomposes migration into phases (syntax → type/API → literals). Essentially CLAUDE.md's three-layer extraction / language-mapping / project-idiom split |
+| [*Hybrid API Migration*](https://doi.org/10.1145/3609437.3609466) | Internetware 2023 | Small mined mapping model + LLM for the residue — **precisely this project's architecture**, published |
+
+Beyond that line, **C#-to-anything has essentially no academic literature**.
+JSIL, Bridge.NET, Sharpen and CodePorting are industrial and unpublished; .NET
+IL decompilation has no academic treatment either. The one exception is
+**AlterNative** (§8), a UPC-BarcelonaTech research project on public funding —
+and no venue publication for it surfaced in DBLP, Scholar or Semantic Scholar,
+only the project site.
+
+Worth knowing as the classical analogue: the **Eiffel** line — [*Automated
+Translation of Java Source Code to Eiffel*](https://doi.org/10.1007/978-3-642-21952-8_4)
+(TOOLS 2011) and [*Automatic Translation of C Source Code to
+Eiffel*](http://arxiv.org/abs/1206.5648) — rule-based, faithful, whole-program,
+with an explicit no-hand-edits discipline.
+
+### 11.5 Rule mining: where `min_instances_required = 3` comes from
+
+This project asserts a three-instance threshold without citation. **The
+literature supplies one.**
+
+- [**Sydit**](https://people.cs.vt.edu/nm8247/publications/Meng2011.pdf) (PLDI
+  2011) generalises a program transformation from a **single** example — and
+  over-matches.
+- [**LASE**](https://www.cs.utexas.edu/~mckinley/papers/lase-icse2013.pdf)
+  (ICSE 2013) is the same authors' fix: generalise an edit script from
+  **multiple** examples by anti-unification, *specifically to avoid over-fitting
+  to one site*, then find every other site it applies to.
+
+That is the empirical basis for the threshold, and for `rule_negative`.
+Two more worth reading:
+
+- [**Getafix**](https://arxiv.org/abs/1902.06111) (OOPSLA 2019, Facebook) —
+  hierarchical clustering of mined edit patterns plus a **ranking model for
+  when several rules match one site**. That problem is coming and there is a
+  published answer.
+- [**Revisar**](https://dl.acm.org/doi/10.1145/3474624.3474650) — mines rewrite
+  rules from commit histories and emits **human-readable** rules. Rule
+  *presentation* is an unsolved-looking part of the rulesdb design.
+- [**ADELT**](https://www.ijcai.org/) (IJCAI 2023) — decouples skeleton
+  transpilation from API-keyword mapping and measures the gain (+16 pts
+  pass@1). Experimental validation of the three-layer split.
+- [**Building Code Transpilers for DSLs Using Program
+  Synthesis**](https://doi.org/10.4230/LIPIcs.ECOOP.2023.38) (ECOOP 2023,
+  experience paper) — synthesises *the transpiler* rather than the output.
+  CLAUDE.md's "build the converter, do not write the output" as a research
+  result, with a write-up of what went wrong.
+
+### 11.6 Abandonment and failure reports — the highest-value findings
+
+**1. [*Aliasing Limits on Translating C to Safe Rust*](https://dl.acm.org/doi/10.1145/3586046)
+(OOPSLA 2023).** The same group auditing its own OOPSLA 2021 tool (Laertes) and
+reporting a hard ceiling:
+
+> "Our novel evaluation methodology enables our study to extend beyond prior
+> studies, and to discover new information **contradicting the conclusions of
+> prior studies**. We find that existing translation methods are **severely
+> limited by a lack of precision in the Rust compiler's safety checker**,
+> causing many safe pointer manipulations to be labeled as potentially unsafe."
+
+Their best result moves translatable-to-safe-reference pointers **from 12% to
+21%**. Two things transfer. First, the bottleneck was *the target language's
+checker*, not the analysis — a failure mode available to any Rust-targeting
+translator. Second, they had to build a **new evaluation methodology** because
+the old one had let over-optimistic conclusions stand. That is the same
+argument as `verify_emit.py` and regenerate-and-diff: the reason those exist is
+that this project already had two peripherals pass their traces while being
+hand-written.
+
+**2. [*Does BLEU Score Work for Code Migration?*](https://arxiv.org/abs/1906.04903)
+(ICPC 2019).** The Nguyen group publishing that **their own field's headline
+metric does not measure what it claims** — BLEU correlates poorly with semantic
+correctness of migrated code. This is the direct historical precedent for
+"instances-per-rule, not files translated", and evidence that a wrong headline
+metric let an entire research line drift unnoticed. **The strongest available
+citation for the metric discipline in PLAN.md.**
+
+**3. [Corrode](https://github.com/jameysharp/corrode)** — a hand-written
+rule-based C→Rust transpiler in Haskell, 2,188 stars, **last commit 2019**,
+superseded by C2Rust. The abandonment is documented only in the repository, not
+in the literature. The **absence of a post-mortem is itself the finding**: the
+most-starred rule-based Rust transpiler died without recording why.
+
+**4. [IRENE](https://arxiv.org/abs/2508.06926) (ICSME 2025)** states the
+standard criticism of rule-based translation:
+
+> "Early approaches in code translation rely on static rule-based methods, but
+> they suffer from **limited coverage due to dependence on predefined rule
+> patterns**."
+
+**This project's entire thesis is the reply to that sentence** — rules mined
+from the corpus rather than predefined, with instances-per-rule proving the
+coverage. Quote it in PLAN.md and answer it.
+
+**5. [EvoC2Rust](https://arxiv.org/abs/2508.04295) (ICSE 2026 SEIP)** states the
+trade-off as settled:
+
+> "rule-based methods often struggle to satisfy code safety and idiomaticity
+> requirements, while LLM-based methods frequently fail to generate semantically
+> equivalent Rust code… **Recent studies have revealed that both solutions are
+> limited to small-scale programs.**"
+
+**6. [SafeTrans](https://arxiv.org/pdf/2505.10708) (2025)** — first-shot LLM
+translation succeeds **54%** of the time, rising to **80%** only with iterative
+compile/runtime repair. A hard number on how much of "translation" is actually
+error repair, useful for sizing the LLM budget.
+
+### 11.7 Three papers to read before the next design decision
+
+- **[Reboot](https://arxiv.org/abs/2606.27122)** (2026), *Mostly Automatic
+  Translation of Language Interpreters from C to Safe Rust*. **Read this
+  first.** Interpreters have the same shape as peripheral models — big dispatch
+  switches, state machines, mutable shared state, tight test coupling — and the
+  scale matches (6k–23k LoC vs. this project's ~16k). Its method is **feature
+  reduction**: decompose by program *feature* into a chain of milestones where
+  each milestone is a complete, compilable, testable program, simplest first.
+  Six interpreters, **1–11 human interventions each**, 100% of provided tests
+  passing. Ablation shows feature reduction beats multi-agent orchestration
+  alone by 6–20 points. This is a direct generalisation of "withhold anything
+  not yet emittable" and it has measurements attached.
+- **[VERT](https://arxiv.org/abs/2404.18852)** (2024) — the strongest oracle
+  design in the field. Compile source → WASM → Rust to obtain a *known-correct
+  reference*, then bounded-model-check an idiomatic LLM translation against it.
+  If this project ever needs to certify "the idiomatic version ≡ the faithful
+  version", that is the pattern.
+- **[FLOURINE](https://arxiv.org/abs/2405.11514)** (2024) — differential
+  fuzzing for I/O equivalence with counterexample feedback, across C, C++, Go
+  and Python to Rust. The cleanest published statement of equivalence-checking
+  as a feedback loop, and the nearest thing to what trace replay does here.
+
+Also worth noting because it is the same idea arrived at independently:
+**[Syzygy](https://arxiv.org/abs/2412.14234)** translates code *and its tests*
+together, using dynamic-analysis execution traces as the alignment signal —
+the same combination of CodePorting's "translate the tests" and this project's
+trace oracle.
+
+### 11.8 Where this project sits
+
+Three things follow from the survey, and they are the honest positioning:
+
+1. **C# as a source for Rust translation is unpublished territory.**
+2. **Emulator/peripheral-model translation is unpublished territory.**
+3. **Corpus-mined translation rules is a 2010–2016 research line — conducted on
+   C#, no less — that the LLM wave interrupted rather than refuted.** IRENE
+   (2025) and TRAVEL (2026) are rediscovering rules-as-guidance from the LLM
+   side. **Nobody has gone back and applied modern mining to the rule side.**
+   That is the gap this project is in.
+
+Two corrections to the issue's framing while here: **LLIFT** is not a
+translation paper (it is LLM-assisted static analysis for use-before-init bugs
+in the Linux kernel), and **[IntelLabs/IDEAS](https://github.com/IntelLabs/IDEAS)**
+has no accompanying publication.
+
+---
+
+## 12. Adjacent targets, in depth
+
+§10 corrected the IL2CPP premise. This section covers what the adjacent
+translators are actually worth, and it contains the two most useful finds in
+the whole survey after CodePorting.
+
+### 12.1 IL2CPP — what it is worth, once the GC claim is dropped
+
+Sources: Unity's eight-part *IL2CPP Internals* series —
+[introduction](https://unity.com/blog/engine-platform/an-introduction-to-ilcpp-internals),
+[a tour of generated code](https://unity.com/blog/engine-platform/il2cpp-internals-a-tour-of-generated-code),
+[method calls](https://unity.com/blog/engine-platform/il2cpp-internals-method-calls),
+[generic sharing](https://unity.com/blog/engine-platform/il2cpp-internals-generic-sharing-implementation),
+[GC integration](https://unity.com/blog/engine-platform/il2cpp-internals-garbage-collector-integration) —
+plus the [scripting restrictions](https://docs.unity3d.com/6000.4/Documentation/Manual/scripting-restrictions.html).
+
+Mechanically, IL2CPP declines to map C# concepts onto C++ concepts:
+
+- **Every method is a free C++ function.** C++ inheritance is used for *types*
+  (`struct AnyClass_t1 : public Object_t`) but **never for method overriding**.
+  Two hidden parameters on every method: `this` (NULL for statics) and a
+  `MethodInfo*`. Dispatch goes through explicit `VirtFuncInvoker` /
+  `InterfaceFuncInvoker` and a vtable lookup, not C++ virtuals.
+- **Static fields live in a separate struct** so the GC can be handed them as
+  roots; the C++ `static` keyword is deliberately unused.
+- **Null and bounds checks are injected**, not signalled, because WebGL has no
+  signalling mechanism.
+- **Generic sharing**: all reference-type instantiations collapse to one
+  `Object_t*` body; **value types get one instantiation each**, because sizes
+  differ. Unity's own description of how the shared body typechecks:
+
+  > "IL2CPP is **lying to the C++ compiler** to avoid the C++ type system.
+  > Since the C# compiler has already enforced that no code does anything
+  > unreasonable with type T, then IL2CPP is safe to lie."
+
+**That last sentence is why IL2CPP is a weaker model for this project than it
+looks.** Its central trick is a cast-based escape hatch from the target
+language's type system. Rust does not offer that safely. The same shape in Rust
+is `unsafe` plus transmute, and this project's whole premise is that it does not
+need to go there.
+
+**The one thing to steal from IL2CPP is the scope decision**, and it is
+stated plainly:
+
+> "We did **not** attempt to re-write the C# standard library with IL2CPP, and
+> we could not be happier that we ignored it… when we investigate a bug we can
+> be fairly confident that the bug is in either the AOT compiler or the runtime
+> library, and nowhere else."
+
+Scope discipline as a fault-localisation strategy. See §12.6 — it is the single
+strongest predictor in this entire dataset.
+
+Also worth taking: flag-driven codegen (`--emit-null-checks`,
+`--enable-stacktrace`, `--output-format=Compact`) so safety checks and name
+compaction are switchable rather than baked in; and their test posture, that
+with clear inputs and outputs *"the vast majority of the bugs we see are not
+unexpected behavior, but rather unexpected cases."*
+
+Documented refusals: `System.Reflection.Emit`, `dynamic`,
+`System.Diagnostics.Process`, threads on Web, generic instantiations not
+discoverable at build time (needs a user-supplied `--extra-types.file`
+manifest), reflection-driven serialization — and **exception filters
+observably reorder relative to Mono**, because C++ exceptions are used. On
+incremental builds: *"we don't have any good solutions yet."*
+
+### 12.2 The rest of the .NET AOT family, and one deleted backend
+
+- **NativeAOT / ILC** —
+  [architecture](https://github.com/dotnet/runtime/blob/main/docs/design/coreclr/botr/ilc-architecture.md).
+  Compilation is driven by a **dependency-analysis graph**: seed with roots,
+  expand transitively, and *the reachable set is the output*. An optional **IL
+  scanning pre-pass** runs the whole graph with a null codegen backend to
+  stabilise vtable slot assignment **before** real compilation. **Steal both**:
+  a dependency graph is a better compilation driver than iterating files, and a
+  scanning pre-pass is a principled way to make output order deterministic —
+  directly relevant to the `-j1` == `-j31` byte-identity requirement.
+- **CoreRT's C++ backend was deleted.** `ILCompiler.CppCodeGen` shipped as an
+  explicit "reference prototype" warning that *"portability comes at certain
+  costs"*, choked on generic virtual methods
+  ([corert#6147](https://github.com/dotnet/corert/issues/6147)), and the
+  current BotR records that it *"wasn't brought over from the now archived
+  CoreRT repo."* Only RyuJIT and LLVM survived. **Microsoft tried IL-to-source
+  and abandoned it.**
+- **[bflat](https://github.com/bflattened/bflat)** (3,963★, **AGPL-3.0** — note
+  the licence) and **[zerosharp](https://github.com/MichalStrehovsky/zerosharp)**.
+  The `--stdlib:zero` split plus `--no-reflection`, `--no-stacktrace-data`,
+  `--no-globalization`, `--no-exception-messages` is the closest published model
+  for "C# semantics on a no_std-ish target", and the features **degrade
+  visibly** rather than vanishing: with those flags on, `typeof(int)` prints
+  `EETypeRva:0x00048BD0` and `"Вторник".ToUpper()` is a no-op. zerolib has **no
+  GC and no exception handling at all**; the author's verdict on the
+  `no-runtime` sample is *"you're so severely limited it's rather pointless."*
+
+### 12.3 Unity Burst / HPC# — the licence to restrict
+
+**The most relevant precedent for a deliberately-restricted C# subset**, and
+the one to cite when declining a construct.
+[HPC# overview](https://docs.unity3d.com/Packages/com.unity.burst@1.8/manual/csharp-hpc-overview.html) ·
+[type support](https://docs.unity3d.com/Packages/com.unity.burst@1.8/manual/csharp-type-support.html).
+
+Banned, verbatim: *"Catching exceptions `catch` in a `try`/`catch`. Storing to
+static fields except via Shared Static. Any methods related to managed objects,
+for example, string methods."* Also out: `char`, `decimal`, `string`, **classes
+and reference types entirely**, multi-dimensional arrays, general managed
+arrays, `Enum.HasFlag`.
+
+The detail that matters most here: **interfaces are supported only as
+constraints on generic struct parameters** — monomorphised, never dynamically
+dispatched. That is exactly how a Rust emitter should handle C# interfaces on
+an embedded target: trait bounds, no `dyn`. Burst is the precedent for making
+that a rule rather than a case-by-case judgement.
+
+### 12.4 The common refusal set
+
+Every AOT or subset C# compiler surveyed refuses the *same* things. This is a
+ready-made, precedented list of constructs this project may decline without
+inventing a justification:
+
+1. `System.Reflection.Emit`, runtime codegen, `dynamic`, the DLR — universally.
+2. Dynamic assembly loading; dynamically-constructed generic instantiations.
+3. Generic instantiations not statically discoverable (manifest, or failure).
+4. **Generic virtual methods** — an "orthogonal mechanism" everywhere, and the
+   thing that broke CoreRT's C++ backend outright.
+5. Value-type generics cost one instantiation each, always.
+6. Reflection-driven serialization.
+7. Reverse P/Invoke callbacks must be static and pre-registered.
+
+The stricter subsets (Burst, zerolib) additionally drop **all reference types,
+GC allocation, `catch`, mutable statics, strings, boxing, and dynamic interface
+dispatch.**
+
+### 12.5 The measured price of patching output — Sharpen / NGit
+
+The single most load-bearing number found. [mono/sharpen](https://github.com/mono/sharpen)
+(archived) translated Java to C#; [mono/ngit](https://github.com/mono/ngit) is
+JGit ported through it. NGit carries **two** patch files:
+
+| file | patches against | size |
+|---|---|---|
+| `gen/java.patch` | the **source** | **62 KB** |
+| `gen/cs.patch` | the **generated** C# | **358 KB** |
+
+Both re-conflict on every upstream pull. NGit is archived.
+
+**Patching the output cost roughly six times what patching the input cost, and
+it is what killed the project.** That is the zero-patches rule with a price tag
+attached, and it should be quoted in PLAN.md next to CodePorting's statement.
+
+CodePorting reached the same conclusion and built **three input-side escape
+hatches** rather than ever touching output: `[CppWeakPtr]` attributes; a no-op
+C# *service method* the translator substitutes with a hand-written target
+implementation; and `//CPPCODE:` comments lifted verbatim into the target. All
+three are worth having as rule-DB constructs here, since the C# itself is
+upstream and cannot be annotated.
+
+### 12.6 Why the graveyard is a graveyard — one cause of death
+
+Every failed C#-to-native project in this survey died in the same place, and it
+is not the language:
+
+| project | died on |
+|---|---|
+| [Blackmire](https://github.com/ActiveMesa/Blackmire) | its own README: *"Declarations are processed, but definitions (i.e., what's inside methods) will in most cases yield junk."* |
+| [ASDAlexander77/cs2cpp](https://github.com/ASDAlexander77/cs2cpp) | translating CoreCLR's real `System.Private.CoreLib` |
+| [SharpNative](https://github.com/afrog33k/SharpNative) | async / LINQ |
+| [AlterNative](https://github.com/AlexAlbala/Alter-Native) | reflection, serialization, lambdas, string switch |
+| [anydream/il2cpp](https://github.com/anydream/il2cpp) | repo title: *"已弃坑. C#是个好语言，然而.NET不是一个干净的平台"* — "Abandoned. C# is a good language, but .NET is not a clean platform" |
+| DotNetAnywhere | dropped for Mono because the **standard library**, not the instruction set, was the hard part |
+| **IL2CPP** | **survived — by refusing to translate the standard library at all** |
+
+**~16k lines of peripheral logic against a small fixed runtime surface is on
+the right side of that line.** This is the strongest single predictor in the
+dataset and it should be stated explicitly in PLAN.md as the reason this project
+is expected to finish when those did not.
+
+### 12.7 Source-level vs IL-level: settled, with a documented reversal
+
+| | **IL/bytecode-level** | **source-level** |
+|---|---|---|
+| language coverage | free — every C# version, plus VB and F# | you owe the front end |
+| lowering | already done by the vendor compiler | you reimplement iterators, async, closures, `lock`, LINQ |
+| information | **destroyed** — `bool`→`int`, `char`→`int`, enums→ints, properties→calls, `switch`→jump table, loops rotated | intact and semantically resolved |
+| readability | JSIL's author: *"did not survive contact with reality"* | the point of the exercise |
+| outcome | **every IL-level project promising readable source is dead** — JSIL archived, CoreRT `--cpp` deleted, DotNetAnywhere inactive. Survivors (Blazor, IKVM) emit **binaries** | the live ones are all source-level: Transpose, go2cs, c2rust, CodePorting, depyler |
+
+[JSIL](https://github.com/sq/JSIL)'s transform list is the receipt for what
+IL-level costs: `HandleBooleanAsInteger`, `IntroduceCharCasts`,
+`IntroduceEnumCasts`, `DeoptimizeSwitchStatements`,
+`ConvertPropertyAccessesToInvocations`, `IntroduceVariableDeclarations`,
+`EmulateInt64`, `EmulateStructAssignment` — ~35 passes, every one rebuilding
+information the C# compiler had and discarded. Its author,
+[in InfoQ](https://www.infoq.com/articles/jsil/): *"generating good JavaScript
+from IL not only requires decompiling the IL, but **reversing some
+optimizations performed by the compiler**… my approach is still ultimately
+ad-hoc and based on partial knowledge."*
+
+The strongest evidence is a **documented reversal**. Bridge.NET → h5 →
+[Transpose](https://github.com/curiosity-ai/transpose) used NRefactory plus a
+Roslyn `SharpSixRewriter` that lowered C# into "the subset of the C# language
+that is supported by the transpiler". Transpose threw it out:
+
+> "built entirely on **Roslyn**… **The legacy Bridge/NRefactory pipeline has
+> been removed**… The emitter walks Roslyn syntax trees **guided by the
+> semantic model** and emits JavaScript directly — there is no NRefactory and
+> no `SharpSixRewriter` lowering pass."
+
+**That is this project's emitter contract, arrived at by a team that lived with
+the alternative.** Corroborated by [go2cs](https://github.com/ritchiecarroll/go2cs)
+abandoning an ANTLR grammar for Go's own `go/types` (*"conversion decisions are
+**semantic, not syntactic**"*) and by c2rust linking the real clang front end
+rather than reading LLVM IR.
+
+Counter-note worth heeding: [SharpKit](https://github.com/SharpKit/SharpKit)'s
+README has asked for help *"replacing NRefactory with Roslyn"* for a decade.
+**A front-end choice is not retrofittable once the emitter is written against
+it.** This project has made the right choice; it just cannot change its mind
+later.
+
+### 12.8 GC to ownership: the strategy table, with success rates
+
+Nobody solves it automatically. The honest options, and who paid for each:
+
+| strategy | cost | who |
+|---|---|---|
+| **Refuse** — emit raw pointers, tell the user | output as unsafe as input | Tangible (*"complete memory deallocation is not included in the conversion"*); c2rust by design |
+| **Universal refcount + human-annotated weak edges** | cycles leak; needs a human who knows where | **CodePorting** — *"the developer typically does not know which specific reference should be weak, nor that a cycle even exists"* |
+| **Ship a tracing GC** | sidesteps cycles; costs a runtime | IL2CPP, anydream, AlterNative, IL2C |
+| **Refcount + cycle collector** | middle ground | [IL2CXX](https://github.com/shin1m/IL2CXX) — and it **published pause-distribution graphs against .NET 6's GC** rather than asserting the choice |
+| **Static ownership inference** | **Laertes: ~11% of raw pointers.** `c2rust-analyze`: *"only apply to a **small subset** of unsafe Rust code"* | Laertes, Crown, c2rust-analyze — after ~8 years and DARPA funding |
+| **LLM** | *"Less than 20% of C programs over 150 lines could be satisfactorily translated by an LLM-based method without manual intervention"* | C2SaferRust, Flourine, VERT |
+| **Restrict the subset so aliasing cannot arise** | eliminates the problem | **Burst (no reference types at all)**, zerolib, py2many, CS2X |
+
+**The last row is the one this project should be aiming at**, and §10 already
+names the question that decides whether it can.
+
+### 12.9 depyler — the closest architectural twin, and it is three years ahead
+
+**[paiml/depyler](https://github.com/paiml/depyler)** (357★) is a Python-to-Rust
+transpiler that has **independently arrived at nearly this project's entire
+process discipline**. Its [architecture](https://github.com/paiml/depyler/blob/main/docs/architecture.md),
+[annotation syntax](https://github.com/paiml/depyler/blob/main/docs/annotation-syntax.md)
+and [80/20 single-shot-compile doc](https://github.com/paiml/depyler/blob/main/docs/80-20-rule-single-shot-compile.md)
+should be read before the next line of the rule engine is written.
+
+- **"Jidoka: build quality in" — *don't fix the same bug twice*.** It names the
+  failure mode in the same terms CLAUDE.md does:
+  *"WASTE (Muda): Error → Oracle → LLM Fix → Ship → (same error tomorrow) → LLM
+  Fix again. Cost: O(n) per unique error… Permanent dependency on expensive LLM
+  inference."* versus *"JIDOKA: Error → Oracle → LLM Fix → `rule_patch.json` →
+  Hardcode into transpiler → NEVER see that error again. Cost: O(1) per unique
+  error pattern."*
+- **A structured `rule_patch.json`** with `error_pattern`, `python_pattern`
+  (ast_type + context + operation), `rust_fix` (strategy + template),
+  `confidence`, `test_cases`, `source: "llm_claude_sonnet"`, `human_verified` —
+  and a CLI to ingest and verify them against a corpus.
+- **LLM usage as a *declining* metric**: calls per 1000 files 200+ → <100 →
+  <20 → **<5**; repeat error rate → **<1%**. Their rule: *"**If LLM usage is
+  not declining, the feedback loop is broken.** Stop and fix it."*
+  **This project's scorecard has no such metric and should.**
+- **Poka-yoke hard rejections** — the transpiler *fails the build* rather than
+  emitting low-quality Rust. The list includes **`Rc<RefCell<T>>` without
+  justification → "Ownership inference failure. Indicates Python-in-Rust
+  antipattern"**, plus `Box<dyn Any>`, >3 clones per function, any generated
+  `unsafe`.
+- Ownership annotations on the *input* (`# @depyler: ownership = "owned" |
+  "borrowed" | "shared"`, `interior_mutability = "none" | "arc_mutex" |
+  "ref_cell" | "cell"`) — **converging independently on CodePorting's
+  `[CppWeakPtr]` answer, for the same stated reason: output edits do not
+  survive regeneration.**
+
+**Two things to take verbatim**: the declining-LLM-usage metric, and treating an
+emitted `Rc<RefCell<T>>` as a **reported ownership-inference failure** rather
+than as a solution.
+
+### 12.10 go2cs — upgrade the patch count to a disclosure ledger
+
+[go2cs](https://github.com/ritchiecarroll/go2cs) (396★, active) translates Go to
+C#. Three lessons, all documented, all bought expensively:
+
+- On milestone honesty:
+  > "A transpiler whose output merely **compiles** has proven very little, and
+  > I've been on the wrong side of that lesson inside this very repo: the first
+  > 'full standard library conversion' in 2025 meant only that the converter
+  > didn't crash."
+- One commit wrote the full machine conversion **on top of** the hand-finished
+  baseline library (+508k lines), *"stalled the test loop"*, and took
+  **thirteen months** to unpick. Their rule now: hand-written runtime lives in a
+  directory **the converter is forbidden to write**. This project's
+  `check_generated.py` enforces the converse; the forbidden-directory half is
+  worth adding.
+- **The disclosure ledger.** `go2cs_test_disclosures.json` pins every accepted
+  divergence by **exact failure signature**, *"so any other failure of that test
+  is still a hard mismatch."* **This is strictly better than a patch count**: a
+  count tells you how much debt exists; a signature ledger stops an accepted
+  divergence from masking a new regression. Recommended as a change to how
+  patches are recorded.
+
+### 12.11 Make the negative space a build artifact
+
+Four independent mechanisms for the same problem — "what can the converter not
+do?" — in increasing strength:
+
+1. **anydream/il2cpp** — a declared unsupported-features section in the README.
+   Prose; drifts.
+2. **Tangible Software's C# to C++ Converter**
+   ([FAQ](https://www.tangiblesoftwaresolutions.com/faq/csharp-to-cplus-converter-faq.html))
+   — emits the untranslated C# verbatim beside a machine-greppable marker
+   (`//ORIGINAL LINE:`) under a three-severity taxonomy: `TODO TASK` (gave up),
+   **`WARNING` (translated, but semantics differ)**, `NOTE`. **The middle tier
+   is the valuable one**, because it flags silent behaviour change no compiler
+   will catch. Their best real example: *"The 'Compare' parameter of `std::sort`
+   produces a boolean value, while the .NET `Comparison` parameter produces a
+   tri-state result."* Compiles clean, silently misbehaves. **A `WARNING` tier
+   belongs in this project's emitter output and on the scorecard.**
+3. **[kekyo/IL2C](https://github.com/kekyo/IL2C)** — *"Following lists are
+   auto-generated by unit test: Supported IL opcodes list / Supported basic
+   types / Supported runtime system features."* **The coverage matrix is a build
+   artifact generated from the passing test suite. It cannot drift and it cannot
+   overstate.** This is the best idea in the tier and it fits `scorecard.py`
+   directly.
+4. **CS2X's Roslyn analyzer** (§5) — converts "the emitter can't do this" into
+   "the input can't contain this", at authoring time.
+
+### 12.12 ILSpy — the best-documented multi-pass source-translation engine
+
+[ILSpy](https://github.com/icsharpcode/ILSpy) (25,753★, active) now ships
+[`doc/DecompilerArchitecture.html`](https://github.com/icsharpcode/ILSpy/blob/master/doc/DecompilerArchitecture.html)
+(July 2026). Pipeline: metadata → `DecompilerTypeSystem` → `ILReader` +
+`BlockBuilder` → **ILAst** → ~40 ordered IL transforms → expression/statement
+builders → **C# AST** → 15 AST transforms → `CSharpOutputVisitor`.
+
+Four design tenets, all directly applicable:
+
+1. **Round-trip correctness** — it embeds a full C# resolver and *re-resolves
+   its own output while generating it*; a cast or qualifier is emitted only when
+   the resolver proves omitting it changes meaning. The Rust analogue is
+   emitting parentheses, casts and turbofish only where required, decided by
+   the emitter rather than by defensive habit.
+2. **Progressive raising through many small transforms** — *"There is no single
+   clever algorithm… Transforms are strict pattern matchers: they fire only on
+   shapes the compiler is known to emit, and leave anything else untouched."*
+   That is a rule DB, described in other words, and "leave anything else
+   untouched" is `rule_negative`.
+3. **Graceful degradation** — unverifiable input becomes `InvalidBranch` /
+   `InvalidExpression` nodes with warnings; a failed state-machine analysis
+   leaves the method in its lower-level form. *"A method that cannot be
+   prettified is still decompiled — just with gotos."* **The Rust analogue is a
+   faithful-but-ugly fallback emission rather than withholding the method
+   entirely** — worth considering against the current withhold-on-gap policy.
+4. **Trees with checked invariants** — `CheckInvariant` runs after **every
+   single transform** in debug builds, so *"the common failure mode of a
+   forty-pass pipeline — pass 12 corrupts, pass 31 crashes — largely
+   disappears."*
+
+Plus a `Stepper` that re-runs decompilation stopped after any transform (a
+debugging affordance worth having), ~150 feature flags where a disabled
+transform simply does nothing, and the rule that matters most:
+
+> **"Tests as the real specification: a transform PR without a fixture is
+> architecturally incomplete — the fixture is the pattern's definition."**
+
+That is `min_instances_required` stated as a review rule.
+
+### 12.13 `IOperation` — no ruts in this road, and Roslyn's own breadth check
+
+`IOperation` is the language-agnostic semantic tree over C# and VB: ~150
+operation kinds, each node carrying `Kind`, `Type`, `ConstantValue`,
+`IsImplicit` (compiler-generated), `Syntax`, `SemanticModel`, `Parent`, and
+`Descendants()` **in evaluation order**;
+`Microsoft.CodeAnalysis.FlowAnalysis` adds a lowered `ControlFlowGraph`.
+
+Two facts to know:
+
+- **No existing transpiler is built on `IOperation`.** It is designed for
+  analyzers. This project is on a road with no ruts — which is an advantage on
+  fidelity (it is the compiler's own lowered semantics) and a risk on API
+  stability: the docs say *"This interface is reserved for implementation by
+  its associated APIs. We reserve the right to change it in the future."*
+- **Roslyn runs the exact breadth check this project runs.** Its
+  [IOperation Test Hook](https://github.com/dotnet/roslyn/blob/main/docs/compilers/IOperation%20Test%20Hook.md)
+  enumerates every syntax node in every test compilation and *"verif[ies] that
+  `GetOperation` does not crash, and returns information that matches up with
+  the `SemanticModel`… We also fetch and verify the control flow graph for every
+  member body and run the CFG verifier."*
+
+  Roslyn's rule for what to do with a gap it finds is worth adopting verbatim:
+  a new node either gets `IOperation` support **in the same PR**, or it goes
+  into a catch-all with a `prototype` comment **that must be resolved before
+  merging**. That is precisely the right framing for `--all`: a crash and
+  data-loss check whose findings are tracked prototype markers, **never a work
+  item generator** — which is what CLAUDE.md already says, now with the
+  compiler team's own precedent behind it.
+
+---
+
+## 13. Verdict and what to take
+
+### The claim
+
+**"No C#-to-Rust transpiler exists" holds.** The original conclusion was
+right; the reasoning behind it was not strong enough to rely on. It is now
+supported by:
+
+- GitHub repository and code search, 20 distinct queries
+- thirteen non-GitHub sources — GitLab, Codeberg, sr.ht, SourceForge, grep.app,
+  crates.io, NuGet, Software Heritage, HN, Reddit, users.rust-lang.org,
+  Stack Overflow, Lobsters
+- two independent human-curated transpiler cross-references, both of which
+  record obscure pairs like Clojure-to-Rust and C#-to-Fortran and neither of
+  which has a C#-to-Rust entry
+- the commercial C#-translation market, where the incumbent ships C++, Java and
+  Python and no Rust
+- the academic literature — Google Scholar's exact phrase `"C# to Rust"`
+  returns **two** documents, neither a translation method (§11)
+
+Caveated: **Bitbucket** and the **Google Code Archive** are not anonymously
+searchable, **searchcode.com** no longer does code search, arXiv's index
+**cannot represent the token `C#`**, and ACM DL / IEEE Xplore full-text were
+not swept. None of these plausibly hides an active project, but the gaps are
+recorded rather than glossed.
+
+The three original dismissals were all correct. `rustlyn` is a Roslyn
+language-server shim, `csharp-compiler-rust` emits IL, and the web converters
+are LLM prompts. Add `cs2rust` (a Counter-Strike 2 overlay) and
+`rust2sharp-translator` (self-described "useless") to the lookalike pile.
+
+### What is worth stealing, in priority order
+
+1. **CodePorting's rule: fix the translator, never the output** — with
+   **Sharpen/NGit's price tag attached** (§12.5). CodePorting derived it under
+   commercial release pressure at millions of lines per month, after trying the
+   alternative. NGit measured what the alternative costs: **62 KB of patches
+   against the source versus 358 KB against the generated output**, both
+   re-conflicting on every upstream pull, project now archived. Direct external
+   validation of the zero-patches metric, twice, and it belongs as a citation in
+   PLAN.md rather than as a house opinion.
+2. **Use the tests as a second oracle — and here that is cheaper than
+   CodePorting had it.** Their move was to translate the C# tests alongside the
+   C# code. Checking the Renode tree, that maps badly and well at once:
+   `tests/unit-tests/RenodeTests` is only 25 C# files and is mostly
+   `PlatformDescription` parser tests, so there is little peripheral behaviour
+   to translate. But `tests/` holds **265 Robot Framework `.robot` files**,
+   including `tests/peripherals/*.robot` and per-platform suites, and those
+   drive the emulator through its CLI — **they are already language-neutral and
+   need no translation at all**. The work is CLI compatibility, not
+   translation. That is oracle tier 5 in `STATUS.md` (issue #25), and this
+   survey raises its priority: it is the cheapest large oracle available and
+   the only one that exercises whole-platform behaviour a per-peripheral trace
+   cannot.
+3. **Emit through a modelled Rust AST, not strings** — Fable's
+   `Rust.AST.Types.fs` is a transcription of rustc's `ast`. This is the
+   mechanism that makes "byte-identical at `-j1` and `-j31`" a property rather
+   than a hope.
+4. **Publish the supported subset as a Roslyn `DiagnosticAnalyzer`** — CS2X's
+   `CS2X.Analyzer`, shipped as a VSIX with messages like *"CS2X ERROR: Runtime
+   does not support boxing"*. It turns the withheld-construct list from an
+   emitter internal into a reviewable, testable artefact.
+5. **Settle the object-lifetime question from the corpus before the emitter
+   grows** (§10). Every predecessor that got this wrong got it wrong late.
+6. **Pin generated files to the upstream commit they were derived from**, as
+   QEMU does per Rust device. Drift becomes checkable.
+7. **A support crate shaped like the source library, not idiomatic mappings** —
+   the one call CodePorting and Fable made independently and identically.
+8. **If `Rc` ever enters emitted code, budget the leak oracle at the same
+   time**: debug-mode object registry, translator-emitted "what does this
+   object hold" reflection, cycle and isolation-island dumps. CodePorting's
+   verdict was that the mapping is not fully automatic and the tooling is what
+   makes it survivable.
+9. **Cite the literature the design is already asserting.** `min_instances_required = 3`
+   has a published basis (Sydit's single-example over-matching → LASE's
+   multiple-example anti-unification); the instances-per-rule metric has a
+   published precedent (*Does BLEU Score Work for Code Migration?*); the
+   three-layer split has an experimental validation (ADELT). Uncited house
+   rules are the ones that get quietly dropped under schedule pressure.
+10. **Read *Reboot*'s feature-reduction method before the next phase plan.**
+   Interpreter-shaped code, matching scale, milestone-per-feature where each
+   milestone is a complete compilable testable program, and measurements.
+
+### Four concrete changes this survey recommends
+
+Distinct from "read this" — these are edits to existing artefacts.
+
+- **Add a declining-LLM-usage metric to `scorecard.py`.** depyler tracks LLM
+  calls per 1000 files (200+ → <100 → <20 → **<5**) and repeat-error rate
+  (→ **<1%**), with the rule *"if LLM usage is not declining, the feedback loop
+  is broken. Stop and fix it."* This project's cost argument is
+  once-per-cluster; nothing currently measures whether that holds over time.
+  Instances-per-rule detects drift into per-file *rules*; it does not detect
+  drift into per-file *LLM calls*.
+- **Upgrade the patch count to go2cs's disclosure ledger** (§12.10). Pin every
+  accepted divergence by **exact failure signature**, so any *other* failure of
+  that test is still a hard mismatch. A count says how much debt exists; a
+  signature ledger stops an accepted divergence masking a new regression.
+- **Generate the supported-construct matrix from the passing test suite**, as
+  IL2C does (§12.11). A hand-maintained "what we support" list drifts and
+  overstates; one generated from green tests cannot.
+- **Add a `WARNING` tier to emitter output** — Tangible's middle severity:
+  *translated, but semantics differ*. `TODO` (gave up) is already covered by
+  withholding. The dangerous class is the construct that emits, compiles, and
+  behaves differently — and nothing in the current pipeline names it.
+
+### What to refuse
+
+- **One LLM call per declaration**, however good the repair loop
+  (`CSharp-toRUST-Assistant`). It is the cost model this project exists to
+  avoid, and "it compiles" is not an equivalence check.
+- **Template-based emission** (`libldt3-transpiler`). Fine for schemas,
+  hopeless for behaviour.
+- **Translating without a fidelity oracle.** OneLang's author wrote down what
+  that becomes: a tool that "does not respect" the rules of the input language.
+  It has 1,142 stars and has been dead since 2023.
+
+### What is actually distinctive here
+
+Not the oracle on its own. The research literature has stronger oracles than
+this project's: VERT bounded-model-checks against a WASM-derived reference,
+Heimdall proves 94.1% of translated eBPF programs equivalent with symbolic
+execution and Z3, FLOURINE differential-fuzzes for I/O equivalence, RustAssure
+does differential symbolic testing. Claiming novelty for trace replay would be
+wrong.
+
+What is distinctive is the **combination**, and specifically which half is
+missing everywhere else:
+
+- **The shipped tools have no oracle.** CS2X had none. Fable tests its own
+  output against its own tests. CodePorting got closest — translating the C#
+  tests — and still needed manual `[CppWeakPtr]` annotation. IL2CPP's check is
+  "does the game run".
+- **The research tools with strong oracles have no rule corpus.** They are
+  LLM-per-function or analysis-per-program. None mines rules from a corpus and
+  none measures instances-per-rule; the one line that did mine rules (Nguyen
+  et al., on C#) was measured with BLEU, which its own authors then showed does
+  not work.
+
+**Mined rules plus a mechanical equivalence check plus a drift metric is the
+cell in the table nobody has occupied.** That is also why the standard
+objection — "transpiled Rust is unusable, look at c2rust" — does not land here.
+Unusable output is a claim about idiom. This project is not selling idiom; it
+is selling equivalence, and unlike every shipped translator surveyed, it can
+prove it.
+
+---
+
+*Compiled 2026-08-01 for issue #43. All searches re-runnable from the queries
+in §2, §9 and §11.*

@@ -17,7 +17,7 @@ to be separated before any of them can be judged:
 
 | claim | verdict |
 |---|---|
-| **A.** Base *fields* are copied into the derived type's `State` | **Correct, and forced.** Rust has no field inheritance and never will; the RFC that would have added it died in 2018. Every serious translator does this. |
+| **A.** Base *fields* are copied into the derived type's `State` | **Correct, and forced.** Rust has no field inheritance; the RFC that would have added it was postponed in 2018 and its follow-up repo has been silent since 2017. Every surveyed translator does the equivalent. One refinement: QEMU and Servo keep the parent as a *named first field* rather than splatting its members, which is the same layout and retains the information we are currently throwing away. |
 | **B.** Base *method bodies* become free fns over `(bank, st)` | **Correct, but not because of inheritance.** It is forced by the D2 callback signature, which has no `self` to offer. The inheritance rule takes credit for a decision D2 already made. |
 | **C.** Therefore no trait is emitted at all | **Wrong, and the expensive part.** Nothing about A or B prevents an object-safe dispatch trait. Without one there is no vtable, and D1 and the sysbus both need one. |
 
@@ -33,8 +33,9 @@ regenerates nothing, changes no emitted body, and is proven below to compile
 with `Rc<RefCell<dyn …>>` over heterogeneous flattened peripherals. Its failure
 mode is named in [Recommendation](#recommendation-and-its-failure-mode).
 
-Cost: roughly **60–90 lines** of new emitter code in a new module, ~25 lines
-moved, and no change to any existing generated line. See
+Cost: roughly **60–90 lines** of new emitter code in a new module, plus two
+small correctness fixes (~27 lines changed) in `emit.py`. The dispatch trait
+itself changes no existing generated line — it appends a block. See
 [Cost](#cost-what-would-actually-change).
 
 ---
@@ -106,7 +107,7 @@ interface members). The cut's C# contains 17 `base.` references, of which 9 are
 method invocations the corpus resolves to a named base type (the rest are
 `base.Width` property reads and calls into out-of-cut bases).
 
-### Hierarchy depth: the "1" is an artifact, the truth is up to 6
+### Hierarchy depth: the "1" is an artifact, the truth is up to 5
 
 The recursive query over `base_type_id` says maximum depth **1**:
 
@@ -246,7 +247,505 @@ direction.
 
 ## 3. What other translators actually do
 
-<!-- SURVEY -->
+Five production systems that had to solve exactly this, plus the Rust sources
+that settle the language question. Every one of them **separates the field
+decision from the dispatch decision**. Not one of them drops dispatch.
+
+A finding worth stating first, because it shapes how much of this is
+transferable: **there is no general C#-to-Rust transpiler in public.** Searches
+of GitHub for `"c# to rust"`, `"csharp rust transpiler"`, `"dotnet to rust"`,
+`"IL to Rust"` and `cs2rust` return nothing with traction, against a crowded
+C-to-Rust field (c2rust ~4.8k stars, corrode ~2.2k, plus crust, sactor, crown,
+concrat, simcrat, decy). There is no off-the-shelf answer to copy, and the
+nearest analogues are all one hop away: C# to C++ (IL2CPP), C to Rust (c2rust),
+IDL to Rust (Servo), and C to Rust *by hand for an emulator's device models*
+(QEMU) — which turns out to be the closest of all.
+
+### 3.1 IL2CPP — Unity's C#-to-C++ AOT compiler
+
+The closest analogue available: same source language, and a target with *more*
+OO than Rust has.
+
+**Fields → real C++ single inheritance.** From "IL2CPP Internals: A Tour of
+Generated Code" (Josh Peterson, 2015-05-13; original URL is 404, archived at
+`web.archive.org/web/20210515152602/https://blogs.unity3d.com/2015/05/13/il2cpp-internals-a-tour-of-generated-code/`):
+
+```cpp
+struct Important_t1  : public Object_t
+{
+// System.Int32 HelloWorld/Important::InstanceIdentifier
+int32_t ___InstanceIdentifier_1;
+};
+struct Important_t1_StaticFields
+{
+// System.Int32 HelloWorld/Important::ClassIdentifier
+int32_t ___ClassIdentifier_0;
+};
+```
+
+Base subobject at offset zero. Instance fields inline; statics hoisted to a
+separate struct reached through the type metadata. Physically identical to
+flattening.
+
+**Methods → free functions, instance as first argument.** From "IL2CPP
+Internals: Method Calls" (2015-06-03, archived at
+`web.archive.org/web/20210422110620/…/il2cpp-internals-method-calls/`), verbatim:
+
+> "The last line is the actual method call. Note that it does nothing special,
+> just calls a free function defined in the C++ code. Recall from the earlier
+> post about generated code, that il2cpp.exe generates all methods as C++ free
+> functions. **The IL2CPP scripting backend does not use C++ member functions or
+> virtual functions for any generated code.**"
+
+```cpp
+Important_Method_m1(L_1, (String_t*) &_stringLiteral1,
+                    /*hidden argument*/&Important_Method_m1_MethodInfo);
+```
+
+This is `fn method(st: &mut State, …)` with a different syntax. **The current
+design's calling convention is IL2CPP's calling convention.**
+
+**Virtual dispatch → an explicit, generated invoker over a generated vtable.**
+IL2CPP had C++ `virtual` available and *declined to use it*, generating its own
+dispatch instead:
+
+```cpp
+template <typename R, typename T1>
+struct VirtFuncInvoker1
+{
+typedef R (*Func)(void*, T1, MethodInfo*);
+
+static inline R Invoke (MethodInfo* method, void* obj, T1 p1)
+{
+VirtualInvokeData data = il2cpp::vm::Runtime::GetVirtualInvokeData (method, obj);
+return ((Func)data.methodInfo->method)(data.target, p1, data.methodInfo);
+}
+};
+```
+
+> "The call into libil2cpp `GetVirtualInvokeData` looks up a virtual method in
+> the vtable struct generated based on the managed code, then it makes a call to
+> that method."
+
+Interfaces get a parallel mechanism, `InterfaceFuncInvoker`, because the
+interface must be passed too:
+
+> "The vtable for each type is stored so that interface methods are written at a
+> specific offset. Therefore, il2cpp.exe needs to provide the interface in order
+> to determine which method to call. The bottom line here is that calling a
+> virtual method and calling a method via an interface have effectively the same
+> overhead in IL2CPP."
+
+**What it gets wrong.** Code bloat is severe and acknowledged — a hello-world
+project produced "4625 header files and 89 C++ source code files", and every
+build re-converts `mscorlib.dll` because byte-code stripping makes the result
+input-dependent ("We are researching better ways to do incremental builds, but
+we don't have any good solutions yet"). Injected runtime checks (`NullCheck`,
+`IL2CPP_ARRAY_BOUNDS_CHECK`, `ArrayElementTypeCheck`) cost measurably: "in a few
+specific cases though, we are seeing these checks lead to degraded performance,
+especially in tight loops". And the dispatch cost was enough of a problem that
+Unity published follow-ups titled *IL2CPP Optimizations: Devirtualization*
+(2016-07-26) and *IL2CPP Optimizations: Faster Virtual Method Calls* (2016-08-04).
+
+**Bearing on this decision:** IL2CPP endorses A and B and refutes C. It kept an
+explicit dispatch mechanism even though free functions were its calling
+convention, because free functions and dispatch are orthogonal.
+
+### 3.2 Servo — WebIDL to Rust, generated
+
+The most directly applicable prior art: a large shipped Rust codebase that
+generates Rust from an interface definition language describing a deep
+single-inheritance hierarchy. `components/script/dom/mod.rs`, verbatim:
+
+> "**Inheritance**
+> Rust does not support struct inheritance, as would be used for the
+> object-oriented DOM APIs. To work around this issue, Servo stores an instance
+> of the superclass in the first field of its subclasses. (Note that it is
+> stored by value, rather than in a smart pointer such as `Dom<T>`.)
+> This implies that a pointer to an object can safely be cast to a pointer to
+> all its classes.
+> **This invariant is enforced by the lint in `plugins::lints::inheritance_integrity`.**"
+
+Fields: composition by value at offset 0 — the same physical layout as
+flattening, with the parent kept as a named sub-struct instead of splatted.
+
+Dispatch: a **generated trait**, plus a **generated enum** for `match`
+discrimination — both, not either:
+
+> "Interfaces which either derive from or are derived by other interfaces
+> implement the `Castable` trait, which provides three methods `is::<T>()`,
+> `downcast::<T>()` and `upcast::<T>()` to cast across the type hierarchy and
+> check whether a given instance is of a given type.
+> Furthermore, when discriminating a given instance against multiple interface
+> types, **code generation provides a convenient TypeId enum** which can be used
+> to write `match` expressions instead of multiple calls to `Castable::is::<T>`."
+
+**What it gets wrong**, and it is not small. The casts are `unsafe`
+(`components/script_bindings/inheritance.rs`):
+
+```rust
+fn upcast<T>(&self) -> &T where T: Castable, Self: DerivedFrom<T> {
+    unsafe { mem::transmute::<&Self, &T>(self) }
+}
+```
+
+Soundness rests on a layout invariant the type system does not check, so Servo
+had to write a **custom compiler lint** to enforce it — see servo/servo#5927,
+"Ensure DOM types have their base type as the first field". The type identity is
+carried at runtime by a `proto_id` range check (`id >= T::PROTO_FIRST && id <=
+T::PROTO_LAST`), i.e. a hand-maintained numbering of the hierarchy. That is a
+lot of machinery to buy C++-style downcasting.
+
+**Bearing on this decision:** Servo needed downcasting because the DOM API
+demands it. Renode's sysbus does not — it calls `ReadDoubleWord` through the
+interface and never asks what concrete peripheral it holds. So we get Servo's
+field layout for free and can skip its `unsafe` entirely by using ordinary
+`dyn Trait` dispatch. Servo is evidence for the split, and a warning about the
+version of it we do *not* need.
+
+### 3.3 QEMU's Rust device model — the closest precedent that exists
+
+This is the one to read if only one is read. QEMU is porting device models to
+*safe* Rust one at a time, from a C codebase whose object system (QOM) is
+struct-embedding plus class structs of function pointers — structurally the same
+problem as Renode's `IPeripheral` hierarchy, in the same domain, at the same
+scale. The reference device is **a UART with a chip-specific derived variant**.
+
+`rust/qom/src/qom.rs`, module documentation, verbatim:
+
+> "The QEMU Object Model (QOM) provides inheritance and dynamic typing for QEMU
+> devices. This module makes QOM's features available in Rust through three main
+> mechanisms:
+> * Automatic creation and registration of `TypeInfo` for classes that are
+>   written in Rust, as well as mapping between Rust traits and QOM vtables.
+> * Type-safe casting between parent and child classes, through the [`IsA`]
+>   trait …
+> * **Automatic delegation of parent class methods to child classes. When a
+>   trait uses [`IsA`] as a bound, its contents become available to all child
+>   classes through blanket implementations.**"
+
+And its decomposition of a class — read this as a specification for what a C#
+class becomes in Rust:
+
+> "If a class has subclasses, it will also provide a struct for instance data …
+> but it also needs additional components to support virtual methods:
+> * a struct for class data, for example `DeviceClass`. This corresponds to the
+>   C "class struct" and holds the vtable that is used by instances of the class
+>   and its subclasses. **It must start with its parent's class struct.**
+> * a trait for virtual method implementations, for example `DeviceImpl`. Child
+>   classes implement this trait to provide their own behavior for virtual
+>   methods. …
+> * a trait for instance methods, for example `DeviceMethods`. This trait is
+>   automatically implemented for any reference or smart pointer to a device
+>   instance. It calls into the vtable …"
+
+**Base fields: the parent is the first field, by value, in a marker newtype.**
+
+```rust
+#[repr(C)]
+#[derive(qom::Object, hwcore::Device)]
+pub struct PL011State {
+    pub parent_obj: ParentField<SysBusDevice>,
+    pub iomem: MemoryRegion,
+    pub char_frontend: CharFrontend,
+    pub regs: BqlRefCell<PL011Registers>,
+    pub interrupts: [InterruptSource; IRQMASK.len()],
+    pub clock: Owned<Clock>,
+    pub migrate_clock: bool,
+}
+qom_isa!(PL011State : SysBusDevice, DeviceState, Object);
+```
+
+`ParentField<T>` is `#[repr(transparent)]` over `ManuallyDrop<T>` with `Deref`
+and `DerefMut` to `T` — so the base's members are reachable without naming them,
+while the base stays one identifiable field.
+
+**The subtype relation is an `unsafe` marker trait** with the layout invariant
+as its safety condition:
+
+```rust
+/// # Safety
+///
+/// The struct `Self` must be `#[repr(C)]` and must begin, directly or
+/// indirectly, with a field of type `P`.  This ensures that invalid casts,
+/// which rely on `IsA<>` for static checking, are rejected at compile time.
+pub unsafe trait IsA<P: ObjectType>: ObjectType {}
+```
+
+**The vtable is an explicit `#[repr(C)]` class struct** whose first field is the
+parent's class struct, and chain-up is an explicit call at the end of
+`class_init`:
+
+```rust
+#[repr(C)]
+pub struct PL011Class {
+    parent_class: <SysBusDevice as ObjectType>::Class,
+    device_id: DeviceId,
+}
+impl PL011Class {
+    fn class_init<T: PL011Impl>(&mut self) {
+        self.device_id = T::DEVICE_ID;
+        self.parent_class.class_init::<T>();     // this is `base.ClassInit()`
+    }
+}
+```
+
+**Virtual overrides are associated consts holding function pointers** — an
+override *populates a slot*, it does not shadow a default:
+
+```rust
+impl DeviceImpl for PL011State {
+    const VMSTATE: Option<VMStateDescription<Self>> = Some(VMSTATE_PL011);
+    const REALIZE: Option<fn(&Self) -> util::Result<()>> = Some(Self::realize);
+}
+impl ResettablePhasesImpl for PL011State {
+    const HOLD: Option<fn(&Self, ResetType)> = Some(Self::reset_hold);
+}
+impl SysBusDeviceImpl for PL011State {}
+```
+
+**And the derived variant** — the exact shape of a Renode chip-specific
+subclass, overriding one value and re-affirming the rest:
+
+```rust
+#[repr(C)]
+#[derive(qom::Object, hwcore::Device)]
+pub struct PL011Luminary {
+    parent_obj: ParentField<PL011State>,
+}
+qom_isa!(PL011Luminary : PL011State, SysBusDevice, DeviceState, Object);
+unsafe impl ObjectType for PL011Luminary {
+    type Class = <PL011State as ObjectType>::Class;   // adds no virtual methods
+    const TYPE_NAME: &'static CStr = crate::TYPE_PL011_LUMINARY;
+}
+impl PL011Impl for PL011Luminary {
+    const DEVICE_ID: DeviceId = DeviceId(&[0x11, 0x00, 0x18, 0x01, 0x0d, 0xf0, 0x05, 0xb1]);
+}
+impl DeviceImpl for PL011Luminary {}
+impl ResettablePhasesImpl for PL011Luminary {}
+impl SysBusDeviceImpl for PL011Luminary {}
+```
+
+**What it gets wrong**, in QEMU's own words. The `IsA` relation is asserted, not
+checked:
+
+> "This macro is a thin wrapper around the [`IsA`] trait and performs **no
+> checking whatsoever** of what is declared. It is the caller's responsibility
+> to have $struct begin, directly or indirectly, with a field of type
+> `$parent`."
+
+The class-struct design duplicates code deliberately, and says why:
+
+> "These `class_init` functions are methods on the class rather than a trait,
+> because the bound on `T` … will change for every class struct … **This design
+> incurs a small amount of code duplication but, by not using traits, it allows
+> the flexibility of implementing bindings in any crate, without incurring into
+> violations of orphan rules for traits.**"
+
+That last sentence is a direct warning about the blanket-impl shortcut named in
+this document's failure-mode section: QEMU hit the orphan/coherence wall and
+paid duplication to avoid it.
+
+**Bearing on this decision:** QEMU is a working existence proof at our exact
+problem shape, and it does *not* flatten. It keeps the parent as a named first
+field, emits an explicit vtable struct, and models overrides as slot values.
+Field-flattening (splatting the base's members into the derived struct's own
+field list) is a *lossier* variant of the same layout — it discards the ability
+to say "these fields are the base's", which is what `ParentField` and `IsA`
+exist to preserve, and which our gap-report duplication (§2) is the symptom of
+having lost.
+
+### 3.4 c2rust — C to Rust
+
+C has no inheritance, so c2rust has nothing to translate here. It matters for a
+different reason: it is the project CLAUDE.md names as the model, and it states
+the faithful-first principle we are working under. From `immunant/c2rust`'s
+README:
+
+> "The transpiler, `c2rust transpile`, produces unsafe Rust code that closely
+> mirrors the input C code. **The primary goal of the transpiler is to preserve
+> functionality;** test suites should continue to pass after translation.
+> The output of `c2rust transpile` is unsafe and unidiomatic; **it is merely the
+> first step in a longer migration process.** Generating safe and idiomatic Rust
+> code from C ultimately requires additional work."
+
+Its pipeline is `transpile → refactor → postprocess → human`, and it ships a
+`cross-checks` facility to compare translated against original — structurally
+the same as this project's oracle.
+
+**What it gets wrong**, from `docs/known-limitations.md`: it declines whole
+categories rather than approximating them — `longjmp`/`setjmp` ("Likely won't
+ever support"), jumps into and out of statement expressions, macros, `restrict`.
+That is the *right* failure mode and matches this project's withhold-and-report
+rule, but it means a c2rust output is not a finished port and never claims to be.
+
+**Bearing on this decision:** it is the authority for "faithful first,
+idiomatic later" — which argues for keeping the free-fn bodies exactly as they
+are, and against a rewrite motivated by elegance. It does **not** license
+omitting dispatch, because dispatch is not idiom, it is behaviour.
+
+### 3.5 Three more, briefly
+
+**J2ObjC** (Java → Objective-C, Google). Objective-C *has* single inheritance,
+so classes map straight across; the interesting work is where Objective-C falls
+short. A Java 8 **default method becomes a free function plus a generated shim
+on every implementing class** — the generator's own header comment
+(`translator/src/main/java/com/google/devtools/j2objc/translate/DefaultMethodShimGenerator.java`):
+
+> "Generate shims for classes and enums that implement interfaces with default
+> methods. Each shim calls the functionalized default method implementation
+> defined in the interface."
+
+Real output in the tree (`protobuf/runtime/src/com/google/protobuf/MapField.m`):
+
+```objc
+- (void)remove {
+  // Default method impl.
+  JavaUtilIterator_remove(self);
+}
+```
+
+Two things there matter to us. First, this is the *same* answer as our
+`{base}_{name}` split — hoist the body to a free function, then generate a
+per-implementor forwarder. Second, `super` genuinely breaks in one case, and the
+fix is a hand-built vtable slot
+(`.../translate/SuperMethodInvocationRewriter.java`):
+
+> "Some super method invocations cannot be translated directly as an ObjC super
+> invocation. This occurs when the invocation is qualified by an outer type or
+> when the containing method has been functionized. **To resolve these
+> invocations we declare a static function pointer and look up the
+> implementation during static initialization.**"
+
+*Functionized* is exactly what our emitter does to every method. **What it gets
+wrong:** overloads have no target equivalent and are mangled into the selector
+(`[someList addWithInt:0 withId:object]`) — the docs concede "This is a bit
+ugly"; and J2ObjC ships a **per-symbol rename table** as an official escape
+hatch (`@ObjectiveCName(...)` plus a `--mapping` properties file). Worth naming
+here, since CLAUDE.md treats a per-file rename table as evidence of failure:
+a mature translator shipped one and it is a documented maintenance burden, not a
+solution.
+
+**Scala.js (WasmGC backend)**. Fields are **re-declared in every subclass,
+qualified by declaring class**, because Wasm struct subtyping does not imply
+field inheritance — from the backend's README, "As required in Wasm structs, all
+fields are always repeated in substructs. Declaring a parent struct type does
+not imply inheritance of the fields." Dispatch is a vtable struct whose
+subtyping mirrors the class hierarchy, plus a **bridge forwarder per virtual
+method** because the receiver has to be erased to `(ref any)` for the vtable
+structs to remain subtypes. **What it gets wrong:** ~2× the code size of the JS
+backend; and the thesis behind it records that lowering *static overloading*
+into runtime dispatch naively "will cause an infinite recursion when called with
+an instance of `CharSequence`" — a name-based collapse of overloads producing
+silent non-termination, which is the same hazard as §4.5 here.
+
+**TeaVM** (Java bytecode → JS/Wasm). One data point, from
+`teavm.org/docs/intro/overview.html`:
+
+> "**Devirtualization** turns virtual calls into static function calls, which
+> makes code faster."
+
+The same optimisation IL2CPP published two follow-up posts about. The pattern
+across both: emit the dispatch mechanism, then let a whole-program pass remove
+it where the call site is monomorphic. **Nobody omits the mechanism up front.**
+**What it gets wrong:** TeaVM is explicit that it is not a general translator —
+"It's not for taking your large existing codebase in Java or Kotlin and
+producing JavaScript … TeaVM restricts usage of these APIs [reflection,
+resources, class loaders, JNI]." Whole-program devirtualisation is what buys the
+speed and what forbids reflection: a closed-world assumption paid for with a
+language-feature restriction.
+
+### 3.6 The Rust position, from the sources that settle it
+
+**The language will not grow field inheritance in any relevant timeframe.**
+RFC 1546, "Allow fields in traits that map to lvalues in impl'ing type"
+(rust-lang/rfcs#1546), opened 2016-03-16, **closed unmerged 2018-02-14**
+(`"merged": false`, confirmed via the GitHub API). Its motivation is the exact
+claim the current rule makes:
+
+> "Fields serve as a better alternative to accessor functions in traits. They
+> are more compatible with Rust's safety checks than accessors, but also more
+> efficient when using trait objects."
+
+It was **postponed for bandwidth, not rejected on design** — nikomatsakis,
+2018-01-26: "after some discussion in the @rust-lang/lang meeting, it seemed
+clear that while we are still interested in a change like this, we don't have
+the bandwidth to push this through right now, so we're going to postpone the
+change." It moved to a dedicated repository (`nikomatsakis/fields-in-traits-rfc`)
+that has had **no commit since 2017-05-25**. The broader tracking issue,
+rust-lang/rfcs#349 "Efficient code reuse", has been open since 2014, and three
+earlier attempts (#245, #250, #254) all closed unmerged.
+
+**So the rule's stated premise is literally true and, for our purposes,
+permanent: a trait cannot carry fields.** Flattening the fields is not a
+workaround, it is the answer. That half of the decision is correct and should
+not be revisited.
+
+**But the language separates the two reasons for inheritance, and answers them
+differently.** The Rust Book, ch. 18, "Characteristics of Object-Oriented
+Languages" (`doc.rust-lang.org/book/ch18-01-what-is-oo.html`):
+
+> "**There is no way to define a struct that inherits the parent struct's fields
+> and method implementations without using a macro.**
+> … You would choose inheritance for two main reasons. One is for reuse of code
+> … You can do this in a limited way in Rust code using **default trait method
+> implementations** …
+> The other reason to use inheritance relates to the type system: to enable a
+> child type to be used in the same places as the parent type. This is also
+> called *polymorphism* …
+> For these reasons, Rust takes the different approach of using **trait objects**
+> instead of inheritance to achieve polymorphism at runtime."
+
+Two reasons, two mechanisms. The current design implements the first and skips
+the second.
+
+**And the shortcut to avoid.** *Rust Design Patterns*, anti-patterns,
+"Deref polymorphism" (`rust-unofficial.github.io/patterns/anti_patterns/deref.html`)
+— `impl Deref for Bar { type Target = Foo; … }` to inherit the base's methods
+through the dot operator:
+
+> "Most importantly this is a surprising idiom … we are misusing the `Deref`
+> trait rather than using it as intended … **This pattern does not introduce
+> subtyping between `Foo` and `Bar`** like inheritance in Java or C++ does.
+> Furthermore, traits implemented by `Foo` are not automatically implemented for
+> `Bar`, so this pattern interacts badly with bounds checking and thus generic
+> programming.
+> Using this pattern gives subtly different semantics from most OO languages
+> with regards to `self`. Usually it remains a reference to the sub-class, with
+> this pattern it will be the 'class' where the method is defined.
+> Finally, this pattern only supports single inheritance, and has no notion of
+> interfaces …"
+
+Its recommended alternative is exactly the recommendation of this document:
+
+> "There is no one good alternative. Depending on the exact circumstances it
+> might be better to **re-implement using traits or to write out the facade
+> methods to dispatch to `Foo` manually**."
+
+### 3.7 Summary of the survey
+
+| system | base FIELDS | base/own METHODS | virtual + interface DISPATCH | documented cost |
+|---|---|---|---|---|
+| IL2CPP | C++ inheritance, base subobject at offset 0 | **free functions, instance as first arg** | generated vtable + `VirtFuncInvoker`/`InterfaceFuncInvoker` | code bloat (4,625 headers for hello-world), injected null/bounds checks, no incremental builds |
+| Servo | superclass by value in the first field | inherent `impl` methods | generated `Castable` trait **and** generated `TypeId` enum | `unsafe` transmutes; soundness held up by a bespoke compiler lint |
+| **QEMU (Rust)** | **parent as first field, `ParentField<T>` + `unsafe trait IsA`** | trait methods on `*Impl` traits | **explicit `#[repr(C)]` class struct; overrides are associated `const fn` pointers; chain-up is an explicit call** | `qom_isa!` "performs no checking whatsoever"; deliberate duplication to dodge orphan rules |
+| c2rust | `#[repr(C)]`, parent first — relation recorded **nowhere** | free functions | `Option<extern "C" fn>` in a class struct, `.expect()` at each call | unsafe/unidiomatic by design; independently measured at 72.6% of outputs executing successfully |
+| J2ObjC | ObjC ivars | default methods → free fn + per-class shim | `@protocol` | overloads mangled into selectors; ships a per-symbol rename table |
+| Scala.js (WasmGC) | re-declared per subclass, qualified by declaring class | — | vtable structs + bridge forwarders; bucketed itables | ~2× code size; naive overload lowering causes infinite recursion |
+| TeaVM | JS object properties | JS methods | virtual, then whole-program devirtualisation | closed-world; forbids reflection/JNI |
+| **this project, today** | **flattened into `State`, relation recorded nowhere** | **free fns over `(bank, st)`** | **none** | **the subject of this document** |
+
+Two things fall out of the table.
+
+**No surveyed system relies on flattening alone.** Every one pairs a physical
+field layout with a *separate*, explicit dispatch mechanism, and the two are
+never conflated. The one row that comes closest to the current design is
+**c2rust** — parent first, relation recorded nowhere, dispatch left as raw
+function pointers — and c2rust is explicitly a first step whose output "is
+unsafe and unidiomatic", independently measured at a 72.6% success rate.
+
+**Our free-function calling convention is IL2CPP's, and that is good company.**
+The row that differs is the dispatch column, where we are alone in having none.
 
 ---
 
@@ -297,7 +796,7 @@ and was wrong" case into a build failure.
 
 ### 4.3 Deep hierarchies multiply, and the corpus is not closed over them
 
-§2: real depth reaches 5 (`CortexM`), and 28% of in-cut peripherals have an
+§2: real depth reaches 5 (`CortexM`), and 4 of the 18 in-cut peripherals have an
 out-of-cut base. Flattening needs the *entire* ancestor chain present. A trait
 model needs the same bodies but degrades better: the missing base is one
 unimplemented trait, named once.
@@ -354,7 +853,28 @@ PLAN.md already puts `.repl`/reflection loading in the "stays hand-written
 forever" bucket — so the world is closed at compile time *for this project*.
 A 24-variant enum is tractable.
 
-It is disqualified anyway, for two reasons:
+The enum is also genuinely faster, and the margin is not small. The
+`enum_dispatch` crate publishes a benchmark over 1,024 mixed-type objects in a
+`Vec`:
+
+```
+test benches::boxdyn_homogeneous_vec       ... bench: 5,900,191 ns/iter
+test benches::refdyn_homogeneous_vec       ... bench: 5,658,461 ns/iter
+test benches::enumdispatch_homogeneous_vec ... bench:   479,630 ns/iter
+```
+
+> "Since a `Vec` of enum_dispatch objects is actually a `Vec` of enums rather
+> than addresses, accessing an element takes half the indirection of the other
+> techniques."
+
+Roughly 12×. Note the scale before this decides anything: PLAN.md measures the
+MMIO budget at ~409 ns per access, and a `dyn` call is single-digit nanoseconds.
+This is the same shape of argument D2 already resolved — "**Decide this on
+correctness, not speed.** The measured advantage is real … but irrelevant in
+context." The same reasoning applies here, and it points the other way from the
+benchmark.
+
+It is disqualified for two reasons:
 
 1. **It is not general.** The deliverable is a transpiler that "must work on any
    corpus". Closed-world is a property of this project's platform-loading
@@ -527,6 +1047,16 @@ Two smaller D1 interactions:
    inheritance section at all. `scripts/check_layering.py` cannot catch this —
    it checks the *language* layer for corpus words, never the *project* layer for
    generic constructs. That asymmetry is worth a follow-up issue on its own.
+7. **Secondary, and separable — record which fields came from which base.**
+   Splatting the base's members into `State` loses the fact that they *are* the
+   base's, and §2 measures the cost: `machine`, `sysbus` and `mapper` are one
+   base-class problem reported eight times, and a third of all gap lines are
+   duplicates of this kind. QEMU keeps the parent as `ParentField<T>` and Servo
+   as a by-value first field precisely to retain that information. The cheapest
+   version here does not change the struct at all — attribute each gap to its
+   *declaring* type and deduplicate the census, so one base defect counts once.
+   That is a `gap_census.py` change, not an emitter change, and it should be a
+   separate issue.
 
 ### Its failure mode — stated, because an option list without one is not research
 
@@ -541,11 +1071,38 @@ satisfied at the sysbus — far from the cause, and only once the sysbus exists
 currently record enough to do it: `type_implements.interface_id` is `NULL` for
 every interface outside the cut, and `IBusPeripheral` is one of them.
 
-Second failure mode: a blanket `impl<T: BaseTrait> DispatchTrait for T` is the
-tempting way to write step 3 with less code, and it **breaks on the second base
-class** with coherence error E0119, because two base traits both blanket-impl
-the same dispatch trait. Emit concrete per-type impls, and record that as a
-negative in the rule (`rule_negative`) so the shortcut is not rediscovered.
+**Second failure mode:** a blanket `impl<T: BaseTrait> DispatchTrait for T` is
+the tempting way to write step 3 with less code, and it **breaks on the second
+base class** with coherence error E0119, because two base traits both
+blanket-impl the same dispatch trait. Emit concrete per-type impls, and record
+that as a negative in the rule (`rule_negative`) so the shortcut is not
+rediscovered. QEMU hit this exact wall and documented paying duplication to
+avoid it: "by not using traits, it allows the flexibility of implementing
+bindings in any crate, without incurring into violations of orphan rules for
+traits."
+
+**Third failure mode, and the one that bounds how far this can go:** not every
+C# virtual method is expressible as a `dyn` method. The Rust Reference's
+dyn-compatibility rules require a dispatchable method to have no type
+parameters and to not use `Self` except as the receiver. So:
+
+- a C# **generic virtual method** (`virtual T Foo<T>(…)`) has no `dyn` encoding
+  and must be withheld as a gap, not approximated;
+- a **covariant return override** likewise;
+- upcasting a `dyn Derived` to a `dyn Base` only became possible in **Rust 1.86
+  (2025-04-03)**; before that it needed an explicit `fn as_base(&self) -> &dyn
+  Base` in the trait. This is now available, but it pins a minimum toolchain
+  version that should be recorded rather than discovered.
+
+None of these appear in the F427 cut: **no `virtual` or `override` in the cut
+declares its own type parameters.** 17 of the 72 have `<` in their signature,
+but in every case that is the *containing* type being generic
+(`PeripheralRegister<T>.CallChangeHandlers(ulong, ulong)`), which is a different
+thing — a `dyn` over a generic base just needs the type argument fixed, and the
+register DSL fixes it four ways already (`ByteRegister`, `WordRegister`,
+`DoubleWordRegister`, `QuadWordRegister`). So this bounds the *general* claim,
+not this corpus. It should be recorded as a rule deviation so a future corpus
+trips a gap rather than silently getting something else.
 
 ### What to do about the corpus cut
 
@@ -638,4 +1195,67 @@ Reported, not fixed — each is outside this issue's module per
 
 ## Sources
 
-<!-- SOURCES -->
+Every quotation above was fetched and read; where the original URL is dead the
+archived snapshot actually used is given. Claims that could not be verified
+first-hand were dropped rather than repeated.
+
+**Translators and generated code**
+
+- IL2CPP — "IL2CPP Internals: A Tour of Generated Code", Josh Peterson,
+  2015-05-13. Original `blogs.unity3d.com` URL is dead (the `unity.com`
+  successor returns 404/403); read via
+  `web.archive.org/web/20210515152602/https://blogs.unity3d.com/2015/05/13/il2cpp-internals-a-tour-of-generated-code/`
+- IL2CPP — "IL2CPP Internals: Method Calls", 2015-06-03, via
+  `web.archive.org/web/20210422110620/https://blogs.unity3d.com/2015/06/03/il2cpp-internals-method-calls/`
+- Servo — `github.com/servo/servo`, `components/script/dom/mod.rs` (module
+  documentation, "Inheritance") and
+  `components/script_bindings/inheritance.rs` (`Castable`, `HasParent`);
+  issue servo/servo#5927 "Ensure DOM types have their base type as the first
+  field"
+- QEMU — `github.com/qemu/qemu`, `rust/qom/src/qom.rs` (`IsA`, `qom_isa!`,
+  `ParentField`, "Structure of a class") and
+  `rust/hw/char/pl011/src/device.rs` (`PL011State`, `PL011Class`,
+  `PL011Luminary`); `docs/devel/rust.rst`
+- c2rust — `github.com/immunant/c2rust`, `README.md` and
+  `docs/known-limitations.md`
+- Corrode — `github.com/jameysharp/corrode` (last commit 2017-04-12)
+- J2ObjC — `github.com/google/j2objc`,
+  `translator/src/main/java/com/google/devtools/j2objc/translate/DefaultMethodShimGenerator.java`
+  and `.../SuperMethodInvocationRewriter.java`;
+  `protobuf/runtime/src/com/google/protobuf/MapField.m`. Note that the
+  `developers.google.com/j2objc` guides are now 404 and are not archived.
+- Scala.js — `github.com/scala-js/scala-js`,
+  `linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/README.md`;
+  Sébastien Doeraene's thesis, `chara.epfl.ch/~doeraene/thesis/`
+- TeaVM — `teavm.org/docs/intro/overview.html`
+- Cheerp — `cheerp.io/docs/reference/sections/genericjs/memory-model`
+
+**Rust language**
+
+- The Rust Programming Language, ch. 18 —
+  `doc.rust-lang.org/book/ch18-01-what-is-oo.html` and
+  `.../ch18-02-trait-objects.html`
+- RFC 1546, "Allow fields in traits that map to lvalues in impl'ing type" —
+  `github.com/rust-lang/rfcs/pull/1546` (state confirmed via the GitHub API:
+  closed 2018-02-14, `merged: false`); follow-up repository
+  `github.com/nikomatsakis/fields-in-traits-rfc` (no commit since 2017-05-25);
+  tracking issue `github.com/rust-lang/rfcs/issues/349`
+- Rust Design Patterns, anti-patterns, "Deref polymorphism" —
+  `rust-unofficial.github.io/patterns/anti_patterns/deref.html`
+- The Rust Reference, "Traits" (dyn compatibility) —
+  `doc.rust-lang.org/reference/items/traits.html`; type layout —
+  `doc.rust-lang.org/reference/type-layout.html`
+- Trait upcasting stabilised in Rust 1.86 —
+  `blog.rust-lang.org/2025/04/03/Rust-1.86.0/`
+- `enum_dispatch` benchmarks — `docs.rs/enum_dispatch/`
+
+**Measurements taken for this document**
+
+- Corpus queries against `rulesdb/patterns.db` (`corpus_run.config = 'f427'`,
+  Renode `dc52b24c118a`) and the emitter run over all register-defining types.
+- Four Rust programs compiled and run to check the claims made here: the
+  trait-default `super` recursion (`unconditional_recursion` fires; the program
+  loops), the object-safety error for a `Bank<Self>` accessor (E0038, with
+  rustc's own "consider moving `bank` to another trait"), and the additive
+  dispatch trait over `Rc<RefCell<dyn _>>` with two peripherals whose `State`
+  types differ (compiles and dispatches).
