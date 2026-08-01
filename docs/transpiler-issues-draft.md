@@ -6,8 +6,9 @@ One issue per `## <id> — <title>` heading; the line after the heading is label
 Two tracks:
 
 - **T-R\*** research. Deliverable is a document. No code, no collision, start now.
-- **T-C\*** code. One emitter module each. **Blocked** until `emit.py` is split
-  into `scripts/emitter/`; do not start one before the modules exist.
+- **T-C\*** code. One emitter module each. The split has landed, so these are
+  startable: `scripts/emitter/lang/{expressions,statements,types}.py` and
+  `scripts/emitter/plugins/` exist and are separate files.
 
 For what the converter can and cannot do today, and why the rule engine is not
 yet built despite rules working, see
