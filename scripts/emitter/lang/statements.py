@@ -45,6 +45,9 @@ class Statements:
         if kind == "Loop":
             return self.emit_loop(oid, indent)
 
+        if kind == "Switch" and kids:
+            return self.emit_switch(oid, indent)
+
         if kind in ("Increment", "Decrement") and kids:
             tmpl = self.language.get("increment", {}).get(kind)
             if tmpl:
@@ -113,6 +116,49 @@ class Statements:
 
         self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
         return [f"{pad}/* {kind} */"]
+
+    def emit_switch(self, oid: int, indent: int) -> list[str]:
+        """C# switch as a Rust match.
+
+        The `break` that C# demands at the end of every section is dropped: it
+        encodes a syntax rule, not behaviour, and Rust arms do not fall
+        through. A Branch that is NOT that break is real control flow (a
+        `goto case`) and is reported rather than silently discarded."""
+        pad = "    " * indent
+        rules = self.language.get("switch", {})
+        kids = list(self.children(oid))
+        subject = self.emit_expr(kids[0][0])
+        out = [pad + rules.get("match", "match {subject} {{").format(subject=subject)]
+        saw_default = False
+        for cid, ckind, _s, _c, _t in kids[1:]:
+            if ckind != "SwitchCase":
+                continue
+            labels, body = [], []
+            for gid, gkind, _s2, _c2, _t2 in self.children(cid):
+                if gkind in ("CaseClause", "SingleValueCaseClause",
+                             "DefaultCaseClause", "ConstantPattern"):
+                    vals = list(self.children(gid))
+                    if not vals:
+                        labels.append(rules.get("default_label", "_"))
+                        saw_default = True
+                    else:
+                        labels.append(self.emit_expr(vals[0][0]))
+                elif gkind == "Branch":
+                    continue          # the mandatory C# break
+                else:
+                    body.extend(self.emit_stmt(gid, indent + 2))
+            if not labels:
+                labels = [rules.get("default_label", "_")]
+            out.append(pad + "    " + rules.get("arm", "{labels} => {{").format(
+                labels=rules.get("label_sep", " | ").join(labels)))
+            out.extend(body)
+            out.append(pad + "    }")
+        if not saw_default:
+            # Rust demands exhaustiveness; C# simply falls out of a switch that
+            # matches nothing, so the added arm does nothing.
+            out.append(pad + "    _ => {}")
+        out.append(pad + "}")
+        return out
 
     def emit_loop(self, oid: int, indent: int) -> list[str]:
         """A C# loop. The kind comes from the corpus (LoopKind), not from the
