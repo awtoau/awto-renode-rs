@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 
+from emitter import core
 from emitter.core import snake
 
 
@@ -41,6 +42,15 @@ class Statements:
             return []
         kind, _symbol, detail = row
         kids = self.children(oid)
+
+        # Registered handlers first, so a NEW construct is a new file rather
+        # than another branch below. Without this the registry in core.py was
+        # decoration: every new statement kind meant editing this chain, which
+        # is the single file the work protocol promises agents will not share.
+        for fn in core.stmt_handlers(kind):
+            got = fn(self, oid, indent)
+            if got is not None:
+                return got
 
         if kind == "Loop":
             return self.emit_loop(oid, indent)

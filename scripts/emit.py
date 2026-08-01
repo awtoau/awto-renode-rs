@@ -148,10 +148,30 @@ def render_mode(const: str | None) -> str:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emitter.core import snake  # noqa: E402
+import importlib
+import pkgutil
+
 from emitter.lang.expressions import Expressions  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
 from emitter.lang.types import Types  # noqa: E402
 from emitter.plugins.renode_expressions import RenodeExpressions  # noqa: E402
+
+
+def _load_registered() -> None:
+    """Import every emitter module so its @core.expr/@core.stmt handlers register.
+
+    Discovery rather than an import list: adding a construct must be adding a
+    FILE, or the registry is decoration and every new kind edits a shared
+    module -- which is exactly what the work protocol promises it will not.
+    """
+    import emitter.lang
+    import emitter.plugins
+    for pkg in (emitter.lang, emitter.plugins):
+        for mod in pkgutil.iter_modules(pkg.__path__):
+            importlib.import_module(f"{pkg.__name__}.{mod.name}")
+
+
+_load_registered()
 
 
 class Emitter(RenodeExpressions, Expressions, Statements, Types):

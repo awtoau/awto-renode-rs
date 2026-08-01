@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 
+from emitter import core
 from emitter.core import snake
 
 
@@ -59,6 +60,13 @@ class Expressions:
                                    kids, args, all_kids)
         if claimed is not None:
             return claimed
+
+        # Registered handlers, then the built-in chain. A new expression kind
+        # is a new file; see core.py.
+        for fn in core.expr_handlers(kind):
+            got = fn(self, oid)
+            if got is not None:
+                return got
 
         # Language layer: generic C# to Rust, valid for any corpus.
         if kind == "Literal":
