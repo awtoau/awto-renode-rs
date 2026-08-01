@@ -249,7 +249,9 @@
     "arm": "{labels} => {{",
     "default_label": "_",
     "label_sep": " | ",
-    "exhaustive_note": "Rust requires match arms to be exhaustive. A C# switch with no `default` is not, so one is added that does nothing -- which is exactly what C# does when no label matches."
+    "exhaustive_note": "Rust requires match arms to be exhaustive. A C# switch with no `default` is not, so one is added that does nothing -- which is exactly what C# does when no label matches.",
+    "pattern_context_note": "A match ARM is pattern context, where `as` is not legal. An enum member emitted for VALUE context as `X::Y as u64` therefore does not parse as a label -- `expected a pattern, found an expression`. So when the labels are enum members, the SUBJECT is converted instead and the arms match the enum itself. Accounted for 400 of 401 errors on the first whole-tree compile: one construct, in code the converter was entirely confident about.",
+    "subject_from_u64": "{enum}::from_u64({subject})"
   },
   "normalisations": {
     "note": "Rules that REWRITE the source shape before the emit rules see it, rather than mapping it directly. A construct with no Rust spelling often has an exact C# equivalent that does -- rewriting to that equivalent is faithful and needs no new Rust concept. Precedent: CROWN inserts explicit null assignments into C before translating; py2many runs rewriter passes before backend dispatch; Kotlin's J2K recompiles and patches. Normalisations must be ORDERED and may need to run to a FIXPOINT, so they are a separate phase, not more emit rules.",

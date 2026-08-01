@@ -202,6 +202,24 @@ class Statements:
         rules = self.language.get("switch", {})
         kids = list(self.children(oid))
         subject = self.emit_expr(kids[0][0])
+        # Collect the labels FIRST: if they are enum members, the arms must be
+        # patterns (no `as`), so the subject is converted instead.
+        enum_ty = None
+        for cid, ckind, _s, _c, _t in kids[1:]:
+            if ckind != "SwitchCase":
+                continue
+            for gid, gkind, _s2, _c2, _t2 in self.children(cid):
+                if gkind in ("CaseClause", "SingleValueCaseClause",
+                             "ConstantPattern"):
+                    vals = list(self.children(gid))
+                    if vals:
+                        txt = self.emit_expr(vals[0][0])
+                        if "::" in txt and txt.endswith(" as u64"):
+                            enum_ty = txt.split("::")[0]
+        if enum_ty:
+            subject = rules.get("subject_from_u64",
+                                "{enum}::from_u64({subject})").format(
+                enum=enum_ty, subject=subject)
         out = [pad + rules.get("match", "match {subject} {{").format(subject=subject)]
         saw_default = False
         for cid, ckind, _s, _c, _t in kids[1:]:
@@ -216,7 +234,10 @@ class Statements:
                         labels.append(rules.get("default_label", "_"))
                         saw_default = True
                     else:
-                        labels.append(self.emit_expr(vals[0][0]))
+                        lab = self.emit_expr(vals[0][0])
+                        if enum_ty and lab.endswith(" as u64"):
+                            lab = lab[:-len(" as u64")]   # pattern context
+                        labels.append(lab)
                 elif gkind == "Branch":
                     continue          # the mandatory C# break
                 else:
