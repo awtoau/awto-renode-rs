@@ -731,6 +731,37 @@ the single highest-value follow-up this survey produces.
 | index | queries | note |
 |---|---|---|
 | **arXiv** API + web UI | 49 attempted, 3 completed via API (HTTP 429), remainder via browser | **arXiv's indexer strips `#`**, so the literal token `C#` cannot be queried there at all |
+
+### arXiv gap closed (follow-up)
+
+The `C#` token problem above meant the arXiv sweep rested on searches that
+could not express the language's name. Re-run with every alternate spelling:
+
+| query | hits | verdict |
+|---|---|---|
+| `all:"csharp" AND all:"Rust"` | 0 | — |
+| `all:"C sharp" AND all:"Rust"` | 0 | — |
+| `all:"C-sharp" AND all:"Rust"` | 0 | — |
+| `abs:"CIL" AND abs:"Rust"` | 0 | — |
+| `abs:"Roslyn"` | 0 | — |
+| `abs:".NET" AND abs:"Rust"` | 12 | **all false positives** |
+
+The 12 are papers like *"Petri Nets-based Methods on Automatically Detecting
+for Concurrency Bugs in Rust Programs"* — the indexer strips the dot as well
+as the hash, so `.NET` matches **"Nets"**. The same defect that hides `C#`
+also manufactures noise for `.NET`.
+
+**The negative result therefore holds on arXiv**, now on searches that can
+actually name the language rather than on ones that provably cannot.
+
+**Methodological note, because this nearly went wrong.** The first re-run
+returned 0 for every query *including a control* (`all:"Rust" AND
+all:"transpiler"`, which should and does return 15). Cause:
+`http://export.arxiv.org` answers **HTTP 301**, and the requests were not
+following redirects. **Zero hits from an unfollowed redirect is
+indistinguishable from zero hits from an exhaustive search.** Any
+search-derived negative in this document should be read as valid only if a
+control query returned non-zero in the same run.
 | **DBLP** | 21 queries, all completed | Title-word matching only |
 | **Semantic Scholar** | Graph API 429 on every call; 2 queries via web UI | |
 | **Google Scholar** | exact phrase `"C# to Rust" translation` | **2 results total** |
