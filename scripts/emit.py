@@ -857,11 +857,31 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             spec = self.project.get("enums", {})
             a(f"/// C# `enum {ename}`, discriminants as declared.")
             a(spec.get("decl", "pub enum {name} {{").format(name=ename))
-            for i, (mname, val) in enumerate(members):
+            # C# allows two names for one discriminant; Rust does not (E0081).
+            # First by declaration order is the variant, the rest are consts.
+            seen_vals: dict[str, str] = {}
+            aliases: list[tuple[str, str]] = []
+            first = True
+            for mname, val in members:
+                if val in seen_vals:
+                    aliases.append((mname, seen_vals[val]))
+                    continue
+                seen_vals[val] = mname
                 a(spec.get("member", "    {default}{name} = {value},").format(
-                    default=spec.get("default_marker", "#[default] ") if i == 0 else "",
+                    default=spec.get("default_marker", "#[default] ") if first else "",
                     name=mname, value=val))
+                first = False
             a("}")
+            if aliases:
+                a("")
+                a(f"impl {ename} {{")
+                a("    // C# aliases: a second name for a discriminant already")
+                a("    // taken. Rust forbids the duplicate in the enum itself.")
+                for nm, tgt in aliases:
+                    a(spec.get("aliases", {}).get(
+                        "alias", "    pub const {name}: Self = Self::{target};")
+                      .format(name=nm, target=tgt))
+                a("}")
             a("")
             conv = spec.get("from_u64", {})
             if conv.get("impl"):

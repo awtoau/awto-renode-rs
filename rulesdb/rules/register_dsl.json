@@ -276,6 +276,10 @@
     "typed_callback_param": {
       "note": "WithEnumFields gives C# a STRONGLY TYPED callback -- `(idx, val)` where val is already the enum, with no cast node anywhere. The Rust callback signature is u64, so the conversion belongs at the parameter's uses inside the body. Scoped to lambda slots: a peripheral method that genuinely takes an enum parameter declares it as the enum and must not be wrapped.",
       "emit": "{type}::from_u64({name})"
+    },
+    "aliases": {
+      "note": "C# permits two names for one discriminant (`Default = 0, Receive = 0`); Rust forbids it -- E0081, discriminant assigned more than once. The first name by declaration order becomes the VARIANT and the rest become associated consts pointing at it, which preserves both names and both spellings at use sites without inventing a value.",
+      "alias": "    pub const {name}: Self = Self::{target};"
     }
   },
   "inheritance": {

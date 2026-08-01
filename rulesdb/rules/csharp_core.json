@@ -166,7 +166,9 @@
       "String.Append": "{recv}.push_str({args})",
       "String.ToString": "{recv}.to_string()",
       "CancellationToken.IsCancellationRequested": "{recv}.get()",
-      "CancellationTokenSource.Cancel": "{recv}.set(true)"
+      "CancellationTokenSource.Cancel": "{recv}.set(true)",
+      "Action.Invoke": "if let Some(f) = {recv}.as_mut() {{ f({args}) }}",
+      "Func.Invoke": "if let Some(f) = {recv}.as_mut() {{ f({args}) }}"
     },
     "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path.",
     "primitives": {
@@ -200,7 +202,8 @@
     "nullable_note": "`T?` on a VALUE type is System.Nullable<T>, which has an exact Rust spelling and needs no inference: the C# type system already states the value may be absent. This is the half of nullability that is free. It is NOT the reference-type case -- `string?` on an unannotated corpus says nothing, and that is the deferred D4 analysis.",
     "multidim_form": "csharp_rt::Array2D<{inner}>",
     "multidim_note": "C# `T[,]` is RECTANGULAR -- one allocation, two indices, every row the same length -- and arrives from Roslyn as `T[*,*]`. Vec<Vec<T>> is the obvious mapping and is wrong three ways: raggedness becomes representable when C# forbids it, `new T[3,4]` yields 12 usable slots where a Vec<Vec<T>> starts EMPTY and panics on first index unless every construction site remembers to fill it, and `a.Length` is rows*cols rather than the row count. csharp-rt::Array2D carries its stride, makes raggedness unrepresentable, and forces initialisation in the constructor. Runtime support is the standard answer here -- IL2CPP ships libil2cpp for exactly this class of thing.",
-    "runtime_crate_note": "`csharp-rt` holds types C# has and Rust does not. A type earns a place there only when the approximation is OBSERVABLY different: Queue<T> does not qualify because VecDeque matches it, T[,] does. Nothing in the crate knows what is being translated."
+    "runtime_crate_note": "`csharp-rt` holds types C# has and Rust does not. A type earns a place there only when the approximation is OBSERVABLY different: Queue<T> does not qualify because VecDeque matches it, T[,] does. Nothing in the crate knows what is being translated.",
+    "invoke_note": "`d.Invoke(x)` on a delegate field. The field is Option<Box<dyn FnMut>>, so a bare call does not typecheck -- rustc says `no method named invoke`. C# invoking a null delegate throws; this SKIPS instead, which is the same shape as `d?.Invoke(x)` and differs for a bare `d.Invoke(x)` on null. Recorded as a deviation: the alternative is an unwrap that panics, and every site in this corpus is the null-conditional form. The guarded form is a STATEMENT: `if let ... {}` has type () and rustc reports E0317 where a value is wanted. Expression-position invocation needs a different shape and is left unhandled rather than given an `else` arm returning a fabricated default -- which would compile and be wrong."
   },
   "coercions": {
     "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation. A computed ENUM field is the same case: C# returns the enum and the DSL widens it to the register's value, so Rust spells the discriminant conversion.",
@@ -281,5 +284,17 @@
       "note": "`private readonly object sync = new object();` is the C# lock-sentinel idiom -- a field that exists ONLY to be locked on and carries no data. Rust spells that Mutex<()>. Recognised by being an `object`-typed field that appears as a lock target, so it is derived, not guessed: an `object` field that is never locked on is something else entirely and still reports as unmapped.",
       "type": "std::sync::Mutex<()>"
     }
+  },
+  "format_strings": {
+    "note": "C# composite formatting is NOT Rust format syntax. `{0:X}` is positional-plus-spec; Rust wants `{:X}`. Worse, C# `{1:X8}` means hex padded to 8 -- Rust spells that `{:08X}`, and passing the C# form through is a compile error (`invalid format string: expected }, found 8`), not a wrong string.",
+    "strip_index": true,
+    "specs": {
+      "X": "X",
+      "x": "x",
+      "D": "",
+      "G": "",
+      "F": ""
+    },
+    "padded_hex": "0{width}{spec}"
   }
 }

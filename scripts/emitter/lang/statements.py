@@ -121,7 +121,12 @@ class Statements:
             if self.kind_of(kids[0][0]) in (
                     "Increment", "Decrement", "CompoundAssignment"):
                 return self.emit_stmt(kids[0][0], indent)
-            return [pad + self.emit_expr(kids[0][0]) + ";"]
+            prev_pos = getattr(self, "_stmt_position", False)
+            self._stmt_position = True
+            try:
+                return [pad + self.emit_expr(kids[0][0]) + ";"]
+            finally:
+                self._stmt_position = prev_pos
 
         if kind == "CompoundAssignment" and len(kids) >= 2:
             # `x += y`. The operator is the same OperatorKind the binary table

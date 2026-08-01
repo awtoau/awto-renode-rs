@@ -24,6 +24,7 @@ Two things here are load-bearing:
 from __future__ import annotations
 
 import json
+import re
 
 from emitter import core
 from emitter.core import snake
@@ -303,6 +304,27 @@ class Expressions:
             return forms.get("self", "self.{name}").format(name=name)
         return forms.get("instance", "{receiver}.{name}").format(
             receiver=self.emit_expr(rid), name=name)
+
+    def csharp_format(self, text: str) -> str:
+        """C# composite format to Rust. `{0:X}` -> `{:X}`, `{1:X8}` -> `{:08X}`.
+
+        Passing the C# form through is a compile ERROR, not a wrong string:
+        rustc reports `invalid format string: expected }, found 8`."""
+        spec = self.language.get("format_strings", {})
+        table = spec.get("specs", {})
+
+        def one(m):
+            fmt = m.group(2) or ""
+            if not fmt:
+                return "{}"
+            kind, digits = fmt[0], fmt[1:]
+            mapped = table.get(kind, kind)
+            if digits.isdigit() and mapped:
+                return "{:" + spec.get("padded_hex", "0{width}{spec}").format(
+                    width=digits, spec=mapped) + "}"
+            return "{:" + mapped + "}" if mapped else "{}"
+
+        return re.sub(r"\{(\d+)(?::([^}]*))?\}", one, text)
 
     def literal(self, const: str | None, rtype: str | None = None) -> str:
         """A literal, rendered for Rust.
