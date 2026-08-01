@@ -98,6 +98,22 @@ def run_normalisations(em, method_id: int, spec: dict) -> int:
     """
     passes = sorted(spec.get("passes", []), key=lambda p: (p.get("order", 0),
                                                           p.get("name", "")))
+    # A pass declared in data with no registered handler, or a handler with no
+    # data entry, is a WIRING ERROR -- not a rule that legitimately does not
+    # apply. The two are indistinguishable at runtime otherwise, which is
+    # exactly how the ConditionalAccessStatement lookup broke: `.get()`
+    # returned a default, the branch fell through, and nothing errored.
+    declared = {p.get("name") for p in passes}
+    registered = set(_NORMALISE)
+    if declared != registered:
+        missing = sorted(declared - registered)
+        orphan = sorted(registered - declared)
+        raise RuntimeError(
+            "normalisation wiring mismatch: "
+            + (f"declared with no handler {missing}; " if missing else "")
+            + (f"registered with no data entry {orphan}; " if orphan else "")
+            + "a silent no-op here is indistinguishable from a rule that "
+              "correctly does not apply")
     cap = int(spec.get("max_passes", 8))
     for n in range(1, cap + 1):
         changed = False
