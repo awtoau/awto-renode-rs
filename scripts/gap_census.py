@@ -20,8 +20,21 @@ The useful comparison is the two runs side by side: a gap type that is common
 in the cut is work, and one that appears only outside it is somebody else's
 architecture.
 
+RELATIONSHIP TO THE RULE ENGINE (#35)
+-------------------------------------
+This is a partial step toward step 2 of the rule engine: it already does the
+corpus-wide traversal -- query every type with a register-defining method, run
+the emitter over ALL of them, classify what stopped it. What it does NOT do is
+the bookkeeping: it writes nothing to `rule_match`, associates no result with a
+rule, and validates nothing against the oracle.
+
+It answers "what is blocked, and by what". The rule engine must answer "where
+does rule R apply, and is R correct at each site". Turning this into that means
+keeping the traversal and adding the recording. See docs/rule-engine-readiness.md.
+
 Run:  python3 scripts/gap_census.py --db rulesdb/patterns.db
       python3 scripts/gap_census.py --db tmp/breadth.db --limit 400
+      python3 scripts/gap_census.py --db rulesdb/patterns.db --blocking
 Log:  ./tmp/logs/gap_census.log
 """
 

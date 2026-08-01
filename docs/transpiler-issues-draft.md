@@ -9,6 +9,10 @@ Two tracks:
 - **T-C\*** code. One emitter module each. **Blocked** until `emit.py` is split
   into `scripts/emitter/`; do not start one before the modules exist.
 
+For what the converter can and cannot do today, and why the rule engine is not
+yet built despite rules working, see
+[rule-engine-readiness.md](rule-engine-readiness.md).
+
 Everything below assumes [the work protocol](agents/transpiler-work-protocol.md).
 Read it first — it is short, and it is the difference between a contribution and
 a merge conflict.
