@@ -953,6 +953,19 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
     def enum_names(self, type_name: str) -> set[str]:
         return {n for n, _ in self.nested_enums(type_name)}
 
+    def lock_target_fields(self, type_name: str) -> set[str]:
+        """Fields the source locks on. Derived: a field appearing as a `lock`
+        target is one the C# says needs mutual exclusion, so its Rust type
+        follows from the corpus rather than from a judgement."""
+        rows = self.con.execute(
+            "SELECT DISTINCT c.symbol FROM operation o "
+            "JOIN operation c ON c.parent_id = o.id AND c.ordinal = 0 "
+            "JOIN member mb ON mb.id = o.method_id "
+            "JOIN type t ON t.id = mb.type_id "
+            "WHERE o.kind = 'Lock' AND t.name = ? AND c.symbol IS NOT NULL",
+            (type_name,)).fetchall()
+        return {(s or "").split("(")[0].split(".")[-1] for (s,) in rows}
+
     def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
         """The peripheral's State, from its non-handle instance fields."""
         spec = self.project.get("state_struct", {})
@@ -960,6 +973,7 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         _ = spec.get("requires_storage")  # documented in the rule; applied in SQL
         out: list[tuple[str, str]] = []
         gaps: list[str] = []
+        locked = self.lock_target_fields(type_name)
         kinds = spec.get("also_state", {}).get("kinds", ["field"])
         qmarks = ",".join("?" for _ in kinds)
         for n, dt in self.con.execute(
@@ -976,9 +990,21 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                 continue          # the Bank already is this -- see elided.note
             rt = spec.get("type_map", {}).get((dt or "").strip()) \
                 or self.rust_type(dt or "")
+            if rt is None and (dt or "").strip() == "object" and n in locked:
+                # A bare `object` field that is locked on is the lock-sentinel
+                # idiom: it holds no data and exists only for mutual exclusion.
+                out.append((snake(n), self.language.get("locking", {})
+                            .get("sentinel", {}).get("type",
+                                                     "std::sync::Mutex<()>")))
+                continue
             if rt is None:
                 gaps.append(f"state field `{n}`: no Rust mapping for `{dt}`")
                 continue
+            if n in locked:
+                # The source locks on this field, so it carries a Mutex. See
+                # the `locking` rule: structure preserved, timing not claimed.
+                rt = self.language.get("locking", {}).get(
+                    "field_type", "std::sync::Mutex<{inner}>").format(inner=rt)
             out.append((snake(n), rt))
         return out, gaps
 

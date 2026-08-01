@@ -257,5 +257,17 @@
         "limit": "EXPRESSION position is NOT covered. `var y = x?.Foo();` yields null when x is null, so it needs Option and therefore the D4 analysis. Those stay gaps."
       }
     ]
+  },
+  "locking": {
+    "note": "C# `lock(x) { ... }` becomes a Mutex guard, and the locked field's type becomes Mutex<T>. Both are DERIVED: a field that appears as a lock target is one the source says needs mutual exclusion, so the type follows from the corpus rather than from a judgement.",
+    "guard": "let _sync = {target}.lock().unwrap();",
+    "field_type": "std::sync::Mutex<{inner}>",
+    "marker": "// SYNC(measure): C# `lock`. Structure preserved; TIMING IS NOT.",
+    "no_guarantee": "NO EQUIVALENCE IS CLAIMED FOR THREADING OR TIMING, and the translation must not pretend otherwise. Translated code runs at different rates, so lock hold times, contention and interleaving all differ. No transpiler can get this exactly right. Our oracle cannot see it either: trace replay feeds recorded register accesses through a single-threaded replay, so a threading difference is invisible to it BY CONSTRUCTION -- which means 'the oracle passes' is not evidence here. Each site is marked so it can be found and MEASURED rather than assumed.",
+    "rejected_alternative": "PLAN.md D3 proposes deleting locks entirely on the grounds that a single-core guest has nothing to parallelise. That is an argument about THROUGHPUT, not fidelity, and PLAN.md itself records D3 as the one place the plan knowingly departs from faithful and as requiring re-validation that has not happened. Deleting 842 synchronisation points on an unvalidated performance argument, in a place the oracle is blind, is not a translation. Preserving the structure costs nothing under single-threaded execution -- an uncontended Mutex is close to free -- and keeps the decision reversible.",
+    "sentinel": {
+      "note": "`private readonly object sync = new object();` is the C# lock-sentinel idiom -- a field that exists ONLY to be locked on and carries no data. Rust spells that Mutex<()>. Recognised by being an `object`-typed field that appears as a lock target, so it is derived, not guessed: an `object` field that is never locked on is something else entirely and still reports as unmapped.",
+      "type": "std::sync::Mutex<()>"
+    }
   }
 }

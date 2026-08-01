@@ -52,6 +52,20 @@ class Statements:
             if got is not None:
                 return got
 
+        if kind == "Lock" and len(kids) >= 2:
+            # Structure preserved, timing explicitly NOT guaranteed -- see the
+            # `locking` rule. Each site is marked so it can be measured.
+            spec = self.language.get("locking", {})
+            body = self.emit_block(kids[1][0], indent + 1) \
+                if kids[1][1] == "Block" else self.emit_stmt(kids[1][0], indent + 1)
+            return [pad + spec.get("marker", "// SYNC(measure)"),
+                    pad + "{",
+                    pad + "    " + spec.get(
+                        "guard", "let _sync = {target}.lock().unwrap();").format(
+                        target=self.emit_expr(kids[0][0])),
+                    *body,
+                    pad + "}"]
+
         if kind == "Loop":
             return self.emit_loop(oid, indent)
 
