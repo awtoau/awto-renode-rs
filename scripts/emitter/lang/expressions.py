@@ -93,8 +93,15 @@ class Expressions:
             receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
             key = self.stdlib_member(symbol)
             if key and receiver is not None:
-                return self.language["stdlib"]["members"][key].format(
-                    recv=self.emit_expr(receiver), args=arg_txt)
+                tmpl = self.language["stdlib"]["members"][key]
+                # A guarded form is a STATEMENT (type ()); using it where a
+                # value is wanted is E0317. Report rather than bolt on an
+                # `else` returning a fabricated default -- that would compile.
+                if tmpl.startswith("if let") and not getattr(
+                        self, "_stmt_position", False):
+                    self.unhandled["expr:DelegateInvokeInExpression"] = 1
+                    return "/* DelegateInvokeInExpression */"
+                return tmpl.format(recv=self.emit_expr(receiver), args=arg_txt)
             rkind = None
             if receiver is not None:
                 rkind = self.con.execute(
