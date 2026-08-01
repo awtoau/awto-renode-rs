@@ -8,11 +8,33 @@ commercial product. What exists is one alpha-quality *F#*-to-Rust compiler
 (Fable), a family of C#-to-*other-language* translators, and a large number of
 LLM snippet converters.
 
-The negative result is not the interesting part. The interesting part is that
-three unrelated teams — one commercial, one open source, one a lone developer
-over eight years — each attacked "C# source to a language without a garbage
-collector" and each left a written record of exactly which part defeated them.
-It is the same part in all three cases, and it is not the syntax.
+The negative result is not the interesting part. The interesting part is that a
+dozen unrelated teams — commercial, open source, and lone developers over
+eight-year stretches — each attacked "C# source to a language without a garbage
+collector", and most left a written record of exactly which part defeated them.
+It is the same part every time, and it is not the syntax.
+
+### If you read five things
+
+1. **§12.6 — the graveyard has one cause of death**, and it is the standard
+   library, not the language. IL2CPP survived by refusing to translate it. This
+   project's scope is on the right side of that line, and PLAN.md should say so.
+2. **§6 and §12.5 — patching output is what kills these projects**, with two
+   independent receipts: CodePorting abandoned it under release pressure, and
+   NGit measured it at **62 KB of source patches versus 358 KB of output
+   patches** before being archived.
+3. **§10 — the issue's IL2CPP premise is wrong.** IL2CPP ships a garbage
+   collector. So do four of the other five C#-to-native pipelines. Nobody has
+   automatically converted C# object lifetime to statically-checked ownership,
+   and the load-bearing question for this project is what the *corpus* does with
+   object lifetime.
+4. **§12.9 — [depyler](https://github.com/paiml/depyler) is the same
+   architecture, three years ahead.** Read its docs before touching the rule
+   engine.
+5. **§11.6 — the failure literature**, especially *Aliasing Limits on
+   Translating C to Safe Rust* (a group overturning its own prior conclusions)
+   and *Does BLEU Score Work for Code Migration?* (a group showing its own
+   field's headline metric does not measure what it claims).
 
 ---
 
@@ -1425,6 +1447,18 @@ Distinct from "read this" — these are edits to existing artefacts.
 - **Translating without a fidelity oracle.** OneLang's author wrote down what
   that becomes: a tool that "does not respect" the rules of the input language.
   It has 1,142 stars and has been dead since 2023.
+
+### The one prediction this survey makes
+
+Every failed C#-to-native translator in §12.6 died in the same place: the
+standard library and the long tail of language features it drags in. IL2CPP is
+the survivor, and it survived by refusing to translate the BCL at all.
+
+**~16k lines of peripheral logic against a small fixed runtime surface is on
+the right side of that line.** That should be stated in PLAN.md as the reason
+this project is expected to finish, because it is the strongest single
+predictor in the dataset — and because if the scope ever creeps toward "and
+also the rest of Renode", the prediction inverts.
 
 ### What is actually distinctive here
 
