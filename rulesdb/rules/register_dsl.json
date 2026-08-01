@@ -221,7 +221,9 @@
       "note": "Renode types with no BCL equivalent. `Core.GPIO` is an output line; the peripheral only ever sets its level, so `bool` carries it -- consistent with the IRQ_SET expression rule. `CancellationTokenSource` cancels a scheduled action, and under D3 (single-threaded) that is a shared flag, not a threading primitive: Cancel() sets it and the scheduled closure checks it before firing. This is a DEVIATION in mechanism with identical observable behaviour, recorded here rather than left to look like a faithful mapping.",
       "Antmicro.Renode.Core.GPIO": "bool",
       "System.Threading.CancellationTokenSource": "Option<std::rc::Rc<std::cell::Cell<bool>>>",
-      "System.Threading.CancellationToken": "std::rc::Rc<std::cell::Cell<bool>>"
+      "System.Threading.CancellationToken": "std::rc::Rc<std::cell::Cell<bool>>",
+      "Antmicro.Renode.Peripherals.CPU.RegisterValue": "u64",
+      "register_value_note": "RegisterValue is a thin wrapper over a CPU register's contents, declared outside the cut. It carries width metadata C# uses for formatting only; the VALUE is what the code reads and writes, so u64 is faithful. If width-dependent formatting is ever translated this becomes a newtype instead -- recorded so that is a decision rather than a surprise."
     },
     "requires_storage": {
       "note": "Only members that actually store go in State. `STM32_UART.BaudRate` computes from two register fields and holds nothing; emitting it as a field would invent storage the C# does not have -- the same error class as the invented `.with_reserved(9, 23)`. Derived from member.has_storage, so it is not a hand-maintained skip list.",

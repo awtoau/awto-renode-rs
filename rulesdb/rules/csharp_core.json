@@ -225,5 +225,10 @@
     "note": "Rust has no ++/--. In STATEMENT position the distinction between prefix and postfix does not matter, since the value is discarded; in expression position it would, and there are no such uses in this corpus -- so only the statement form is mapped, and the expression form reports a gap rather than silently dropping the difference.",
     "Increment": "{target} += 1;",
     "Decrement": "{target} -= 1;"
+  },
+  "compound_assignment": {
+    "note": "`x += y`. The operator arrives as the same OperatorKind the binary table uses, so the mapping is derived from that table rather than duplicated -- retyping it would let the two drift, and a compound assignment silently using the wrong operator is invisible in review.",
+    "template": "{target} {op}= {value};",
+    "checked_note": "C# compound assignment on integers wraps in an unchecked context, exactly as the binary form does; the overflow deviation recorded for `Add` applies here unchanged."
   }
 }
