@@ -822,8 +822,6 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                 a(f"//!   - {g}")
         a("")
         a("use renode_regs::{Bank, FieldMode, FlagId, ValueId};")
-        if any("VecDeque" in ty for _, ty in state):
-            a("use std::collections::VecDeque;")
         a("")
         a("/// Register offsets, from the C# `enum Register`.")
         a("pub mod reg {")

@@ -141,10 +141,10 @@
   "stdlib": {
     "note": "The .NET BCL to Rust std correspondence. Generic to the two languages, so it belongs here and not in a project rule -- nothing below mentions Renode. 336 uses across 38 distinct members in this corpus. Only members with >=3 uses are listed; the rest are patches until a third instance appears, per the min_instances_required rule.",
     "types": {
-      "Queue": "VecDeque",
+      "Queue": "std::collections::VecDeque",
       "List": "Vec",
-      "Dictionary": "HashMap",
-      "HashSet": "HashSet",
+      "Dictionary": "std::collections::HashMap",
+      "HashSet": "std::collections::HashSet",
       "StringBuilder": "String"
     },
     "members": {
@@ -189,7 +189,8 @@
       "why_fnmut": "FnMut, not Fn: a C# delegate may mutate what it captured, and FnOnce would forbid the repeated invocation every one of these sites performs."
     },
     "array_form": "Vec<{inner}>",
-    "array_note": "A C# array maps to Vec, not a fixed-size Rust array: the lengths here come from constructor arguments rather than the type, so a fixed size is not available at the declaration."
+    "array_note": "A C# array maps to Vec, not a fixed-size Rust array: the lengths here come from constructor arguments rather than the type, so a fixed size is not available at the declaration.",
+    "fully_qualified_note": "Collection types are emitted FULLY QUALIFIED rather than relying on a `use` line. An emitter that tracks which imports its output needs is bookkeeping that can only ever be wrong -- it was already a hand-written conditional here scanning for the substring 'VecDeque'. Qualifying at the use site deletes the bookkeeping and cannot go stale when a new type is added to this table. Adopted from paiml/depyler DEPYLER-0623, which reached the same conclusion for Python-to-Rust; the lesson is about Rust emission and so does not depend on the source language."
   },
   "coercions": {
     "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation. A computed ENUM field is the same case: C# returns the enum and the DSL widens it to the register's value, so Rust spells the discriminant conversion.",

@@ -18,7 +18,6 @@
 //!   - state field `sysbus`: no Rust mapping for `Antmicro.Renode.Peripherals.Bus.IBusController`
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
-use std::collections::VecDeque;
 
 /// Register offsets, from the C# `enum Register`.
 pub mod reg {
@@ -122,7 +121,7 @@ pub struct State {
     pub irq: bool,
     pub frequency: u32,
     pub idle_line_detected_cancellation_token_src: Option<std::rc::Rc<std::cell::Cell<bool>>>,
-    pub receive_fifo: VecDeque<u8>,
+    pub receive_fifo: std::collections::VecDeque<u8>,
 }
 
 // The peripheral's own methods. C# reaches its state through
