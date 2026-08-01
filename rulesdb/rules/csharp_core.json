@@ -209,7 +209,8 @@
   },
   "conversions": {
     "note": "C# widens numerically without being asked (`uint value = receiveFifo.Dequeue()` on a Queue<byte>). Rust never does, so an implicit NUMERIC conversion becomes an explicit cast. Non-numeric implicit conversions -- boxing, interface upcasts -- are still transparent, because they have no Rust spelling and inserting one would be noise. The corpus records both flags on the Conversion node.",
-    "numeric": "{expr} as {target}"
+    "numeric": "({expr} as {target})",
+    "parens_note": "The cast is PARENTHESISED. Unparenthesised, `x as i32 << 8` is a rustc hard error -- `<<` after a type name is read as the start of generic arguments, not a shift. It does not produce a wrong answer; it does not parse. Found by COMPILING everything the converter emits rather than by reading it: 11 of the 50 errors in the first such run were this one construct, in code the converter was confident about."
   },
   "strings": {
     "note": "C# `$\"...{expr}...\"` becomes format!. The corpus records the pieces as InterpolatedStringText and Interpolation children in source order, so the format string is rebuilt from them rather than reparsed from the literal.",

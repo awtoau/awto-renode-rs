@@ -131,8 +131,8 @@ fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () 
 
 fn baud_rate(bank: &Bank<State>, st: &mut State) -> u32 {
     let mut fraction = if (bank.value(st.f.oversampling_mode) == OversamplingMode::By16 as u64) { bank.value(st.f.divider_fraction) } else { (bank.value(st.f.divider_fraction) & 7) };
-    let mut divisor = ((8 * (2 - bank.value(st.f.oversampling_mode))) as f64 * (bank.value(st.f.divider_mantissa) as f64 + (fraction as f64 / 16.0)));
-    return if (divisor == 0 as f64) { 0 } else { (st.frequency as f64 / divisor) as u32 };
+    let mut divisor = (((8 * (2 - bank.value(st.f.oversampling_mode))) as f64) * ((bank.value(st.f.divider_mantissa) as f64) + ((fraction as f64) / 16.0)));
+    return if (divisor == (0 as f64)) { 0 } else { (((st.frequency as f64) / divisor) as u32) };
 }
 
 fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
@@ -178,11 +178,11 @@ fn data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u6
     let mut value = 0;
     bank.set_flag(st.f.idle_line_detected, false);
     if (st.receive_fifo.len() > 0) {
-        value = st.receive_fifo.pop_front().unwrap() as u32;
+        value = (st.receive_fifo.pop_front().unwrap() as u32);
     }
     bank.set_flag(st.f.read_fifo_not_empty, (st.receive_fifo.len() > 0));
     update(bank, st);
-    return value as u64;
+    return (value as u64);
 }
 
 fn data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, value: u64) -> () {
