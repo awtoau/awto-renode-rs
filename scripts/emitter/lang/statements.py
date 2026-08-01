@@ -64,6 +64,31 @@ class Statements:
                 return [pad + tmpl.format(target=self.emit_expr(kids[0][0]))]
         stmts = self.language.get("statements", {})
 
+        if kind == "ExpressionStatement" and kids and \
+                self.kind_of(kids[0][0]) == "ConditionalAccess":
+            # NORMALISATION, not a mapping. `x?.Foo();` in statement position
+            # discards its result, so the short-circuit IS an if-guard -- an
+            # exact rewrite needing no decision about whether x is nullable,
+            # because the C# already said it might be. Expression position is
+            # NOT this: `y = x?.Foo()` yields null and needs D4.
+            spec = self.language.get("normalisations", {}).get(
+                "ConditionalAccessStatement", {})
+            ca = list(self.children(kids[0][0]))
+            if len(ca) >= 2 and spec.get("emit"):
+                recv = self.emit_expr(ca[0][0])
+                prev = getattr(self, "_ca_binding", None)
+                self._ca_binding = "__v"
+                # The guarded part is an EXPRESSION (the call), not a
+                # statement; routing it through emit_stmt records a bogus
+                # unhandled `stmt:Invocation` and withholds the method.
+                body = [("    " * (indent + 1))
+                        + self.emit_expr(ca[1][0]) + ";"]
+                self._ca_binding = prev
+                head = spec["emit"].split("\n")[0].format(
+                    receiver=recv, body="")
+                return [pad + head.replace("Some(x)", "Some(__v)"),
+                        *body, pad + "}"]
+
         if kind == "ExpressionStatement":
             if not kids:
                 return []

@@ -319,6 +319,7 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         # derived and never depends on emission order.
         naming = self.project.get("callback_naming", {}).get(
             "template", "{reg}_{pos}_{kind}")
+        seen_unh = set(self.unhandled)
         for param, kind, key in (("valueProviderCallback", "provider", "provider_fn"),
                                  ("writeCallback", "writer", "writer_fn")):
             env[key] = "None"
@@ -329,8 +330,18 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                 continue
             fname = naming.format(reg=snake(self._current_reg or "reg"),
                                   pos=env["pos"], kind=kind)
+            before_unh = len(self.unhandled)
             body = self.emit_lambda(lam, fname, param)
             if not body:
+                continue
+            # Callbacks had no unhandled check at all, so an unemittable
+            # construct inside one reached the file as a `/* Kind */` marker.
+            # Methods have withheld on this since the beginning; lambdas were
+            # simply missed.
+            if len(self.unhandled) > before_unh:
+                self.gaps.append(
+                    f"callback for bit {env['pos']}: withheld, cannot emit "
+                    f"{', '.join(sorted(set(self.unhandled) - seen_unh))}")
                 continue
             # Does the body call a peer method we cannot emit yet? If so the
             # file would not compile, and a stub would look finished. Withhold
@@ -1063,7 +1074,10 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             self.gaps.append(
                 f"{method_name}: withheld, cannot emit {', '.join(new)}")
             return []
-        marker = [l.strip() for l in body if "/* GAP" in l]
+        # Any emitted marker, not just `/* GAP`. An unhandled expression emits
+        # `/* Kind */`, which is valid Rust in some positions and invalid in
+        # others -- either way it is not a translation.
+        marker = [l.strip() for l in body if re.search(r"/\*\s*(GAP|[A-Z]\w+)\s*\*/", l)]
         if marker:
             self.gaps.append(
                 f"{method_name}: withheld, body still contains a gap marker "

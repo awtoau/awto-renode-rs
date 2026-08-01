@@ -7,11 +7,9 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - Data: conditional access `?.` needs nullability analysis
+//!   - Data: callback for bit 0: withheld, cannot emit expr:EventReference
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - Reset: withheld, body still contains a gap marker (/* GAP: `?.` needs nullability analysis (D4) */;)
-//!   - WriteChar: withheld, body still contains a gap marker (/* GAP: `?.` needs nullability analysis (D4) */;)
-//!   - conditional access `?.` needs nullability analysis
+//!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 //!   - state field `machine`: no Rust mapping for `Antmicro.Renode.Core.IMachine`
@@ -148,6 +146,15 @@ fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc
     }
 }
 
+fn reset(bank: &Bank<State>, st: &mut State) -> () {
+    basic_double_word_peripheral_reset(bank, st);
+    if let Some(__v) = st.idle_line_detected_cancellation_token_src.as_ref() {
+        __v.set(true);
+    }
+    st.receive_fifo.clear();
+    st.irq = false;
+}
+
 fn update(bank: &Bank<State>, st: &mut State) -> () {
     st.irq = ((((bank.flag(st.f.idle_line_detected_interrupt_enabled) && bank.flag(st.f.idle_line_detected)) || (bank.flag(st.f.receiver_not_empty_interrupt_enabled) && bank.flag(st.f.read_fifo_not_empty))) || bank.flag(st.f.transmit_data_register_empty_interrupt_enabled)) || (bank.flag(st.f.transmission_complete_interrupt_enabled) && bank.flag(st.f.transmission_complete)));
 }
@@ -178,17 +185,6 @@ fn data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u6
     return value as u64;
 }
 
-fn data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, value: u64) -> () {
-    if (!bank.flag(st.f.usart_enabled) && !bank.flag(st.f.transmitter_enabled)) {
-        log::warn!("Trying to transmit a character, but the transmitter is not enabled. dropping.");
-        return;
-    }
-    /* GAP: `?.` needs nullability analysis (D4) */;
-    bank.set_flag(st.f.transmission_complete, true);
-    update(bank, st);
-    return;
-}
-
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::STATUS, 192)
@@ -206,7 +202,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::DATA, 0)
-        .with_value_cb(0, 9, FieldMode::READ_WRITE, Some(data_0_provider), Some(data_0_writer))
+        .with_value_cb(0, 9, FieldMode::READ_WRITE, Some(data_0_provider), None)
         .done();
 
     bank.define(reg::BAUD_RATE, 0)

@@ -240,5 +240,15 @@
     "default_label": "_",
     "label_sep": " | ",
     "exhaustive_note": "Rust requires match arms to be exhaustive. A C# switch with no `default` is not, so one is added that does nothing -- which is exactly what C# does when no label matches."
+  },
+  "normalisations": {
+    "note": "Rules that REWRITE the source shape before the emit rules see it, rather than mapping it directly. A construct with no Rust spelling often has an exact C# equivalent that does -- rewriting to that equivalent is faithful and needs no new Rust concept. Precedent: CROWN inserts explicit null assignments into C before translating; py2many runs rewriter passes before backend dispatch; Kotlin's J2K recompiles and patches. Normalisations must be ORDERED and may need to run to a FIXPOINT, so they are a separate phase, not more emit rules.",
+    "ConditionalAccessStatement": {
+      "matches": "ConditionalAccess whose value is discarded (statement position)",
+      "rewrite": "if {receiver} != null { {receiver}.{call} }",
+      "emit": "if let Some(x) = {receiver}.as_ref() {{\n{body}\n}}",
+      "why": "`x?.Foo();` in statement position discards the result, so the short-circuit is exactly an if-guard. This is a REWRITE, not a nullability analysis: it needs no decision about whether x is nullable, because the C# already said it might be.",
+      "limit": "EXPRESSION position is NOT covered. `var y = x?.Foo();` yields null when x is null, so it needs Option and therefore the D4 analysis. Those stay gaps."
+    }
   }
 }

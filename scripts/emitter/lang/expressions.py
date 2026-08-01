@@ -144,6 +144,12 @@ class Expressions:
                     params=", ".join(n if n != "_" else "_" for n in names),
                     body=txt)
 
+        if kind == "ConditionalAccessInstance":
+            # Inside a normalised `?.` guard this is the bound receiver.
+            b = getattr(self, "_ca_binding", None)
+            if b:
+                return b
+
         if kind == "ConditionalAccess":
             gap = self.language.get("statements", {}).get("ConditionalAccess", {})
             self.gaps.append("conditional access `?.` needs nullability analysis")
