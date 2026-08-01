@@ -44,10 +44,14 @@ LABELS = {
     "perf":       ("e99695", "Performance measurement or optimisation"),
     "deferred":   ("cccccc", "Research only -- not scheduled, blocks nothing"),
     "research":   ("d4c5f9", "Investigation, not implementation"),
+    "transpiler": ("5319e7", "The C#-to-Rust converter itself, not the corpus"),
+    "code":       ("0e8a16", "Implementation in an emitter module"),
+    "blocked-on-split":  ("d93f0b", "Waiting on emit.py being split into modules"),
+    "blocked-decision":  ("d93f0b", "Waiting on a research verdict before coding"),
 }
 
-HEADING = re.compile(r"^## ([EPR]?\d+) — (.+)$")
-LABEL_LINE = re.compile(r"^`[a-z0-9-]+`(?: `[a-z0-9-]+`)*\s*$")
+HEADING = re.compile(r"^## ([A-Za-z]+-?[A-Za-z]?\d+|[EPR]?\d+) — (.+)$")
+LABEL_LINE = re.compile(r"^(?:`[a-z0-9-]+`(?: `[a-z0-9-]+`)*|[a-z0-9-]+(?:, ?[a-z0-9-]+)*)\s*$")
 
 
 def repo_root() -> Path:
@@ -86,7 +90,8 @@ def parse(draft: str) -> list[dict]:
             if not line.strip():
                 continue  # swallow blank lines between heading and labels/body
             if not current["labels"] and LABEL_LINE.match(line.strip()):
-                current["labels"] = re.findall(r"`([a-z0-9-]+)`", line)
+                current["labels"] = (re.findall(r"`([a-z0-9-]+)`", line)
+                                     or [x.strip() for x in line.split(",")])
                 continue
         current["body"].append(line)
 
@@ -117,6 +122,7 @@ def ensure_labels(log: logging.Logger, dry: bool) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="parse and report, create nothing")
+    ap.add_argument("--draft", default=DRAFT, help="draft file to read")
     args = ap.parse_args()
 
     root = repo_root()
@@ -130,8 +136,8 @@ def main() -> int:
         h.setFormatter(fmt)
         log.addHandler(h)
 
-    issues = parse((root / DRAFT).read_text(encoding="utf-8"))
-    log.info("parsed %d issues from %s", len(issues), DRAFT)
+    issues = parse((root / args.draft).read_text(encoding="utf-8"))
+    log.info("parsed %d issues from %s", len(issues), args.draft)
 
     ensure_labels(log, args.dry_run)
 

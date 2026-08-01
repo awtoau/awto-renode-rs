@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Plot converter progress across git history.
+
+Two lines that must be read together:
+
+  generated lines   how much Rust the converter produces
+  reported gaps     how much it refuses to produce
+
+Neither is a score on its own, and that is the point of graphing both. Lines
+went UP for weeks while several of those lines were wrong -- an emitted
+`/* GAP */` marker inside a loop, a base call that recursed forever. When
+withholding on gap markers landed, generated lines FELL by 22 and the output
+got better. A single "progress" number would have shown that as regression.
+
+Self-contained SVG, no plotting library: the repo has no Python dependencies
+and adding one for a chart is a poor trade.
+
+Run:  python3 scripts/progress_graph.py
+Out:  ./tmp/progress.svg  and  ./tmp/progress.html
+Log:  ./tmp/logs/progress_graph.log
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+GENERATED = [
+    "src/renode-stm32/src/uart_registers.rs",
+    "src/renode-stm32/src/gpio_registers.rs",
+]
+
+
+def repo_root() -> Path:
+    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                               capture_output=True, text=True,
+                               check=True).stdout.strip())
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+
+
+def series(log: logging.Logger) -> list[tuple[str, str, int, int]]:
+    """(sha, subject, generated lines, reported gaps) oldest first."""
+    revs = git("log", "--reverse", "--format=%H\t%s").strip().splitlines()
+    out: list[tuple[str, str, int, int]] = []
+    for line in revs:
+        sha, _, subject = line.partition("\t")
+        lines = gaps = 0
+        for path in GENERATED:
+            blob = git("show", f"{sha}:{path}")
+            if not blob:
+                continue
+            lines += len(blob.splitlines())
+            gaps += len(re.findall(r"^//!   - ", blob, re.M))
+        if lines:
+            out.append((sha[:7], subject, lines, gaps))
+    log.info("%d commit(s) carry generated output", len(out))
+    return out
+
+
+def svg(points: list[tuple[str, str, int, int]]) -> str:
+    W, H, PAD = 1100, 460, 64
+    if not points:
+        return "<svg/>"
+    n = len(points)
+    max_l = max(p[2] for p in points) or 1
+    max_g = max(p[3] for p in points) or 1
+    top = max(max_l, 1)
+
+    def x(i: int) -> float:
+        return PAD + (W - 2 * PAD) * (i / max(n - 1, 1))
+
+    def y(v: int, scale: int) -> float:
+        return H - PAD - (H - 2 * PAD) * (v / scale)
+
+    def path(idx: int, scale: int) -> str:
+        return " ".join(
+            f"{'M' if i == 0 else 'L'}{x(i):.1f},{y(p[idx], scale):.1f}"
+            for i, p in enumerate(points))
+
+    grid = "".join(
+        f'<line x1="{PAD}" y1="{y(v, top):.1f}" x2="{W-PAD}" y2="{y(v, top):.1f}" '
+        f'class="grid"/><text x="{PAD-10}" y="{y(v, top)+4:.1f}" class="ax" '
+        f'text-anchor="end">{v}</text>'
+        for v in range(0, top + 1, max(50, top // 6 // 50 * 50 or 50)))
+
+    dots = "".join(
+        f'<circle cx="{x(i):.1f}" cy="{y(p[2], top):.1f}" r="3" class="d1">'
+        f'<title>{p[0]}  {p[1][:70]}\n{p[2]} lines, {p[3]} gaps</title></circle>'
+        for i, p in enumerate(points))
+
+    return f'''<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="img">
+<style>
+  .grid{{stroke:currentColor;opacity:.12}}
+  .ax{{fill:currentColor;opacity:.55;font:11px system-ui,sans-serif}}
+  .l1{{fill:none;stroke:#3b82f6;stroke-width:2.5}}
+  .l2{{fill:none;stroke:#f97316;stroke-width:2.5;stroke-dasharray:5 3}}
+  .d1{{fill:#3b82f6}}
+  .lg{{fill:currentColor;font:13px system-ui,sans-serif}}
+</style>
+{grid}
+<path d="{path(2, top)}" class="l1"/>
+<path d="{path(3, max_g)}" class="l2"/>
+{dots}
+<circle cx="{PAD}" cy="24" r="5" fill="#3b82f6"/>
+<text x="{PAD+14}" y="28" class="lg">generated lines (left scale)</text>
+<circle cx="{PAD+250}" cy="24" r="5" fill="#f97316"/>
+<text x="{PAD+264}" y="28" class="lg">reported gaps (scaled to fit, peak {max_g})</text>
+<text x="{PAD}" y="{H-18}" class="ax">oldest commit</text>
+<text x="{W-PAD}" y="{H-18}" class="ax" text-anchor="end">newest</text>
+</svg>'''
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.parse_args()
+    root = repo_root()
+    (root / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
+    log = logging.getLogger("progress")
+    log.setLevel(logging.INFO)
+    for h in (logging.FileHandler(root / "tmp" / "logs" / "progress_graph.log", mode="w"),
+              logging.StreamHandler(sys.stdout)):
+        h.setFormatter(logging.Formatter("%(message)s"))
+        log.addHandler(h)
+
+    pts = series(log)
+    chart = svg(pts)
+    (root / "tmp" / "progress.svg").write_text(chart)
+
+    rows = "".join(
+        f"<tr><td class=m>{p[0]}</td><td>{p[1][:78]}</td>"
+        f"<td class=n>{p[2]}</td><td class=n>{p[3]}</td></tr>"
+        for p in reversed(pts))
+    (root / "tmp" / "progress.html").write_text(f"""<!doctype html>
+<meta charset=utf-8><title>renode-rs converter progress</title>
+<style>
+ body{{font:15px/1.55 system-ui,sans-serif;margin:2rem auto;max-width:1160px;padding:0 1rem}}
+ table{{border-collapse:collapse;width:100%;margin-top:1.5rem}}
+ th,td{{padding:.35rem .6rem;border-bottom:1px solid #8883;text-align:left}}
+ .n{{text-align:right;font-variant-numeric:tabular-nums}}
+ .m{{font-family:ui-monospace,monospace;opacity:.7}}
+ @media(prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6edf3}}}}
+</style>
+<h1>Converter progress</h1>
+<p>Generated Rust versus gaps the converter reports rather than guessing.
+Read them together: lines falling while gaps hold steady is usually the
+converter <em>withholding</em> output it should never have emitted.</p>
+{chart}
+<table><tr><th>commit</th><th>subject</th><th class=n>lines</th><th class=n>gaps</th></tr>
+{rows}</table>""")
+
+    log.info("")
+    log.info("%-9s %-62s %6s %5s", "commit", "subject", "lines", "gaps")
+    for p in pts:
+        log.info("%-9s %-62s %6d %5d", p[0], p[1][:62], p[2], p[3])
+    log.info("")
+    log.info("wrote tmp/progress.svg and tmp/progress.html")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -82,6 +82,8 @@ def main() -> int:
     ap.add_argument("--db", default="rulesdb/patterns.db")
     ap.add_argument("--limit", type=int, default=0, help="cap types examined")
     ap.add_argument("--filter", default="", help="only types whose name matches")
+    ap.add_argument("--blocking", action="store_true",
+                    help="rank ROOT CAUSES by how many gaps each one blocks")
     args = ap.parse_args()
 
     root = repo_root()
@@ -123,6 +125,7 @@ def main() -> int:
     cats: collections.Counter = collections.Counter()
     examples: dict[str, str] = {}
     per_type: list[tuple[str, int, int]] = []
+    all_gaps: list[str] = []
     failures = 0
     emitted_lines = 0
 
@@ -140,10 +143,47 @@ def main() -> int:
         gaps = [l[8:].strip() for l in out.splitlines() if l.startswith("//!   - ")]
         emitted_lines += len(out.splitlines())
         per_type.append((name, len(out.splitlines()), len(gaps)))
+        all_gaps.extend(gaps)
         for g in gaps:
             c = classify(g)
             cats[c] += 1
             examples.setdefault(c, f"{name}: {g}")
+
+    if args.blocking:
+        # A gap count is not a work estimate. Most gaps are CASCADES: one
+        # unmapped type withholds a method, which withholds its callers, which
+        # withholds their callbacks. Ranking the ROOTS says what to fix; ranking
+        # the gaps says how loudly the roots are complaining.
+        roots: collections.Counter = collections.Counter()
+        for g in all_gaps:
+            m = re.search(r"no Rust mapping for `([^`]+)`", g)
+            if m:
+                roots[f"type  {m.group(1).split('.')[-1]}"] += 1
+                continue
+            m = re.search(r"return type `([^`]+)`", g)
+            if m:
+                roots[f"type  {m.group(1).split('.')[-1]}"] += 1
+                continue
+            m = re.search(r"cannot emit (?:expr|stmt):(\w+)", g)
+            if m:
+                roots[f"construct  {m.group(1)}"] += 1
+                continue
+            m = re.search(r"base-class method `\w+` on `([^`]+)`", g)
+            if m:
+                roots[f"base class  {m.group(1)}"] += 1
+                continue
+            if "nullability" in g or "conditional access" in g:
+                roots["construct  ConditionalAccess (?.)"] += 1
+        log.info("")
+        log.info("ROOT CAUSES, ranked by gaps blocked")
+        log.info("(cascades excluded -- these are the things that CAUSE them)")
+        log.info("%s", "-" * 72)
+        log.info("%-46s %7s", "root cause", "blocks")
+        for r, n in roots.most_common(25):
+            log.info("%-46s %7d", r, n)
+        log.info("%s", "-" * 72)
+        log.info("%d distinct root causes account for %d direct gaps",
+                 len(roots), sum(roots.values()))
 
     total = sum(cats.values())
     log.info("%-38s %7s  %s", "gap category", "count", "share")
