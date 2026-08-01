@@ -1158,6 +1158,11 @@ class Emitter(RenodeExpressions, Statements):
         cs = cs.strip()
         if cs in prim:
             return prim[cs]
+        # Non-generic `System.Action` -- no type arguments at all.
+        if cs.split(".")[-1] == "Action":
+            bare = std.get("delegates", {}).get("bare_action")
+            if bare:
+                return bare
         if cs.endswith("[]"):
             inner = self.rust_type(cs[:-2])
             return (std.get("array_form", "Vec<{inner}>").format(inner=inner)
@@ -1169,6 +1174,30 @@ class Emitter(RenodeExpressions, Statements):
             outer = cs.split("<")[0].split(".")[-1]
             inner = cs[cs.index("<") + 1:cs.rindex(">")]
             dele = std.get("delegates", {})
+            if outer in ("Func", "Action") and outer in dele:
+                # Split the generic arguments at the TOP level only: a nested
+                # `Func<long, T, T?>` inside another generic must not be split
+                # on its own commas.
+                parts, depth, buf = [], 0, ""
+                for ch in inner:
+                    if ch == "<":
+                        depth += 1
+                    elif ch == ">":
+                        depth -= 1
+                    if ch == "," and depth == 0:
+                        parts.append(buf.strip()); buf = ""
+                    else:
+                        buf += ch
+                if buf.strip():
+                    parts.append(buf.strip())
+                mapped = [self.rust_type(x) for x in parts]
+                if any(m is None for m in mapped):
+                    return None
+                if outer == "Action":
+                    return dele["Action"].format(params=", ".join(mapped))
+                # Func's LAST type argument is the return type.
+                return dele["Func"].format(params=", ".join(mapped[:-1]),
+                                           ret=mapped[-1])
             if outer in dele:
                 i = self.rust_type(inner)
                 return dele[outer].format(inner=i) if i else None

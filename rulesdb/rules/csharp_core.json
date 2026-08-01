@@ -182,8 +182,11 @@
     },
     "generic_form": "{outer}<{inner}>",
     "delegates": {
-      "note": "A C# event or Action field is a callback slot. C# allows many subscribers; Renode's peripherals attach exactly one, so a single Option<Box<dyn FnMut>> is faithful for this corpus and is recorded as such rather than silently narrowing multicast semantics.",
-      "Action": "Option<Box<dyn FnMut({inner})>>"
+      "note": "A C# delegate-typed member is a callback slot. C# allows multicast (many subscribers); the corpora seen so far attach exactly one, so a single Option<Box<dyn FnMut>> is faithful HERE and is recorded as a narrowing rather than a silent equivalence. Arity is not enumerated: Func<A,B,R> and Action<A,B> differ only in whether the LAST type argument is a return type, which is a rule about the two generic families, not a table of every shape.",
+      "Action": "Option<Box<dyn FnMut({params})>>",
+      "Func": "Option<Box<dyn FnMut({params}) -> {ret}>>",
+      "bare_action": "Option<Box<dyn FnMut()>>",
+      "why_fnmut": "FnMut, not Fn: a C# delegate may mutate what it captured, and FnOnce would forbid the repeated invocation every one of these sites performs."
     },
     "array_form": "Vec<{inner}>",
     "array_note": "A C# array maps to Vec, not a fixed-size Rust array: the lengths here come from constructor arguments rather than the type, so a fixed size is not available at the declaration."
