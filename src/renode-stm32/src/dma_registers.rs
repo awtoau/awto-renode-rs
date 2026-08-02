@@ -9,6 +9,14 @@
 //! GAPS the converter reports rather than guessing:
 //!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - ClearIrqFlagOnCondition: parameter `flag` has no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.IFlagRegisterField`
+//!   - HighInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - Reset: withheld, calls reset on each `Stream` -- the sub-block emits its register layout, not its methods
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: no statement could be translated, so no initialiser is emitted at all
@@ -19,7 +27,6 @@
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 5 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 6 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq
-//!   - layout: top-level `Loop` calls register combinators that were not emitted -- those fields are missing from the bank
 //!   - on_gpio: withheld, calls withheld method(s): warning_log
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `engine`: reference-typed, so the object-graph rule maps it to `Gc<DmaEngine>`; blocked: `DmaEngine` has no emitted Rust type yet, so there is nothing to point at
@@ -52,6 +59,7 @@ pub mod reg {
 /// Field handles bound by `out` parameters in the C#.
 #[derive(Default)]
 pub struct Fields {
+    pub transfer_complete_irq_status: [FlagId; 8],
     /// One set of handles per `Stream`; the register map is the parent's.
     pub streams: Vec<stream::Fields>,
 }
@@ -249,21 +257,117 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::LOW_INTERRUPT_STATUS, 0)
         .with_reserved(12, 4)
         .with_reserved(28, 4)
+        .with_tagged_flag(0)
+        .with_tagged_flag(6)
+        .with_tagged_flag(16)
+        .with_tagged_flag(22)
+        .with_reserved(1, 1)
+        .with_reserved(7, 1)
+        .with_reserved(17, 1)
+        .with_reserved(23, 1)
+        .with_tagged_flag(2)
+        .with_tagged_flag(8)
+        .with_tagged_flag(18)
+        .with_tagged_flag(24)
+        .with_tagged_flag(3)
+        .with_tagged_flag(9)
+        .with_tagged_flag(19)
+        .with_tagged_flag(25)
+        .with_tagged_flag(4)
+        .with_tagged_flag(10)
+        .with_tagged_flag(20)
+        .with_tagged_flag(26)
+        .with_flag(5, &mut f.transfer_complete_irq_status[0], FieldMode::READ)
+        .with_flag(11, &mut f.transfer_complete_irq_status[1], FieldMode::READ)
+        .with_flag(21, &mut f.transfer_complete_irq_status[2], FieldMode::READ)
+        .with_flag(27, &mut f.transfer_complete_irq_status[3], FieldMode::READ)
         .done();
 
     bank.define(reg::HIGH_INTERRUPT_STATUS, 0)
         .with_reserved(12, 4)
         .with_reserved(28, 4)
+        .with_tagged_flag(0)
+        .with_tagged_flag(6)
+        .with_tagged_flag(16)
+        .with_tagged_flag(22)
+        .with_reserved(1, 1)
+        .with_reserved(7, 1)
+        .with_reserved(17, 1)
+        .with_reserved(23, 1)
+        .with_tagged_flag(2)
+        .with_tagged_flag(8)
+        .with_tagged_flag(18)
+        .with_tagged_flag(24)
+        .with_tagged_flag(3)
+        .with_tagged_flag(9)
+        .with_tagged_flag(19)
+        .with_tagged_flag(25)
+        .with_tagged_flag(4)
+        .with_tagged_flag(10)
+        .with_tagged_flag(20)
+        .with_tagged_flag(26)
+        .with_flag(5, &mut f.transfer_complete_irq_status[4], FieldMode::READ)
+        .with_flag(11, &mut f.transfer_complete_irq_status[5], FieldMode::READ)
+        .with_flag(21, &mut f.transfer_complete_irq_status[6], FieldMode::READ)
+        .with_flag(27, &mut f.transfer_complete_irq_status[7], FieldMode::READ)
         .done();
 
     bank.define(reg::LOW_INTERRUPT_CLEAR, 0)
         .with_reserved(12, 4)
         .with_reserved(28, 4)
+        .with_tagged_flag(0)
+        .with_tagged_flag(6)
+        .with_tagged_flag(16)
+        .with_tagged_flag(22)
+        .with_reserved(1, 1)
+        .with_reserved(7, 1)
+        .with_reserved(17, 1)
+        .with_reserved(23, 1)
+        .with_tagged_flag(2)
+        .with_tagged_flag(8)
+        .with_tagged_flag(18)
+        .with_tagged_flag(24)
+        .with_tagged_flag(3)
+        .with_tagged_flag(9)
+        .with_tagged_flag(19)
+        .with_tagged_flag(25)
+        .with_tagged_flag(4)
+        .with_tagged_flag(10)
+        .with_tagged_flag(20)
+        .with_tagged_flag(26)
+        .with_value_cb(5, 1, FieldMode::SET, None, None)
+        .with_value_cb(11, 1, FieldMode::SET, None, None)
+        .with_value_cb(21, 1, FieldMode::SET, None, None)
+        .with_value_cb(27, 1, FieldMode::SET, None, None)
         .done();
 
     bank.define(reg::HIGH_INTERRUPT_CLEAR, 0)
         .with_reserved(12, 4)
         .with_reserved(28, 4)
+        .with_tagged_flag(0)
+        .with_tagged_flag(6)
+        .with_tagged_flag(16)
+        .with_tagged_flag(22)
+        .with_reserved(1, 1)
+        .with_reserved(7, 1)
+        .with_reserved(17, 1)
+        .with_reserved(23, 1)
+        .with_tagged_flag(2)
+        .with_tagged_flag(8)
+        .with_tagged_flag(18)
+        .with_tagged_flag(24)
+        .with_tagged_flag(3)
+        .with_tagged_flag(9)
+        .with_tagged_flag(19)
+        .with_tagged_flag(25)
+        .with_tagged_flag(4)
+        .with_tagged_flag(10)
+        .with_tagged_flag(20)
+        .with_tagged_flag(26)
+        .with_value_cb(5, 1, FieldMode::SET, None, None)
+        .with_value_cb(11, 1, FieldMode::SET, None, None)
+        .with_value_cb(21, 1, FieldMode::SET, None, None)
+        .with_value_cb(27, 1, FieldMode::SET, None, None)
         .done();
 
     f.streams.resize_with(NR_OF_STREAMS, Default::default);

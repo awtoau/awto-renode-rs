@@ -379,7 +379,7 @@
   "loop_replication": {
     "note": "A register map written as a counted `for` loop. The layout walker read the SITE and never the loop around it, so four registers and sixteen fields were one register and one field whose position was an expression -- and because the expression is not a constant, the field was dropped and the register emitted empty.",
     "why_unroll": "The loop is deterministic and its bounds are literals, so every register it defines is known at CONVERSION time; there is nothing to defer to run time. Unrolling keeps the emitted shape identical to a hand-written map -- one `bank.define(..)` per register, constant bit positions, constant handle indices -- so nothing downstream needs a second code path. A Rust `for` around a moved builder would express the same registers and would additionally have to name the loop variable, size the handle array at run time, and be read against a C# loop to be believed. The DEVIATION is textual only: same registers, same fields, same order, no run-time loop.",
-    "limits": "Only counted loops over a single variable with literal bounds and a unit step, and only arithmetic the evaluator folds. Anything else -- a bound read from a field, an index into a local array, a `foreach` -- yields no environment, and the site is REPORTED rather than emitted once and quietly wrong. STM32DMA's per-stream flag loop is in that second class: its offsets come from a local `int[]` literal, and it stays a reported gap.",
+    "limits": "Only counted loops over a single variable with literal bounds and a unit step, and only arithmetic the evaluator folds. Anything else -- a bound read from a field, a `foreach`, an index into an array whose elements are not compile-time constants -- yields no environment, and the site is REPORTED rather than emitted once and quietly wrong.",
     "conditions": {
       "LessThan": "lt",
       "LessThanOrEqual": "le"
@@ -389,7 +389,56 @@
       "Subtract": "sub",
       "Multiply": "mul",
       "Divide": "div"
+    },
+    "const_arrays": {
+      "name": "CONST_ARRAY_TABLE",
+      "note": "`var streamRegOffset = new int[] {0, 6, 16, 22};` then `offset = streamRegOffset[i]` inside the loop. A table of positions indexed by the loop variable is how C# places fields that are NOT evenly spaced -- the author's alternative to four `const int`s -- so folding it folds a constant, it does not evaluate the program. Without it the index folds and the table does not, `position` is not a compile-time constant, and every field the loop places is withheld: six per register, four registers, twenty-four fields.",
+      "creation": "ArrayCreation",
+      "initialiser": "ArrayInitializer",
+      "element_reference": "ArrayElementReference",
+      "limits": "The array must be a local bound to an explicitly initialised creation whose EVERY element folds, and the index must fold to a value inside it. One unfoldable element makes the whole table unknown: a partly-folded array would place some fields and silently misplace the rest, which is worse than placing none. Nothing is written back -- an array a later statement assigns into is still read as its initialiser, which is why this is limited to the `var t = new[]{..}` table shape and not general array analysis.",
+      "negative": [
+        {
+          "shape": "an array whose elements are not all compile-time constants",
+          "why": "folding what does fold and guessing the rest places fields at bits the C# never named, and a wrong bit position is behaviourally inert until something reads it -- the failure class that survived a 33,000-access trace."
+        },
+        {
+          "shape": "an index outside the folded array",
+          "why": "C# would throw at run time; emitting a field at a fabricated position would not, and the divergence would be silent."
+        },
+        {
+          "shape": "an array the method WRITES to after declaring it",
+          "why": "the initialiser is no longer its value, and this reads only the initialiser. Not currently distinguished, and recorded here as the shape that must be excluded before this is widened past the `var t = new[]{..}` table."
+        }
+      ]
     }
+  },
+  "chain_binding": {
+    "name": "LOCAL_BOUND_BUILDER",
+    "note": "Which combinator calls belong to which register. Every call in `X.Define(this).WithA(..).WithB(..)` shares the span start of `X`, so a chain is identified by that span -- but a builder can also be held in a LOCAL and extended by a later statement, and that statement's calls share no span with the one that located the register. `var reg = Registers.X.Define(this).WithReservedBits(12, 4);` followed by `reg.WithTaggedFlag(..).WithFlag(.., out arr[i], ..)` inside a `for` is one register with two names, and keying on the span alone dropped everything said through the second -- including a STORED flag, so the bank had nowhere to put a value the C# computes.",
+    "why_generic": "A fluent builder captured in a variable and extended later is ordinary C#, not a register idiom. What is corpus-specific is only which calls are combinators; the aliasing itself is a language fact, and the same shape appears in the corpus on builders that are NOT registers -- see the negatives.",
+    "local_key_prefix": "local:",
+    "root_from": "shortest_expression_at_chain_span",
+    "root_note": "The chain's root is the SHORTEST expression sharing the chain's span start, and the deepest one where several tie -- an `Argument` wrapper and the expression inside it span the same text. Reading the invocation's first child instead worked only for INSTANCE combinators (`reg.DefineValueField(..)`): the DSL is extension methods, so Roslyn puts the receiver in `Arguments[0]` and the first child is an `Argument`. And `.WithB(..)` applied to the result of `.WithA(..)` has no local as a direct child under either form -- only the chain root does.",
+    "bind_from": "variable_declarator",
+    "bind_note": "A register answers to the local only when a DECLARATOR binds the whole chain to it, keyed by the initialiser expression's span start -- which is the chain span every call in the chain already carries, so nothing has to walk up from the form's own call.",
+    "sites": "30 combinator calls in 7 methods of the cut have a local reference at the chain root; 24 of them, in STM32DMA.DefineRegisters, are rooted at a local a register form declared. `python3 scripts/query_local_builders.py` reproduces the count.",
+    "negative": [
+      {
+        "shape": "a builder in a local that no register form declared",
+        "example": "`var register = new DoubleWordRegister(this); register.WithValueField(..); return register;` -- ByteRegister/WordRegister/DoubleWordRegister/QuadWordRegister.CreateRWRegister and STM32_Timer's local `Build`, 5 of the 6 remaining sites.",
+        "why": "it has no offset, so there is no register to attach the calls to. Attaching them to whichever register happens to share the local's name would put another peripheral's fields in this bank. A local becomes a key only when a FORM located a register on it."
+      },
+      {
+        "shape": "a chain rooted at an indexed or member expression that merely STARTS at a local",
+        "example": "`foo[0].WithX(..)` shares `foo`'s span start.",
+        "why": "the register is `foo[0]`, not `foo`. Harmless today because a key is only consulted when a declarator bound a whole chain to that name, and an element is not a declarator -- recorded because the span rule alone does not distinguish them."
+      },
+      {
+        "shape": "two locals of the same name in disjoint scopes of one method",
+        "why": "the key is the NAME, so two `var reg` in sibling blocks would collide and merge two registers' fields into whichever the form found. Not present in the corpus; it is the reason this is scoped to one method and stated rather than assumed."
+      }
+    ]
   },
   "register_forms": [
     {

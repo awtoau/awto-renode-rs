@@ -29,6 +29,7 @@ Mixin, not free functions, because every method reaches `self.con`,
 
 from __future__ import annotations
 
+import json
 import re
 
 from emitter.core import snake
@@ -542,7 +543,7 @@ class RegisterDsl:
     # `loop_replication` rule for why this unrolls rather than emitting a Rust
     # loop.
 
-    def const_eval(self, oid: int, env: dict[str, int]) -> int | None:
+    def const_eval(self, oid: int, env: dict[str, int | list[int]]) -> int | None:
         """Fold an expression to an integer under a loop environment.
 
         Deliberately small: literals, constants, the arithmetic C# uses to
@@ -566,7 +567,25 @@ class RegisterDsl:
             kids = self.children(oid)
             return self.const_eval(kids[0][0], env) if kids else None
         if kind == "LocalReference":
-            return env.get((sym or "").split()[-1])
+            v = env.get((sym or "").split()[-1])
+            # An ARRAY-valued local is in the same environment but is not a
+            # number; returning the list would make `arr + 5` a list.
+            return v if isinstance(v, int) else None
+        spec = self.project.get("loop_replication", {}).get("const_arrays", {})
+        if spec and kind == spec.get("element_reference"):
+            # `streamRegOffset[streamIdx]` -- a table of positions indexed by
+            # the loop variable, which is how one C# loop places fields that
+            # are NOT evenly spaced. Without this the index folds and the table
+            # does not, so the position is not a constant and the field is
+            # withheld: six fields per register, four registers.
+            kids = self.children(oid)
+            if len(kids) != 2:
+                return None
+            arr = self.const_array(kids[0][0], env)
+            idx = self.const_eval(kids[1][0], env)
+            if arr is None or idx is None or not 0 <= idx < len(arr):
+                return None
+            return arr[idx]
         if kind == "Binary":
             kids = self.children(oid)
             if len(kids) != 2:
@@ -586,6 +605,53 @@ class RegisterDsl:
             if op == "div" and b:
                 return a // b
             return None
+        return None
+
+    def const_array(self, oid: int,
+                    env: dict[str, int | list[int]]) -> list[int] | None:
+        """An expression that names a constant array of integers, or None.
+
+        Two shapes and no more: the array LITERAL itself, and a local bound to
+        one. `new int[] {0, 6, 16, 22}` is data written as code -- the C#
+        author's alternative to four `const int`s -- so folding it is folding a
+        constant, not evaluating the program.
+
+        Any element that is not a compile-time integer makes the whole array
+        unknown. A partly-folded array would place some fields and silently
+        misplace the rest, which is worse than placing none.
+
+        Returns None with the `const_arrays` rule absent from the data, which
+        is what makes the rule a rule: delete the section and the loops that
+        depend on a table report themselves as gaps again."""
+        spec = self.project.get("loop_replication", {}).get("const_arrays", {})
+        if not spec:
+            return None
+        row = self.con.execute(
+            "SELECT kind, symbol FROM operation WHERE id=?", (oid,)).fetchone()
+        if not row:
+            return None
+        kind, sym = row
+        if kind in ("Conversion", "Parenthesized", "VariableInitializer",
+                    "Argument"):
+            kids = self.children(oid)
+            return self.const_array(kids[0][0], env) if kids else None
+        if kind == "LocalReference":
+            v = env.get((sym or "").split()[-1])
+            return v if isinstance(v, list) else None
+        if kind != spec.get("creation"):
+            return None
+        # ArrayCreation's children are the dimension size(s) and then the
+        # initialiser; only an explicitly initialised array has known elements.
+        for cid, ckind, _s, _c, _t in self.children(oid):
+            if ckind != spec.get("initialiser"):
+                continue
+            out: list[int] = []
+            for eid, _k, _s2, _c2, _t2 in self.children(cid):
+                v = self.const_eval(eid, env)
+                if v is None:
+                    return None
+                out.append(v)
+            return out
         return None
 
     def loop_bounds(self, oid: int) -> tuple[str, range] | None:
@@ -669,13 +735,20 @@ class RegisterDsl:
             envs = [dict(e, **{var: i}) for e in envs for i in rng]
         return envs
 
-    def local_consts(self, oid: int, env: dict[str, int]) -> dict[str, int]:
+    def local_consts(self, oid: int,
+                     env: dict[str, int | list[int]]) -> dict[str, int | list[int]]:
         """Locals declared between the enclosing loops and this operation.
 
         `var pinNumber = regNumber * 4 + fieldNumber;` is part of the index
         arithmetic, not a separate concern: without it the field's array slot
-        cannot be resolved and the whole replication is useless."""
-        out = dict(env)
+        cannot be resolved and the whole replication is useless.
+
+        A local bound to a constant ARRAY is in here too, under its own name.
+        The alternative -- a second environment threaded through every caller --
+        buys nothing: `const_eval` and `const_array` each ignore the shape they
+        cannot use, so one map is enough and there is one place a name can
+        come from."""
+        out: dict[str, int | list[int]] = dict(env)
         method_id, = self.con.execute(
             "SELECT method_id FROM operation WHERE id=?", (oid,)).fetchone()
         span = self.con.execute(
@@ -701,23 +774,29 @@ class RegisterDsl:
                     stack.append(cid)
             if init is None:
                 continue
-            v = self.const_eval(init, out)
+            v: int | list[int] | None = self.const_eval(init, out)
+            if v is None:
+                v = self.const_array(init, out)
             if v is not None:
                 out[names[0]] = v
         return out
 
     def find_registers(self, method_id: int) -> list[tuple]:
-        """(name, offset, reset, chain key, runtime term, env) per register.
+        """(name, offset, reset, chain keys, runtime term, env) per register.
 
         One entry per LOOP ITERATION, not per source site. A register map built
         by a counted loop is four registers in the C# and was one here, because
         the walker read the site and never the loop around it.
 
-        The chain key is a span start for a fluent chain and a local's NAME when
-        the form hands back a register held in a local -- the two ways the C#
-        says "these combinator calls belong to that register"."""
+        A register may answer to SEVERAL chain keys, which is why this is a
+        tuple and not a scalar. A key is a span start for a fluent chain and a
+        local's NAME when the register is reached through one -- and a chain
+        DECLARED INTO a local has both, because the C# extends it through
+        either. Keeping only the span dropped every combinator in the later
+        statements; keeping only the local would drop the chain's own."""
         found: list[tuple] = []
         self._form_gaps: list[str] = []
+        blocals = self.builder_locals(method_id)
         for oid, symbol, span in self.con.execute(
                 "SELECT id, symbol, span_start FROM operation WHERE method_id=? "
                 "AND kind='Invocation' AND symbol IS NOT NULL ORDER BY span_start",
@@ -727,11 +806,18 @@ class RegisterDsl:
                     continue
                 b = self.bind(oid, symbol)
                 if form["chain_from"] == "$self":
-                    chain_key: int | str = span
+                    keys: list[int | str] = [span]
                 else:
-                    chain_key = self.chain_key(oid, form["chain_from"])
-                    if chain_key is None:
+                    k = self.chain_key(oid, form["chain_from"])
+                    if k is None:
                         break
+                    keys = [k]
+                for k in list(keys):
+                    lk = self.local_key(blocals[k]) if (
+                        isinstance(k, int) and k in blocals) else None
+                    if lk is not None:
+                        keys.append(lk)
+                chain_key = tuple(keys)
                 envs = self.loop_envs(oid)
                 if envs is None:
                     self._form_gaps.append(
@@ -821,9 +907,83 @@ class RegisterDsl:
         kind, sym = self.con.execute(
             "SELECT kind, symbol FROM operation WHERE id=?", (node,)).fetchone()
         if kind == "LocalReference" and sym:
-            return f"local:{sym.split()[-1]}"
+            key = self.local_key(sym.split()[-1])
+            if key is not None:
+                return key
         return self.con.execute(
             "SELECT span_start FROM operation WHERE id=?", (node,)).fetchone()[0]
+
+    def local_key(self, name: str) -> str | None:
+        """A chain key naming a LOCAL, or None when the rule is not in force.
+
+        The prefix is data (`chain_binding`) so the two producers -- a form
+        that hands back a local, and a declarator that binds a whole chain to
+        one -- cannot drift apart by one literal. Absent means OFF, not a
+        default: a rule that emits the same output whether or not it is in the
+        data is indistinguishable from no rule, and this one is load-bearing --
+        without it a register reached only through a local has no fields."""
+        spec = self.project.get("chain_binding")
+        return None if not spec else spec.get("local_key_prefix", "local:") + name
+
+    def chain_root_local(self, method_id: int, span: int) -> str | None:
+        """The LOCAL a fluent chain starts from, if it starts from one.
+
+        Every call in `a.WithX(..).WithY(..)` shares the span start of `a`, so
+        the chain's root is the SHORTEST expression at that span start -- and
+        the deepest one, since an `Argument` wrapper and the expression inside
+        it span the same text.
+
+        This replaced looking at the invocation's first child. That worked only
+        for INSTANCE combinators (`reg.DefineValueField(..)`, where the first
+        child is the receiver) and never for the extension form, which is the
+        whole DSL: for `reg.WithFlag(..)` Roslyn puts the receiver in
+        `Arguments[0]`, so the first child is an `Argument` and no local was
+        ever seen. `.WithY(..)` on the RESULT of `.WithX(..)` has no local as a
+        direct child at all, whichever form it is -- only the chain root does.
+
+        Deliberately not a receiver walk: `foo[0].WithX(..)` also starts at
+        `foo`'s span, and calling that a chain on `foo` is the over-match the
+        rule's negatives record. It costs nothing here because a register is
+        only ever bound to a local by a DECLARATION, which `builder_locals`
+        matches on the whole initialiser."""
+        row = self.con.execute(
+            "SELECT kind, symbol FROM operation WHERE method_id=? AND span_start=? "
+            "ORDER BY span_len, depth DESC LIMIT 1", (method_id, span)).fetchone()
+        if not row or row[0] != "LocalReference" or not row[1]:
+            return None
+        return row[1].split()[-1]
+
+    def builder_locals(self, method_id: int) -> dict[int, str]:
+        """Chain span -> the local its result is DECLARED into.
+
+        `var reg = Registers.X.Define(this).WithReservedBits(12, 4);` is one
+        register with two names: the chain, and `reg`. A later statement extends
+        it through the second, and the layout keyed only on the first -- so
+        every combinator in that later statement belonged to no register and was
+        dropped, taking a stored flag with it.
+
+        Keyed by the initialiser expression's span start, which IS the chain
+        span every call in the chain carries; nothing has to walk up from the
+        form's own call to find the declaration."""
+        out: dict[int, str] = {}
+        for did, detail in self.con.execute(
+                "SELECT id, detail FROM operation WHERE method_id=? AND "
+                "kind='VariableDeclarator'", (method_id,)):
+            try:
+                name = json.loads(detail or "{}").get("local")
+            except json.JSONDecodeError:
+                name = None
+            if not name:
+                continue
+            for iid, ikind, _s, _c, _t in self.children(did):
+                if ikind != "VariableInitializer":
+                    continue
+                kids = self.children(iid)
+                if kids:
+                    out[self.con.execute(
+                        "SELECT span_start FROM operation WHERE id=?",
+                        (kids[0][0],)).fetchone()[0]] = name
+        return out
 
     def arg_node(self, oid: int, param: str) -> int | None:
         """The expression node of a named argument."""
@@ -884,16 +1044,16 @@ class RegisterDsl:
                 "WHERE method_id=? AND kind='Invocation' AND symbol IS NOT NULL",
                 (method_id,)):
             chains.setdefault(start, []).append((end, oid, symbol))
-            # The same call, keyed a SECOND way: by the local it is invoked on.
-            # A register handed to `map.Add(key, reg)` is extended by
-            # `reg.DefineValueField(..)` in statements of its own, which share
-            # no span with the form that located it.
-            recv = self.con.execute(
-                "SELECT kind, symbol FROM operation WHERE parent_id=? "
-                "ORDER BY ordinal LIMIT 1", (oid,)).fetchone()
-            if recv and recv[0] == "LocalReference" and recv[1]:
-                chains.setdefault(
-                    f"local:{recv[1].split()[-1]}", []).append((end, oid, symbol))
+            # The same call, keyed a SECOND way: by the LOCAL its chain starts
+            # from. A register handed to `map.Add(key, reg)` is extended by
+            # `reg.DefineValueField(..)` in statements of its own, and one
+            # declared `var reg = X.Define(this)..` is extended by
+            # `reg.WithFlag(..)` in a loop; neither shares a span with the
+            # statement that located the register.
+            local = self.chain_root_local(method_id, start)
+            key = self.local_key(local) if local else None
+            if key is not None:
+                chains.setdefault(key, []).append((end, oid, symbol))
 
         stmts: list[str] = []
         fields: list[str] = []
@@ -903,13 +1063,24 @@ class RegisterDsl:
         gaps.extend(getattr(self, "_form_gaps", []))
         emitted_spans: set[int | str] = set()
 
-        for name, offset, reset, chain_span, term, env in sorted(
+        for name, offset, reset, chain_keys, term, env in sorted(
                 found, key=lambda r: r[1]):
             body: list[str] = []
             self.gaps = []
             self._current_reg = name or f"reg_{offset:x}"
             skipped: list[str] = []
-            for _end, oid, symbol in sorted(chains.get(chain_span, [])):
+            # One call may be reachable under two keys -- a chain declared into
+            # a local carries both its span and the local's name -- so the
+            # calls are UNIONED by operation id. Concatenating the buckets
+            # emitted every combinator in the declaring statement twice, which
+            # is two fields at one bit position and a register that no longer
+            # matches the C#.
+            calls = sorted({
+                oid: (end, symbol)
+                for key in chain_keys
+                for end, oid, symbol in chains.get(key, [])
+            }.items(), key=lambda kv: (kv[1][0], kv[0]))
+            for oid, (_end, symbol) in calls:
                 if self.combinator(symbol) is None:
                     # NOT NECESSARILY IRRELEVANT. This skipped anything the
                     # combinator table did not name, silently, and the table
@@ -963,6 +1134,13 @@ class RegisterDsl:
                         if self.combinator(symbol) in self.project.get(
                                 "combinator_providers", {}).get("flag_combinators", []):
                             self._flag_fields.add(f)
+                            # `out arr[i]` collapses into ONE array declaration,
+                            # and the declaration asks for the type by the BASE
+                            # name -- which nothing had ever registered, so an
+                            # array of flag handles was declared `[ValueId; N]`
+                            # and every `with_flag` against it failed to
+                            # compile. The elements decide the array's type.
+                            self._flag_fields.add(f.partition("[")[0])
                     body.append(line)
                 self._loop_env = {}
             if skipped:
@@ -981,7 +1159,7 @@ class RegisterDsl:
                         f"{name or hex(offset)}: located at 0x{offset:X} but no "
                         f"field emitted -- the register is NOT in the bank")
                 continue
-            emitted_spans.add(chain_span)
+            emitted_spans.update(chain_keys)
             const_name = to_const(name or f"REG_{offset:X}")
             where = f"reg::{const_name}"
             if term is not None:
@@ -1118,19 +1296,20 @@ class RegisterDsl:
             "operation WHERE id=?) AND span_start < (SELECT span_start + span_len "
             "FROM operation WHERE id=?) AND method_id=(SELECT method_id FROM "
             "operation WHERE id=?)", (oid, oid, oid)).fetchall()
-        for cid, s, start in rows:
+        method_id, = self.con.execute(
+            "SELECT method_id FROM operation WHERE id=?", (oid,)).fetchone()
+        for _cid, s, start in rows:
             if self.combinator(s) is None:
                 continue
             # BOTH keys, because a chain is identified by either. Checking only
             # the span reported a statement as dropped whose calls had all been
-            # emitted through the receiver-local key -- a gap describing work
+            # emitted through the chain-root-local key -- a gap describing work
             # that had just been done.
-            recv = self.con.execute(
-                "SELECT kind, symbol FROM operation WHERE parent_id=? "
-                "ORDER BY ordinal LIMIT 1", (cid,)).fetchone()
             keys = {start}
-            if recv and recv[0] == "LocalReference" and recv[1]:
-                keys.add(f"local:{recv[1].split()[-1]}")
+            local = self.chain_root_local(method_id, start)
+            lk = self.local_key(local) if local else None
+            if lk is not None:
+                keys.add(lk)
             if not (keys & emitted_spans):
                 return True
         return False
