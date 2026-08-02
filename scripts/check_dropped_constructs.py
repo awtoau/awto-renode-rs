@@ -109,8 +109,8 @@ def field_mode_bits(con: sqlite3.Connection) -> dict[int, str]:
     return out
 
 
-def emitter_mode_bits() -> set[int]:
-    """The bits `render_mode()` can express, imported from the emitter.
+def emitter_mode_bits(con: sqlite3.Connection) -> set[int]:
+    """The bits `render_mode()` can express, asked of the emitter.
 
     It imported `emit.FIELD_MODE`; the table MOVED to the register-DSL plugin
     when the DSL families landed, and the import broke. Breaking loudly is the
@@ -118,11 +118,12 @@ def emitter_mode_bits() -> set[int]:
     passing while the emitter's table changed underneath it, measuring the copy
     rather than the emitter. Two scripts were caught doing exactly that today.
 
-    It is still a hardcoded table -- six of the twelve members the C# enum
-    declares -- which is one of the things this check reports.
+    There is no table any more. The emitter reads the C# enum from the corpus,
+    so this now takes a connection and asks it -- and the count it reports is
+    twelve of twelve rather than six.
     """
-    from emitter.plugins.register_dsl import FIELD_MODE
-    return set(FIELD_MODE)
+    from emitter.plugins.register_dsl import field_mode_bits as emitter_bits
+    return set(emitter_bits(con))
 
 
 def state_fields(mod: Module) -> set[str]:
@@ -274,7 +275,7 @@ def check_module(con: sqlite3.Connection, mod: Module, bits: dict[int, str],
 def run(con: sqlite3.Connection, mods: list[Module], chains: dict[str, list],
         log, fn_name=snake) -> int:
     bits = field_mode_bits(con)
-    mapped = emitter_mode_bits()
+    mapped = emitter_mode_bits(con)
     if not bits:
         log.error("the corpus has no `FieldMode` enum -- class 3 of this check "
                   "cannot run, and a silent pass would be a lie")
@@ -379,7 +380,17 @@ def _fixture(with_defects: bool) -> sqlite3.Connection:
                 "'get_Size',NULL)")
     con.execute("INSERT INTO method VALUES (6,1)")
     if with_defects:
-        # A constructor that writes a State field, and a ReadToClear mode.
+        # A constructor that writes a State field, and a mode the emitter
+        # cannot express.
+        #
+        # It used to be `ReadToClear`, because `render_mode` kept a six-entry
+        # table against a twelve-member enum. The table is gone -- the emitter
+        # reads the enum from the corpus -- so the only way a bit is now
+        # unexpressible is a member the emitter has never seen, which is what
+        # an upstream Renode addition looks like on the ingest before the
+        # runtime catches up. `Sideband` is that member.
+        con.execute("INSERT INTO member VALUES (200,2,'FieldMode.Sideband',"
+                    "'field','Sideband','512')")
         con.execute("INSERT INTO member VALUES (4,1,'Synth.Synth()','ctor',"
                     "'.ctor',NULL)")
         con.execute("INSERT INTO method VALUES (4,1)")
@@ -388,7 +399,7 @@ def _fixture(with_defects: bool) -> sqlite3.Connection:
                     "'Antmicro.Renode.Core.Structure.Registers.FieldMode mode',"
                     "NULL)")
         con.execute("INSERT INTO operation VALUES (11,1,10,0,'FieldReference',"
-                    "NULL,'64')")
+                    "NULL,'512')")
         # A supplied writeCallback with nowhere to land.
         con.execute("INSERT INTO operation VALUES (20,1,NULL,1,'Argument',"
                     "'System.Action<bool, bool> writeCallback',NULL)")
@@ -412,7 +423,11 @@ def self_test(log) -> int:
     fails = 0
     mod = parse("Synth", "DefineRegisters", "synth", _MOD)
     bits_clean = field_mode_bits(_fixture(False))
-    mapped = emitter_mode_bits()
+    # What the emitter can express, asked of the CLEAN fixture's enum. The
+    # dirty fixture declares one member more, and that member is the one the
+    # check must report -- the same asymmetry the real run has when Renode
+    # gains a member the ingest has seen and the runtime has not.
+    mapped = emitter_mode_bits(_fixture(False))
 
     quiet = logging.getLogger("q_dropped")
     quiet.handlers.clear()

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""A register's reset value must not set bits covered by a reserved field.
+"""The two runtimes must agree on the FIRST READ AFTER RESET.
 
-Where the two runtimes disagree on the FIRST READ AFTER RESET -- before any
-write, with no firmware involvement at all.
+Before any write, with no firmware involvement at all.
 
 THE MECHANISM
 -------------
@@ -21,14 +20,21 @@ with the reset value -- and clears only the bits of REGISTER FIELDS whose
        PeripheralRegister.cs
 
 `tags` is never consulted. A tagged bit therefore reads back its reset value
-forever.
+forever, and so does a bit belonging to no field at all.
 
-In Rust, `with_tag` / `with_tagged_flag` / `with_reserved` all call
-`push(..., reserved = true)`, and `Register::value` skips reserved fields
-outright. The bit reads 0.
+`renode_regs` composed its answer the other way round -- summing the readable,
+non-reserved fields -- which looks equivalent and is not: it drops every tag
+and every uncovered bit to zero. `Register::value` now has the C# shape, and
+this check is what says whether it still does.
 
-So wherever a reset value sets a tagged bit, the two runtimes diverge on the
-first read, permanently, in the direction of the Rust side reading low.
+WHY IT IS STILL A CHECK NOW IT PASSES
+-------------------------------------
+The two models come from different places. `csharp_read_after_reset` is
+written from `PeripheralRegister.cs`; `rust_read_after_reset` is written from
+`Register::value` and keyed on `emitted_modules.READS_ZERO`, the set of
+combinators renode_regs reads back as zero. That set is empty today. Put a
+combinator in it -- which is what reverting the read path amounts to -- and
+this goes red again, which the self-test proves by doing exactly that.
 
 WHY THIS CHECK IS WORTH ITS OWN SCRIPT
 --------------------------------------
@@ -65,15 +71,15 @@ Both were considered. The scan wins on four counts:
 Run:  python3 scripts/check_reset_bits_reserved.py
       python3 scripts/check_reset_bits_reserved.py --self-test
 Log:  ./tmp/logs/check_reset_bits_reserved.log
-Exit: 1 on any divergence. FAILS TODAY; not for the pre-commit hook until the
-      emitter has a faithful tag.
+Exit: 1 on any divergence. PASSES at 0; a hard gate, not a ratchet.
 
-FLOOR: 5 registers across 3 modules, at 2026-08-02 -- STM32F4_FlashController
-(2), STM32SPI (2), STM32_PWR (1). None of the three is wired into the
-workspace, which is exactly why nothing had noticed. Zero is reachable without
-touching any rule: give `renode_regs` a tag that stores its reset slice and
-reads it back, the way `PeripheralRegister` does, and point `with_tag` /
-`with_tagged_flag` at it. Ratchet on the count until then.
+FLOOR: 0, at 2026-08-03. It was 5 registers across 3 modules on 2026-08-02 --
+STM32F4_FlashController (2), STM32SPI (2), STM32_PWR (1), none of them wired
+into the workspace, which is exactly why nothing had noticed. Closed the way
+this file predicted: `renode_regs` was given a read path with the C# shape,
+NO rule changed, and the emitted text is byte-identical to what it reports
+zero on. Zero divergences is now the only acceptable value, because a
+divergence here is observable with no stimulus at all.
 """
 
 from __future__ import annotations
@@ -89,14 +95,21 @@ from emitted_modules import (Module, Register, UnknownCombinator,  # noqa: E402
 
 
 def divergences(mod: Module) -> list[tuple[Register, int]]:
-    """Registers whose reset value sets bits that Rust models as reserved."""
+    """Registers the two runtimes read differently before any write.
+
+    Compares the two models directly rather than looking for reset bits under
+    a reserved field. That was the SYMPTOM while `Register::value` composed its
+    answer out of the readable non-reserved fields; the property being asserted
+    was always "the first read agrees", and stating it that way keeps the check
+    pointed at the same thing now the symptom is gone.
+    """
     out = []
     for r in mod.registers:
         if not r.reset:
             continue
-        overlap = r.reset & r.reserved_mask
-        if overlap:
-            out.append((r, overlap))
+        differ = r.csharp_read_after_reset() ^ r.rust_read_after_reset()
+        if differ:
+            out.append((r, differ))
     return out
 
 
@@ -127,13 +140,13 @@ def run(mods: list[Module], log) -> int:
             rs = r.rust_read_after_reset()
             found += 1
             log.error("    %-34s reset 0x%08X", r.offset_expr, r.reset)
-            log.error("        reserved-modelled bits holding reset data: %s",
+            log.error("        bits the two runtimes disagree on: %s",
                       bits(overlap))
             log.error("        first read after reset:  C# 0x%08X   "
                       "Rust 0x%08X   differ by 0x%08X",
                       cs, rs, cs ^ rs)
-            culprits = sorted({f.raw for f in r.fields if f.reserved
-                               and (r.reset >> f.pos) & ((1 << f.width) - 1)})
+            culprits = sorted({f.raw for f in r.fields
+                               if overlap & (((1 << f.width) - 1) << f.pos)})
             for c in culprits:
                 log.error("        from: %s", c)
         log.error("")
@@ -144,20 +157,20 @@ def run(mods: list[Module], log) -> int:
         log.error("")
         log.error("FAIL: %d register(s) read back a different value in Rust "
                   "than in C#", found)
-        log.error("BEFORE ANY WRITE. A tag is not a field: the C# holds the "
-                  "reset value in")
-        log.error("UnderlyingValue and clears only unreadable FIELD bits, so a "
-                  "tagged bit")
-        log.error("reads its reset value forever. Rust marks it reserved and "
-                  "reads 0.")
+        log.error("BEFORE ANY WRITE. C# `ReadInner` starts from "
+                  "UnderlyingValue -- the reset")
+        log.error("value -- and SUBTRACTS the unreadable FIELDS. Tags and "
+                  "uncovered bits are")
+        log.error("neither, so they read their reset value forever.")
         log.error("")
-        log.error("Firmware that polls a reset-set tagged bit waits forever. "
-                  "No trace can")
-        log.error("catch it where the reset is zero, which is why the other "
-                  "%d reserved", total_reserved - found)
-        log.error("field(s) are silent rather than safe.")
+        log.error("Firmware that polls such a bit waits forever. No trace can "
+                  "catch it where")
+        log.error("the reset is zero, which is why the other %d tagged "
+                  "field(s) are silent", total_reserved - found)
+        log.error("rather than safe.")
         return 1
-    log.info("OK: no register's reset value lands in a reserved-modelled field")
+    log.info("OK: both runtimes read every register the same on the first "
+             "read after reset")
     return 0
 
 
@@ -184,44 +197,55 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
 
 def self_test(log) -> int:
     fails = 0
+    import emitted_modules
 
-    # Reset touches only the readable field: both runtimes agree.
-    clean = parse("Synthetic", "D", "s", _TEMPLATE.replace("RESET", "65536"))
+    # Reset sets tagged bits 0..2 and a real readable field at 16..23. Both
+    # runtimes report 0x00010007: the tag keeps its reset slice, and only the
+    # WRITE-only field at 24..31 is subtracted.
+    clean = parse("Synthetic", "D", "s", _TEMPLATE.replace("RESET", "0x0F010007"))
     if divergences(clean):
-        log.error("SELF-TEST FAIL: reset 0x10000 sets only bit 16, a real "
-                  "readable field -- reporting it means the check fires on "
-                  "correct output")
+        log.error("SELF-TEST FAIL: a tag over a non-zero reset was reported. "
+                  "A C# tag reads its reset slice back and so does renode_regs "
+                  "-- reporting it means the check fires on correct output")
+        fails += 1
+    r = clean.registers[0]
+    cs, rs = r.csharp_read_after_reset(), r.rust_read_after_reset()
+    if (cs, rs) != (0x00010007, 0x00010007):
+        log.error("SELF-TEST FAIL: read-after-reset model is wrong. expected "
+                  "C# 0x00010007 / Rust 0x00010007, got 0x%08X / 0x%08X",
+                  cs, rs)
         fails += 1
 
-    # Reset sets tagged bits 0..2 as well: C# reads them, Rust does not.
-    dirty = parse("Synthetic", "D", "s", _TEMPLATE.replace("RESET", "0x0F010007"))
-    got = divergences(dirty)
-    if len(got) != 1 or got[0][1] != 0x7:
-        log.error("SELF-TEST FAIL: tagged bits 0..2 held reset data and were "
-                  "NOT reported. Got %r", [(r.offset_expr, hex(m))
-                                           for r, m in got])
-        fails += 1
-    else:
-        r = got[0][0]
-        # C#: UnderlyingValue minus the unreadable FIELD at 24..31 -> 0x00010007
-        # Rust: readable non-reserved fields only -> 0x00010000
-        cs, rs = r.csharp_read_after_reset(), r.rust_read_after_reset()
-        if (cs, rs) != (0x00010007, 0x00010000):
-            log.error("SELF-TEST FAIL: read-after-reset model is wrong. "
-                      "expected C# 0x00010007 / Rust 0x00010000, got "
-                      "0x%08X / 0x%08X", cs, rs)
+    # The regression this check exists for, reintroduced deliberately: declare
+    # `with_tag` to read back zero, the way `Register::value` did while it
+    # composed its answer out of the stored fields.
+    emitted_modules.READS_ZERO.add("with_tag")
+    try:
+        dirty = parse("Synthetic", "D", "s",
+                      _TEMPLATE.replace("RESET", "0x0F010007"))
+        got = divergences(dirty)
+        if len(got) != 1 or got[0][1] != 0x7:
+            log.error("SELF-TEST FAIL: a tag reading back zero over reset bits "
+                      "0..2 was NOT reported. Got %r",
+                      [(rg.offset_expr, hex(m)) for rg, m in got])
             fails += 1
+        elif got[0][0].rust_read_after_reset() != 0x00010000:
+            log.error("SELF-TEST FAIL: expected Rust 0x00010000, got 0x%08X",
+                      got[0][0].rust_read_after_reset())
+            fails += 1
+        if run([dirty], log) == 0:
+            log.error("SELF-TEST FAIL: run() returned 0 on diverging input")
+            fails += 1
+    finally:
+        emitted_modules.READS_ZERO.discard("with_tag")
 
-    if run([dirty], log) == 0:
-        log.error("SELF-TEST FAIL: run() returned 0 on diverging input")
-        fails += 1
     if run([clean], log) != 0:
         log.error("SELF-TEST FAIL: run() returned non-zero on clean input")
         fails += 1
     if fails:
         return 1
-    log.info("SELF-TEST OK: reports the divergence, computes both read values "
-             "correctly, stays silent when the reset misses every tag")
+    log.info("SELF-TEST OK: silent on a faithful tag, and still reports the "
+             "divergence when a combinator reads back zero over reset bits")
     return 0
 
 

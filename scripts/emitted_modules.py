@@ -89,6 +89,20 @@ def setup_log(name: str) -> logging.Logger:
 # rather than re-derived per check.
 # ---------------------------------------------------------------------------
 
+# Combinators whose fields `renode_regs` reads back as ZERO instead of as the
+# reset slice their slot was seeded with.
+#
+# EMPTY, and the emptiness is the fix. `Register::value` used to compose its
+# answer out of the readable non-reserved fields, so every tag contributed
+# nothing and `SPI_CRCPR` read 0x0 against Renode's 0x7. It now starts from the
+# reset word and subtracts the unreadable FIELDS, which is C# `ReadInner`.
+#
+# Adding a name here reopens the divergence, and `check_reset_bits_reserved.py`
+# is what measures it -- so the set is the knob that check turns on, not a
+# leftover. Its self-test sets it to prove the reporting path still works.
+READS_ZERO: set[str] = set()
+
+
 @dataclass
 class Field:
     """One bit-field created by one emitted combinator call."""
@@ -96,11 +110,18 @@ class Field:
     pos: int
     width: int
     mode: str            # the Rust FieldMode expression, verbatim
+    # `push()`'s third argument: this field is a C# TAG. It stores no value of
+    # its own, absorbs writes, and is absent from `definedFieldsMask` -- NOT
+    # "reads back as zero", which is what it used to mean and no longer does.
     reserved: bool
     provider: str | None  # callback fn named in the call, or None
     on_write: str | None
     line_no: int
     raw: str
+
+    @property
+    def reads_zero(self) -> bool:
+        return self.comb in READS_ZERO
 
 
 @dataclass
@@ -113,6 +134,11 @@ class Register:
     fields: list[Field]
     line_no: int
     scope: str           # the Rust fn (and module) the chain sits in
+    # `.with_write_callback(Some(fn))` -- C# `WithWriteCallback`, which attaches
+    # to the REGISTER and so belongs to no field. Recorded here rather than
+    # invented as a field, because a field would give it a bit position the C#
+    # does not have and would then be counted in `covered_mask`.
+    on_write: str | None = None
 
     @property
     def reserved_mask(self) -> int:
@@ -132,22 +158,28 @@ class Register:
     def rust_read_after_reset(self) -> int:
         """What `Bank::read` returns before any write.
 
-        `Register::value` sums the readable, non-reserved fields' slots, and
-        each slot was seeded with its slice of the reset value. Bits that no
-        field covers contribute nothing, because the value is built from the
-        fields rather than from an underlying word.
+        `Register::value` starts from the reset word and lets each non-tag
+        field's slot replace its own slice, then subtracts the fields that are
+        not readable -- the shape of C# `ReadInner`, deliberately, because the
+        difference between that shape and "sum the readable fields" is exactly
+        what made tagged and uncovered bits read back as zero.
+
+        Every slot is seeded with its slice of the reset value, so before any
+        write the substitution is the identity and only the subtraction bites.
         """
         if self.reset is None:
             return 0
-        v = 0
+        v = self.reset
         for f in self.fields:
+            if f.reads_zero:
+                v &= ~(_mask(f.width) << f.pos)
+                continue
             if f.reserved:
                 continue
             # A provider makes the field readable regardless of mode; renode_regs
-            # asserts a provider implies READ, so this needs no separate case.
-            if "READ" not in f.mode and f.provider is None:
-                continue
-            v |= ((self.reset >> f.pos) & _mask(f.width)) << f.pos
+            # asserts a provider implies readable, so this needs no separate case.
+            if f.provider is None and not _readable(f.mode):
+                v &= ~(_mask(f.width) << f.pos)
         return v
 
     def csharp_read_after_reset(self) -> int:
@@ -158,6 +190,12 @@ class Register:
         not a register field -- it lives in a separate `tags` list that stores
         nothing and masks nothing -- so tagged bits keep their reset value
         forever. Bits covered by nothing keep it too.
+
+        Written from `PeripheralRegister.cs`, and kept separate from the Rust
+        model above even though the two now agree on every emitted register.
+        That agreement is the RESULT being checked: they are derived from
+        different sources, so a combinator whose renode_regs behaviour drifts
+        from its C# counterpart makes them disagree again.
         """
         if self.reset is None:
             return 0
@@ -165,7 +203,7 @@ class Register:
         for f in self.fields:
             if f.reserved:
                 continue
-            if "READ" not in f.mode and f.provider is None:
+            if f.provider is None and not _readable(f.mode):
                 v &= ~(_mask(f.width) << f.pos)
         return v
 
@@ -186,6 +224,18 @@ class Module:
 
 def _mask(width: int) -> int:
     return (1 << width) - 1 if width < 64 else (1 << 64) - 1
+
+
+# C# `FieldModeHelper.IsReadable` -- Read | ReadToClear | ReadToSet, not Read.
+# Testing for the substring "READ" would call READ_WRITE readable (right) and
+# WRITE_ZERO_TO_CLEAR readable too (wrong, it contains no READ token).
+_READABLE = ("FieldMode::READ", "FieldMode::READ_WRITE",
+             "FieldMode::READ_TO_CLEAR", "FieldMode::READ_TO_SET")
+
+
+def _readable(mode: str) -> bool:
+    """Does this rendered Rust FieldMode expression answer reads?"""
+    return any(tok.strip() in _READABLE for tok in mode.split("|"))
 
 
 def _int(tok: str) -> int | None:
@@ -269,6 +319,18 @@ def fields_of(comb: str, args: list[str], line_no: int, raw: str) -> list[Field]
         return [mk(pos + i * width, width, mode, False) for i in range(count)]
     if comb == "with_value_cb":
         return [mk(n(0), n(1), args[2], False, _cb(args[3]), _cb(args[4]))]
+    if comb == "with_flag_cb":
+        # (pos, out, mode, provider, on_write) -- bound AND computed.
+        return [mk(n(0), 1, args[2], False, _cb(args[3]), _cb(args[4]))]
+    if comb == "with_value_out_cb":
+        # (pos, width, out, mode, provider, on_write).
+        return [mk(n(0), n(1), args[3], False, _cb(args[4]), _cb(args[5]))]
+    if comb == "with_values_cb":
+        # (pos, width, count, mode, provider, on_write) -- plural, unbound.
+        pos, width, count, mode = n(0), n(1), n(2), args[3]
+        prov, onw = _cb(args[4]), _cb(args[5])
+        return [mk(pos + i * width, width, mode, False, prov, onw)
+                for i in range(count)]
     if comb == "with_fields_cb":
         pos, width, count, mode = n(0), n(1), n(2), args[4]
         prov, onw = _cb(args[5]), _cb(args[6])
@@ -334,6 +396,14 @@ def parse(type_name: str, cs_method: str, mod_name: str, text: str) -> Module:
         while i < len(lines):
             c = _COMB.match(lines[i])
             if c:
+                # `with_write_callback` is the one combinator that installs no
+                # field: it is C# `WithWriteCallback`, on the register. Handled
+                # here explicitly, so `fields_of` keeps raising for anything it
+                # has genuinely never seen.
+                if c.group(1) == "with_write_callback":
+                    reg.on_write = _cb(split_args(c.group(2))[0])
+                    i += 1
+                    continue
                 reg.fields.extend(fields_of(c.group(1), split_args(c.group(2)),
                                             i + 1, lines[i].strip()))
                 i += 1

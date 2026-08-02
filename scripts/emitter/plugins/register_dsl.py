@@ -39,35 +39,70 @@ def to_const(name: str) -> str:
     return snake(name).upper()
 
 
-# FieldMode enum values as the C# defines them, for rendering. Corpus layer:
-# FieldMode is a type in Renode's register DSL, not a C# language construct, so
-# it moved here with `emit_call` rather than staying beside the driver.
-FIELD_MODE = {
-    1: "FieldMode::READ",
-    2: "FieldMode::WRITE",
-    4: "FieldMode::SET",
-    8: "FieldMode::TOGGLE",
-    16: "FieldMode::WRITE_ONE_TO_CLEAR",
-    32: "FieldMode::WRITE_ZERO_TO_CLEAR",
-}
+def field_mode_bits(con) -> dict[int, str]:
+    """The C# `FieldMode` [Flags] enum, READ FROM THE CORPUS.
 
+    This used to be a six-entry dict written out by hand, next to a C# enum
+    that declares twelve members. The other six rendered as
+    `FieldMode::default()` -- a field answering neither reads nor writes --
+    with nothing saying so, which is how `SYS_TICK_CONTROL` bit 16 shipped as
+    an inert field where the C# says `ReadToClear`.
 
-def render_mode(const: str | None) -> str:
-    """C# FieldMode is a [Flags] enum; render the combination."""
-    if const is None:
-        return "FieldMode::READ_WRITE"  # the C# default
-    try:
-        v = int(const)
-    except ValueError:
-        return "FieldMode::READ_WRITE"
-    if v == 3:
-        return "FieldMode::READ_WRITE"
-    parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
-    return " | ".join(parts) if parts else "FieldMode::default()"
+    Retyping an enum the corpus already records in full is the second source of
+    truth the project rules forbid, and this is what it cost: the copy was not
+    wrong, it was INCOMPLETE, and an incomplete lookup table has no way to say
+    so. Derived, a member added upstream renders on the next ingest.
+
+    The Rust name is the C# name in SCREAMING_SNAKE -- a naming convention, not
+    a per-member mapping, so there is no table to fall behind either.
+    `scripts/check_field_mode.py` pins the convention against `renode_regs`.
+    """
+    out: dict[int, str] = {}
+    for name, val in con.execute(
+            "SELECT mb.name, mb.const_value FROM member mb "
+            "JOIN type t ON t.id = mb.type_id "
+            "WHERE t.name = 'FieldMode' AND mb.kind = 'field' "
+            "  AND mb.const_value IS NOT NULL"):
+        try:
+            out[int(val)] = f"FieldMode::{to_const(name)}"
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 class RegisterDsl:
     """Mixin: finding registers, and emitting the bank they describe."""
+
+    def render_mode(self, const: str | None) -> str | None:
+        """C# `FieldMode` is a [Flags] enum; render the combination.
+
+        Returns None when the mode cannot be expressed, so the caller can
+        WITHHOLD the field and report a gap. It used to return
+        `FieldMode::default()` in that case -- a field that answers neither
+        reads nor writes, emitted as though it were a translation. That is the
+        inert-but-plausible output the whole checking layer exists to catch:
+        it compiles, it runs, and it is silently not the C# field.
+        """
+        if const is None:
+            # The C# default parameter on every combinator: Read | Write.
+            return "FieldMode::READ_WRITE"
+        try:
+            v = int(const)
+        except (TypeError, ValueError):
+            # Not a compile-time constant. The C# default is not a safe
+            # substitute for a mode nobody has read, so say so.
+            return None
+        if not hasattr(self, "_field_mode"):
+            self._field_mode = field_mode_bits(self.con)
+        bits = self._field_mode
+        if v == 0 or v & ~sum(bits):
+            # A bit the C# enum does not declare, or no bits at all. Either
+            # way there is nothing faithful to emit.
+            return None
+        alias = self.project.get("field_mode", {}).get("compound", {})
+        if str(v) in alias:
+            return alias[str(v)]
+        return " | ".join(name for bit, name in sorted(bits.items()) if v & bit)
 
     def out_field(self, oid: int, symbol: str) -> str | None:
         """Name of the `out` parameter's target, e.g. `readFifoNotEmpty`.
@@ -268,7 +303,7 @@ class RegisterDsl:
             "pos": const("position"),
             "width": const("width"),
             "count": const("count"),
-            "mode": render_mode(const("mode")),
+            "mode": self.render_mode(const("mode")),
             # `out f` first, then `x = reg.DefineField(..)`: the two forms of
             # the same binding, and a combinator uses one or the other.
             "field": self.out_field(oid, symbol) or self.assigned_field(oid),
@@ -298,6 +333,19 @@ class RegisterDsl:
                     f"{name}: `{param}` is not a compile-time constant, so the "
                     f"field's placement is unknown -- withheld")
                 return None
+
+        # A `FieldMode` that cannot be expressed. Same reasoning as the layout
+        # constants above and one step further: a wrong POSITION does not
+        # compile, whereas `FieldMode::default()` compiles into a field that
+        # silently answers nothing. The mode is the field's whole behaviour, so
+        # a field whose mode is unknown is a gap, never a default.
+        if template and "{mode}" in template and env["mode"] is None:
+            self.gaps.append(
+                f"{name}"
+                f"{'' if env['pos'] is None else ' bit ' + str(env['pos'])}: "
+                f"`mode` is `{const('mode')}`, which no member of the C# "
+                f"FieldMode enum accounts for -- withheld")
+            return None
 
         # `softResettable: false` marks a field a soft reset must not clear.
         # The bank has one reset, so the distinction has nowhere to go; saying

@@ -42,22 +42,25 @@ off the end of its table:
     parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
     return " | ".join(parts) if parts else "FieldMode::default()"
 
-FIELD_MODE maps six of the twelve C# FieldMode bits. A C# mode built only from
-the other six renders as a field with no behaviour at all, silently. It appears
-once across all emitted modules today, in `nvic.rs`, where the C# says
-`ReadToClear`.
+FIELD_MODE is gone: `render_mode` reads the enum from the corpus, and a mode it
+cannot express withholds the field with a gap. `FieldMode::default()` is
+therefore no longer reachable as a translation, and this check is what says so
+if that changes.
 
 Run:  python3 scripts/check_callback_wiring.py
       python3 scripts/check_callback_wiring.py --self-test
 Log:  ./tmp/logs/check_callback_wiring.log
-Exit: 1 on a dead callback or a `FieldMode::default()` translation. FAILS
-      TODAY; keep it out of the pre-commit hook until the count reaches zero.
+Exit: 1 on a dead callback or a `FieldMode::default()` translation. PASSES at
+      0; a hard gate, never a ratchet -- an emitted function nothing calls is
+      not a degree of incompleteness, it is a translation the emitter performed
+      and then discarded.
 
-FLOOR: 9 dead callbacks + 1 empty mode, at 2026-08-02 -- STM32_GPIOPort (5),
-STM32SPI (2), STM32_PWR (2), NVIC (the empty mode). Zero, and it should be a
-hard gate rather than a ratchet: an emitted function nothing calls is not a
-degree of incompleteness, it is a translation the emitter performed and then
-discarded. Either the combinator takes the callback or the field is a gap.
+FLOOR: 0, at 2026-08-03. It was 9 dead callbacks + 1 empty mode on 2026-08-02
+-- STM32_GPIOPort (5), STM32SPI (2), STM32_PWR (2), NVIC (the empty mode). The
+nine were closed by `with_flag_cb` / `with_value_out_cb` / `with_values_cb`,
+which landed on a parallel branch and could not be seen from here because this
+parser had no model for them; the empty mode was closed by deriving the enum.
+Reproduced at 3c96741 to confirm the nine were real and not a parsing artefact.
 """
 
 from __future__ import annotations
@@ -94,6 +97,10 @@ def wiring(mod: Module) -> Counter:
     """
     c: Counter = Counter()
     for r in mod.registers:
+        # The register-level `WithWriteCallback` is a real wiring site with no
+        # field to hang off. Omitting it would report a live callback as dead.
+        if r.on_write:
+            c[r.on_write] += 1
         for f in r.fields:
             for nm in (f.provider, f.on_write):
                 if nm:

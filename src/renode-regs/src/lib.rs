@@ -81,8 +81,42 @@ impl FieldMode {
     /// Writing 0 clears the bit. Used by STM32 `USART_SR` RXNE/TC, which is why
     /// the C# comment there says the flags "cannot just be calculated".
     pub const WRITE_ZERO_TO_CLEAR: Self = Self(1 << 5);
+    /// Reading clears the field. Readable: see [`FieldMode::is_readable`].
+    pub const READ_TO_CLEAR: Self = Self(1 << 6);
+    pub const WRITE_ZERO_TO_SET: Self = Self(1 << 7);
+    pub const WRITE_ZERO_TO_TOGGLE: Self = Self(1 << 8);
+    // 1 << 9 and 1 << 10 are unassigned in the C# enum. Left as holes rather
+    // than renumbered: the values are what the corpus records, and a renumber
+    // would silently change what every emitted mode means.
+    /// Reading sets the field.
+    pub const READ_TO_SET: Self = Self(1 << 11);
+    /// Any write clears the field, whatever was written.
+    pub const WRITE_TO_CLEAR: Self = Self(1 << 12);
+    /// Any write sets the field, whatever was written.
+    pub const WRITE_TO_SET: Self = Self(1 << 13);
 
     pub const READ_WRITE: Self = Self(Self::READ.0 | Self::WRITE.0);
+
+    /// C# `FieldModeHelper.IsReadable`. THREE modes make a field readable, not
+    /// one: a `ReadToClear`-only field answers reads and then clears itself.
+    /// Testing `contains(READ)` instead made every such field read back zero.
+    #[inline]
+    pub const fn is_readable(self) -> bool {
+        self.0 & (Self::READ.0 | Self::READ_TO_CLEAR.0 | Self::READ_TO_SET.0) != 0
+    }
+
+    /// C# `FieldModeHelper.WriteBits` — the mode with the read bits removed.
+    /// The C# write path switches on this, relying on `IsValid`'s guarantee
+    /// that at most one write bit is set.
+    ///
+    /// `IsWritable` and `ReadBits` are the other two helpers in that C# file
+    /// and are deliberately absent: nothing here would call them, and an
+    /// unused mirror of an upstream API is the dead configuration this file's
+    /// own construction asserts exist to reject.
+    #[inline]
+    pub const fn write_bits(self) -> Self {
+        Self(self.0 & !(Self::READ.0 | Self::READ_TO_CLEAR.0 | Self::READ_TO_SET.0))
+    }
 
     #[inline]
     pub const fn contains(self, other: Self) -> bool {
@@ -163,31 +197,59 @@ impl<S> Register<S> {
     /// The register's backing value, WITHOUT consulting any value provider.
     ///
     /// C# keeps one `UnderlyingValue` per register and hands it to the
-    /// register-level handlers as `baseValue`; providers run only on the read
-    /// path, so this composes stored slots and nothing else.
+    /// register-level handlers as `baseValue`. That word is seeded with the
+    /// reset value and only a REGISTER FIELD ever overwrites part of it, so
+    /// this reconstructs it the same way: start from the reset value, then let
+    /// each non-tag field's stored slot replace its own slice.
     ///
-    /// DEVIATION, recorded on the REGISTER_WRITE_CALLBACK rule: bits belonging
-    /// to no field read back as zero here, where C# would carry whatever the
-    /// single backing ulong held. Every one of the 18 corpus callbacks
-    /// discards both arguments, so the difference is documented rather than
-    /// paid for with machinery nothing uses.
+    /// Tags and bits belonging to no field therefore carry their reset value
+    /// here, as they do in C#. They previously read back as zero, which was
+    /// recorded as a deviation on REGISTER_WRITE_CALLBACK; reconstructing from
+    /// the reset value costs one extra word and removes it.
     fn raw_value(&self, bank: &Bank<S>) -> u64 {
-        let mut v = 0u64;
+        let mut v = self.reset;
         for f in &self.fields {
             if f.reserved {
                 continue;
             }
-            v |= (bank.slots[f.slot as usize].get() & mask(f.width)) << f.offset;
+            let m = mask(f.width) << f.offset;
+            v = (v & !m) | ((bank.slots[f.slot as usize].get() << f.offset) & m);
         }
         v
     }
 
+    /// C# `PeripheralRegister.ReadInner`.
+    ///
+    /// The shape is the C#'s and not an optimisation of it, because the
+    /// difference between the two IS the bug this method had. C# reads
+    ///
+    /// ```text
+    /// var valueToRead = UnderlyingValue;
+    /// foreach(var f in registerFields)
+    ///     if(!f.FieldMode.IsReadable())
+    ///         BitHelper.ClearBits(ref valueToRead, f.Position, f.Width);
+    /// ```
+    ///
+    /// -- it starts from the whole backing word and SUBTRACTS what may not be
+    /// read. Composing the answer out of the readable fields instead looks
+    /// equivalent and is not: it silently drops every bit that belongs to a
+    /// TAG or to no field at all, and those bits carry the reset value in C#
+    /// for ever, because nothing in `WriteInner` or `ReadInner` touches them.
+    ///
+    /// Measured cost of the difference: `SPI_CRCPR` read 0x0 here against
+    /// Renode's 0x7, and `FLASH_OPTCR` 0x0FFFAA01 against 0x0FFFAAED -- on the
+    /// FIRST READ AFTER RESET, before any firmware ran. Firmware polling such
+    /// a bit waits for ever.
     fn value(&self, bank: &Bank<S>, state: &mut S) -> u64 {
-        let mut v = 0u64;
+        // `UnderlyingValue`: the reset word, with each register field's stored
+        // value (or its provider's answer) over its own slice. Tags are not
+        // register fields, so they keep the reset value.
+        let mut v = self.reset;
         for f in &self.fields {
             if f.reserved {
                 continue;
             }
+            let m = mask(f.width) << f.offset;
             let stored = bank.slots[f.slot as usize].get();
             // A field with a provider reports whatever the provider returns,
             // even without FieldMode::READ -- matching the C#, where supplying
@@ -196,10 +258,26 @@ impl<S> Register<S> {
             // construction), so consulting it needs no further mode check.
             let raw = match f.provider {
                 Some(p) => p(bank, state, f.group_index, stored),
-                None if f.mode.contains(FieldMode::READ) => stored,
-                None => continue,
+                None => stored,
             };
-            v |= (raw & mask(f.width)) << f.offset;
+            v = (v & !m) | ((raw << f.offset) & m);
+            // C# snapshots `valueToRead` BEFORE this pass, so a read-to-clear
+            // field reports its old value and only then clears -- which is the
+            // whole point of the mode.
+            if f.mode.contains(FieldMode::READ_TO_CLEAR) && raw & mask(f.width) != 0 {
+                bank.slots[f.slot as usize].set(0);
+            }
+            if f.mode.contains(FieldMode::READ_TO_SET) && raw & mask(f.width) != mask(f.width) {
+                bank.slots[f.slot as usize].set(mask(f.width));
+            }
+        }
+        // Now subtract the unreadable fields, as the C# loop does. A provider
+        // makes a field readable in C# regardless of its mode, which is why
+        // this asks about the provider and not only about the mode.
+        for f in &self.fields {
+            if !f.reserved && f.provider.is_none() && !f.mode.is_readable() {
+                v &= !(mask(f.width) << f.offset);
+            }
         }
         v
     }
@@ -290,27 +368,36 @@ impl<S> Bank<S> {
             let incoming = (value >> f.offset) & mask(f.width);
             let slot = &self.slots[f.slot as usize];
             let old = slot.get();
-            let mode = f.mode;
-            if mode.contains(FieldMode::WRITE) {
-                slot.set(incoming);
-            } else if mode.contains(FieldMode::WRITE_ONE_TO_CLEAR) {
-                if incoming != 0 {
-                    slot.set(0);
-                }
-            } else if mode.contains(FieldMode::WRITE_ZERO_TO_CLEAR) {
-                // Deliberately NOT `if incoming == 0 { clear }` for multi-bit
-                // fields: the C# clears when the written bit is zero, per bit.
-                if incoming & mask(f.width) != mask(f.width) {
-                    slot.set(incoming & slot.get());
-                }
-            } else if mode.contains(FieldMode::SET) {
-                if incoming != 0 {
-                    slot.set(1);
-                }
-            } else if mode.contains(FieldMode::TOGGLE) {
-                if incoming != 0 {
-                    slot.set((slot.get() == 0) as u64);
-                }
+            let m = mask(f.width);
+            // C# `WriteInner` switches on `FieldMode.WriteBits()` rather than
+            // testing flags in an order of its own choosing, and the comment
+            // there says why: "switch is OK, because write modes are
+            // exclusive". Every arm below is that switch's arm restricted to
+            // this field's bits, with the C# guards dropped where they only
+            // decide whether to record a CHANGE (`x |= 0` is a no-op anyway).
+            match f.mode.write_bits() {
+                FieldMode::WRITE => slot.set(incoming),
+                // `setRegisters = value & ~UnderlyingValue`, then OrWith.
+                FieldMode::SET => slot.set(old | incoming),
+                // XorWith(UnderlyingValue, value).
+                FieldMode::TOGGLE => slot.set(old ^ incoming),
+                // AndWithNot(UnderlyingValue, value) -- PER BIT. Setting the
+                // whole field to 0 on any written 1 is right for a flag and
+                // wrong for every wider W1C field.
+                FieldMode::WRITE_ONE_TO_CLEAR => slot.set(old & !incoming & m),
+                // AndWithNot(UnderlyingValue, ~value) == keep only where the
+                // written bit is 1.
+                FieldMode::WRITE_ZERO_TO_CLEAR => slot.set(old & incoming),
+                // negSetRegisters = ~value & ~UnderlyingValue, then OrWith.
+                FieldMode::WRITE_ZERO_TO_SET => slot.set(old | (!incoming & m)),
+                // XorWith(UnderlyingValue, ~value).
+                FieldMode::WRITE_ZERO_TO_TOGGLE => slot.set(old ^ (!incoming & m)),
+                // Any write clears / sets, whatever the written value was.
+                FieldMode::WRITE_TO_CLEAR => slot.set(0),
+                FieldMode::WRITE_TO_SET => slot.set(m),
+                // No write bits at all: the field is unwritable. The C# switch
+                // falls through for the same reason.
+                _ => {}
             }
             // C# order: the field is updated, then the write callback fires.
             // It fires on any write to the register, matching CallWriteHandler.
@@ -323,7 +410,13 @@ impl<S> Bank<S> {
         if let (Some(cb), Some(old)) = (reg.on_write, base) {
             cb(self, state, old, value & mask(reg.width_bits));
         }
-        Some(value & reg.unhandled_mask)
+        // C# `unhandledWrites = difference & ~definedFieldsMask`, where
+        // `difference = UnderlyingValue ^ value` is taken before the field
+        // loop. Every bit in `unhandled_mask` belongs to a tag or to no field,
+        // and neither is ever written, so `UnderlyingValue` still holds the
+        // reset value there -- writing a tag its own reset value is NOT
+        // reported, exactly as in C#. `value & mask` reported it.
+        Some((value ^ reg.reset) & reg.unhandled_mask)
     }
 
     pub fn has_register(&self, offset: u64) -> bool {
@@ -378,7 +471,7 @@ impl<'a, S> RegisterBuilder<'a, S> {
         // field's mode to write-only SURVIVED, because value() consulted the
         // provider regardless of the mode. The C# makes that unconstructable.
         assert!(
-            !(provider.is_some() && !mode.contains(FieldMode::READ)),
+            !(provider.is_some() && !mode.is_readable()),
             "a write-only field cannot provide a value callback \
              (offset {offset}, width {width})"
         );
@@ -591,8 +684,17 @@ impl<'a, S> RegisterBuilder<'a, S> {
 
     /// Finish the register and install it in the bank.
     pub fn done(self) {
+        // C# `RecalculateFieldMask` sums `registerFields` ONLY, and `Tag()`
+        // never calls it -- so `definedFieldsMask` excludes tags, and
+        // `unhandledWrites = difference & ~definedFieldsMask` reports a write
+        // to a tagged bit. `TagLogger` exists precisely to name which tags the
+        // unhandled bits fell in. Folding reserved fields in here silenced
+        // that, which is the one thing a tag is for.
         let mut covered = 0u64;
         for f in &self.fields {
+            if f.reserved {
+                continue;
+            }
             covered |= mask(f.width) << f.offset;
         }
         let full = mask(self.width_bits);
@@ -666,16 +768,90 @@ mod tests {
     }
 
     #[test]
-    fn reserved_bits_read_as_zero_and_absorb_writes() {
+    fn reserved_bits_absorb_writes_and_are_reported_unhandled() {
         let mut bank: Bank<()> = Bank::new();
         let mut f = FlagId::default();
         bank.define(0, 0)
             .with_flag(0, &mut f, FieldMode::READ_WRITE)
             .with_reserved(1, 31)
             .done();
-        // Reserved bits are covered, so nothing is reported unhandled.
-        assert_eq!(bank.write(0, 0xFFFF_FFFF, &mut ()), Some(0));
+        // `Reserved()` wraps `Tag()`, and `RecalculateFieldMask` counts only
+        // registerFields -- so bits 1..31 ARE unhandled writes in C#, which is
+        // what `TagLogger` names them for. They still absorb the write, and
+        // still read back their reset value, which here is zero.
+        assert_eq!(bank.write(0, 0xFFFF_FFFF, &mut ()), Some(0xFFFF_FFFE));
         assert_eq!(bank.read(0, &mut ()), Some(1));
+    }
+
+    /// The divergence `check_reset_bits_reserved.py` was written for, at the
+    /// measured `STM32SPI` SPI_CRCPR shape: reset 0x7 under a tag. C# reads
+    /// 0x7 on the FIRST READ AFTER RESET; this read 0x0 until `value()`
+    /// stopped skipping tags. Firmware polling such a bit waits forever.
+    #[test]
+    fn a_tag_reads_back_its_reset_value() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0x00, 0x7).with_tag(0, 16).with_reserved(16, 16).done();
+        assert_eq!(bank.read(0x00, &mut ()), Some(0x7));
+
+        // And `Reserved()` is a wrapper over `Tag()`, so it behaves the same.
+        bank.define(0x04, 0x0FFF_AAED).with_reserved(0, 32).done();
+        assert_eq!(bank.read(0x04, &mut ()), Some(0x0FFF_AAED));
+    }
+
+    /// The same mechanism one step further out: C# reads `UnderlyingValue` and
+    /// subtracts the unreadable FIELDS, so a bit covered by nothing at all
+    /// also reads back its reset value. Composing the answer from the fields
+    /// dropped those bits, and no combinator has to be involved for the
+    /// register to be wrong.
+    #[test]
+    fn bits_no_field_covers_read_back_their_reset_value() {
+        let mut bank: Bank<()> = Bank::new();
+        let mut f = FlagId::default();
+        bank.define(0, 0xF0F1).with_flag(0, &mut f, FieldMode::READ_WRITE).done();
+        assert_eq!(bank.read(0, &mut ()), Some(0xF0F1));
+        // And the reset value survives a write that misses them, as in C#:
+        // WriteInner only ever updates registerFields.
+        bank.write(0, 0, &mut ());
+        assert_eq!(bank.read(0, &mut ()), Some(0xF0F0));
+    }
+
+    /// A write-only field is subtracted from the value being read even though
+    /// its bit is set in the backing word. C# `IsReadable()` is the test, and
+    /// starting from `UnderlyingValue` means forgetting the subtraction leaks
+    /// the field instead of hiding it -- the opposite failure, so both
+    /// directions are pinned.
+    #[test]
+    fn an_unreadable_field_is_subtracted_from_the_read() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0xFF)
+            .with_value_anon(0, 4, FieldMode::WRITE)
+            .with_value_anon(4, 4, FieldMode::READ_WRITE)
+            .done();
+        assert_eq!(bank.read(0, &mut ()), Some(0xF0));
+    }
+
+    /// A tag is not a RegisterField, so `WriteInner` never touches it: it
+    /// keeps its reset value for ever, through any number of writes.
+    #[test]
+    fn a_tag_keeps_its_reset_value_through_writes() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0x7).with_tag(0, 16).with_reserved(16, 16).done();
+        bank.write(0, 0xFFFF_FFFF, &mut ());
+        assert_eq!(bank.read(0, &mut ()), Some(0x7));
+        bank.write(0, 0x0000_0000, &mut ());
+        assert_eq!(bank.read(0, &mut ()), Some(0x7));
+    }
+
+    /// C# takes `difference = UnderlyingValue ^ value`, so writing a tag the
+    /// value it already holds is not an unhandled write. Reporting `value`
+    /// rather than the difference made every write to a reset-set tag look
+    /// like a change that went nowhere.
+    #[test]
+    fn writing_a_tag_its_own_reset_value_is_not_reported() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0x7).with_tag(0, 32).done();
+        assert_eq!(bank.write(0, 0x7, &mut ()), Some(0));
+        assert_eq!(bank.write(0, 0x6, &mut ()), Some(1), "bit 0 differs");
     }
 
     #[test]
@@ -791,11 +967,16 @@ mod tests {
             "an anonymous value field is stored: the write must survive"
         );
 
-        assert_eq!(bank.write(0x04, 0xDEAD_BEEF, &mut ()), Some(0));
+        assert_eq!(
+            bank.write(0x04, 0xDEAD_BEEF, &mut ()),
+            Some(0xDEAD_BEEF),
+            "a tag is not in definedFieldsMask, so the write is unhandled"
+        );
         assert_eq!(
             bank.read(0x04, &mut ()),
             Some(0),
-            "a tag stores nothing, and that is the difference"
+            "a tag holds its reset value -- here 0 -- and the write did not \
+             reach it, which is the difference"
         );
     }
 
@@ -906,6 +1087,101 @@ mod tests {
         assert!(bank.flag(flag), "the handle still binds");
         assert_eq!(bank.value(val), 3);
         assert_eq!(st.writes, 2, "and the callbacks still fire");
+    }
+
+    /// `FieldModeHelper.IsReadable` is `Read | ReadToClear | ReadToSet`, and
+    /// only the first was tested. A `ReadToClear` field -- the C# mode of
+    /// `SYS_TICK_CONTROL` bit 16, which the emitter rendered as
+    /// `FieldMode::default()` -- answers reads, and clears itself afterwards.
+    #[test]
+    fn read_to_clear_reports_its_value_then_clears() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0b101).with_value_anon(0, 3, FieldMode::READ_TO_CLEAR).done();
+        assert_eq!(bank.read(0, &mut ()), Some(0b101), "the value BEFORE the clear");
+        assert_eq!(bank.read(0, &mut ()), Some(0), "and it is gone afterwards");
+    }
+
+    #[test]
+    fn read_to_set_reports_its_value_then_sets() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0b001).with_value_anon(0, 3, FieldMode::READ_TO_SET).done();
+        assert_eq!(bank.read(0, &mut ()), Some(0b001));
+        assert_eq!(bank.read(0, &mut ()), Some(0b111));
+    }
+
+    /// The other four write modes the mode table had no bit for. Each arm is
+    /// the C# `WriteInner` switch case restricted to the field's bits.
+    #[test]
+    fn the_remaining_write_modes_follow_the_csharp_switch() {
+        let mut bank: Bank<()> = Bank::new();
+        // READ is added throughout because `IsReadable()` is Read | ReadToClear
+        // | ReadToSet: a write-only field reads back zero in C# as well.
+        bank.define(0x00, 0b0101)
+            .with_value_anon(0, 4, FieldMode::WRITE_ZERO_TO_SET | FieldMode::READ)
+            .done();
+        bank.define(0x04, 0b0101)
+            .with_value_anon(0, 4, FieldMode::WRITE_ZERO_TO_TOGGLE | FieldMode::READ)
+            .done();
+        bank.define(0x08, 0b0101).with_value_anon(0, 4, FieldMode::WRITE_TO_CLEAR | FieldMode::READ).done();
+        bank.define(0x0C, 0b0101).with_value_anon(0, 4, FieldMode::WRITE_TO_SET | FieldMode::READ).done();
+
+        // negSetRegisters = ~value & ~old -> old | (!v & m): 0101 | 0010 = 0111
+        bank.write(0x00, 0b1001, &mut ());
+        assert_eq!(bank.read(0x00, &mut ()), Some(0b0111));
+        // XorWith(old, ~value): 0101 ^ 0110 = 0011
+        bank.write(0x04, 0b1001, &mut ());
+        assert_eq!(bank.read(0x04, &mut ()), Some(0b0011));
+        // Any write clears / sets the whole field, whatever was written.
+        bank.write(0x08, 0b0000, &mut ());
+        assert_eq!(bank.read(0x08, &mut ()), Some(0));
+        bank.write(0x0C, 0b0000, &mut ());
+        assert_eq!(bank.read(0x0C, &mut ()), Some(0b1111));
+    }
+
+    /// C# `AndWithNot(UnderlyingValue, value, position, width)` clears the
+    /// written bits, not the field. Zeroing the whole field on any written 1
+    /// is right for a flag and wrong for every wider W1C field -- and the
+    /// mirror mistakes were in `Set` (set the field to 1) and `Toggle`
+    /// (invert the whole field).
+    #[test]
+    fn the_bitwise_write_modes_act_per_bit_not_per_field() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0x00, 0b1111)
+            .with_value_anon(0, 4, FieldMode::READ | FieldMode::WRITE_ONE_TO_CLEAR)
+            .done();
+        bank.define(0x04, 0b0000).with_value_anon(0, 4, FieldMode::SET | FieldMode::READ).done();
+        bank.define(0x08, 0b1010)
+            .with_value_anon(0, 4, FieldMode::TOGGLE | FieldMode::READ)
+            .done();
+
+        bank.write(0x00, 0b0011, &mut ());
+        assert_eq!(bank.read(0x00, &mut ()), Some(0b1100), "only the written 1s clear");
+        bank.write(0x04, 0b0110, &mut ());
+        assert_eq!(bank.read(0x04, &mut ()), Some(0b0110), "Set ORs, it does not set to 1");
+        bank.write(0x08, 0b0011, &mut ());
+        assert_eq!(bank.read(0x08, &mut ()), Some(0b1001), "Toggle XORs the written bits");
+    }
+
+    /// C# hands a register-level write callback `baseValue = UnderlyingValue`,
+    /// a word seeded with the reset value that only register FIELDS overwrite.
+    /// Composing it from the stored slots alone dropped every tagged and
+    /// uncovered bit to zero; this was a recorded deviation and no longer is.
+    #[test]
+    fn a_register_write_callback_sees_tag_and_uncovered_reset_bits() {
+        struct Seen(u64);
+        fn cb(_b: &Bank<Seen>, st: &mut Seen, old: u64, _new: u64) {
+            st.0 = old;
+        }
+        let mut bank: Bank<Seen> = Bank::new();
+        // bits 0..3 a real field, 4..7 a tag, 8..11 covered by nothing at all.
+        bank.define(0, 0x0F0F)
+            .with_value_anon(0, 4, FieldMode::READ_WRITE)
+            .with_tag(4, 4)
+            .with_write_callback(Some(cb))
+            .done();
+        let mut st = Seen(0);
+        bank.write(0, 0, &mut st);
+        assert_eq!(st.0, 0x0F0F, "the whole backing word, not just the fields");
     }
 
     #[test]
