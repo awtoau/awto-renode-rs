@@ -37,3 +37,4 @@ flattening and argued for as though it were a fresh decision, when PLAN.md line
 | [#56](inheritance-layout.md) | inheritance: dispatch trait + collision guard | **taken 2026-08-02** — merge-vs-embed deliberately deferred until the cut is closed |
 | — | [prove behaviour generation on UART before widening](target-one-peripheral-end-to-end.md) | taken 2026-08-02 |
 | — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |
+| — | [define a build target: the floor that runs, and a named Renode Robot test as its acceptance criterion](the-floor-that-runs.md) | taken 2026-08-03 |
