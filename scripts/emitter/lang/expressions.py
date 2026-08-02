@@ -345,7 +345,9 @@ class Expressions:
             return const.lower()
         if rtype == "string":
             escaped = const.replace("\\", "\\\\").replace('"', '\\"')
-            return f'"{escaped}"'
+            # C# composite formatting is not Rust format syntax, and passing it
+            # through is a compile ERROR rather than a wrong string.
+            return f'"{self.csharp_format(escaped)}"'
         if rtype == "char":
             return f"'{const}'"
         if rtype in ("double", "float") and "." not in const and "e" not in const.lower():
