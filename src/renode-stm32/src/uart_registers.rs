@@ -7,8 +7,10 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - Control1: 1 call(s) no rule matches: WithWriteCallback
 //!   - Data: conditional access `?.` needs nullability analysis
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
+//!   - Status: 1 call(s) no rule matches: WithWriteCallback
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping

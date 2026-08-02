@@ -7,6 +7,7 @@
 //! Source: STM32_SYSCFG.CreateRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - ExternalInterruptConfiguration1: located at 0x8 but no field emitted -- the register is NOT in the bank
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - Reset: withheld, reaches state this peripheral does not have: st.internal_receivers_cache
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2

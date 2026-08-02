@@ -245,8 +245,27 @@ class RegisterDsl:
             body: list[str] = []
             self.gaps = []
             self._current_reg = name or f"reg_{offset:x}"
+            skipped: list[str] = []
             for _end, oid, symbol in sorted(chains.get(chain_span, [])):
                 if self.combinator(symbol) is None:
+                    # NOT NECESSARILY IRRELEVANT. This skipped anything the
+                    # combinator table did not name, silently, and the table
+                    # names one extension class -- so `reg.DefineValueField(..)`
+                    # (an INSTANCE method) and `.WithWriteCallback(..)` (a
+                    # different extension class) both vanished here. One
+                    # peripheral's entire register map was empty as a result and
+                    # its file reported four gaps, none of them about registers.
+                    #
+                    # Only calls that look like part of THIS chain are worth
+                    # reporting: the span carries the whole fluent expression, so
+                    # unrelated nested calls appear too.
+                    # The register FORM's own call is not a missing rule -- it is
+                    # what located this register in the first place.
+                    if any(f["symbol_contains"] in symbol for f in self.forms):
+                        continue
+                    leaf = symbol.split("(")[0].split(".")[-1]
+                    if leaf.startswith(("With", "Define")) and leaf not in skipped:
+                        skipped.append(leaf)
                     continue
                 line = self.emit_call(oid, symbol)
                 gaps.extend(f"{name}: {g}" for g in self.gaps)
@@ -259,7 +278,21 @@ class RegisterDsl:
                     if self.combinator(symbol) == "WithFlag":
                         self._flag_fields.add(f)
                 body.append(line)
+            if skipped:
+                gaps.append(
+                    f"{name or hex(offset)}: {len(skipped)} call(s) no rule "
+                    f"matches: {', '.join(sorted(skipped))}"
+                    + ("" if body else " -- the register has NO fields and is "
+                       "not in the bank"))
             if not body:
+                # A register the forms LOCATED and that emitted nothing. Dropping
+                # it silently is indistinguishable from a rule declining, and it
+                # is how a peripheral ends up with an empty `define_registers`
+                # that looks finished.
+                if not skipped:
+                    gaps.append(
+                        f"{name or hex(offset)}: located at 0x{offset:X} but no "
+                        f"field emitted -- the register is NOT in the bank")
                 continue
             const_name = to_const(name or f"REG_{offset:X}")
             where = f"reg::{const_name}"

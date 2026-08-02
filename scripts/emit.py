@@ -302,7 +302,7 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
         # derived and never depends on emission order.
         naming = self.project.get("callback_naming", {}).get(
             "template", "{reg}_{pos}_{kind}")
-        seen_unh = set(self.unhandled)
+        seen_unh = dict(self.unhandled)
         for param, kind, key in (("valueProviderCallback", "provider", "provider_fn"),
                                  ("writeCallback", "writer", "writer_fn")):
             env[key] = "None"
@@ -313,7 +313,11 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
                 continue
             fname = naming.format(reg=snake(self._current_reg or "reg"),
                                   pos=env["pos"], kind=kind)
-            before_unh = len(self.unhandled)
+            # OCCURRENCES, not distinct keys. `unhandled` is a counter, and
+            # comparing its LENGTH means only the FIRST site of a given kind is
+            # ever caught -- every later one leaves the count of keys unchanged
+            # and passes. See the same fix in emit_peripheral_method.
+            before_unh = sum(self.unhandled.values())
             body = self.emit_lambda(lam, fname, param)
             if not body:
                 continue
@@ -321,10 +325,10 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
             # construct inside one reached the file as a `/* Kind */` marker.
             # Methods have withheld on this since the beginning; lambdas were
             # simply missed.
-            if len(self.unhandled) > before_unh:
+            if sum(self.unhandled.values()) > before_unh:
                 self.gaps.append(
                     f"callback for bit {env['pos']}: withheld, cannot emit "
-                    f"{', '.join(sorted(set(self.unhandled) - seen_unh))}")
+                    f"{', '.join(sorted(k for k, v in self.unhandled.items() if v > seen_unh.get(k, 0)))}")
                 continue
             # Does the body call a peer method we cannot emit yet? If so the
             # file would not compile, and a stub would look finished. Withhold
@@ -1085,8 +1089,16 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
                 f"-- the caller's reference may be to a different type")
             return []
         method_id, ret_cs = row
-        before = len(self.unhandled)
-        seen_unhandled = set(self.unhandled)
+        # OCCURRENCES, not distinct keys. `unhandled` is a counter keyed by
+        # construct, and this compared its LENGTH -- so the FIRST method to hit
+        # an unmappable construct was withheld and EVERY LATER ONE PASSED, the
+        # key already being present. What saved most of them was the gap-marker
+        # scan below, which is a weaker net: an unhandled EXPRESSION leaves
+        # `/* Kind */` in the body, but an unhandled STATEMENT can return no
+        # lines at all -- `emit_loop` does exactly that -- and then the
+        # statement simply vanishes from a method reported as translated.
+        before = sum(self.unhandled.values())
+        seen_unhandled = dict(self.unhandled)
         self._current_type = type_name
         spec = self.project.get("peripheral_methods", {})
         if (ret_cs or "void") == "void":
@@ -1144,8 +1156,13 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
             return []
         # Any construct the converter could not emit leaves a marker; those do
         # not parse in expression position and a stub would look finished.
-        if len(self.unhandled) > before:
-            new = sorted(set(self.unhandled) - seen_unhandled)
+        if sum(self.unhandled.values()) > before:
+            # Diffed by COUNT, so a repeat of an already-seen kind still names
+            # the kind. Diffing the key SET reported an empty list for exactly
+            # the case this check was fixed to catch, which would have made the
+            # gap unclassifiable by the census.
+            new = sorted(k for k, v in self.unhandled.items()
+                         if v > seen_unhandled.get(k, 0))
             self.gaps.append(
                 f"{method_name}: withheld, cannot emit {', '.join(new)}")
             return []

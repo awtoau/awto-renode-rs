@@ -8,7 +8,9 @@
 //!
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - AlternateFunctionHigh: located at 0x24 but no field emitted -- the register is NOT in the bank
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - AlternateFunctionLow: located at 0x20 but no field emitted -- the register is NOT in the bank
 //!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
@@ -17,9 +19,12 @@
 //!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
+//!   - Mode: located at 0x0 but no field emitted -- the register is NOT in the bank
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - OutputSpeed: located at 0x8 but no field emitted -- the register is NOT in the bank
+//!   - PullUpPullDown: located at 0xC but no field emitted -- the register is NOT in the bank
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw

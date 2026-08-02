@@ -8,7 +8,7 @@
 //!
 //! GAPS the converter reports rather than guessing:
 //!   - AddressToFilterBankIdx: withheld, cannot emit expr:SizeOf
-//!   - AddressToRegIdx: withheld, body still contains a gap marker (return ((((address - RegisterOffset::CAN_F0R1 as u64) / (/* )
+//!   - AddressToRegIdx: withheld, cannot emit expr:SizeOf
 //!   - EnableFifo0Interrupt: withheld, reaches state this peripheral does not have: st.registers
 //!   - EnableFifo1Interrupt: withheld, reaches state this peripheral does not have: st.registers
 //!   - EnableSCEInterrupt: withheld, reaches state this peripheral does not have: st.registers
