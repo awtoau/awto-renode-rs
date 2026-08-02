@@ -43,22 +43,45 @@ def repo_root() -> Path:
                                check=True).stdout.strip())
 
 
-def produce(root: Path) -> dict[str, str]:
-    """Every artefact the converter emits, as text, keyed by name."""
+def produce(root: Path) -> tuple[dict[str, str], list[str]]:
+    """Every artefact the converter emits, as text, keyed by name.
+
+    The second return value is why this function is not just a dict. A crash is
+    NOT an artefact. Recording one produces a baseline that compares equal to
+    itself forever and proves nothing -- which is exactly what happened: a fresh
+    worktree has no corpus database (it is gitignored), every emit died with
+    `no such table: type`, and the recorded baseline was nine identical stack
+    traces reported as green. The tool said OK and had verified nothing.
+
+    Same failure class as the six silent no-ops this project has already paid
+    for, in the check that was supposed to catch them.
+    """
     out: dict[str, str] = {}
+    bad: list[str] = []
     for ty, method, mod in TARGETS:
         r = subprocess.run(
             [sys.executable, str(root / "scripts" / "emit.py"),
              "--type", ty, "--method", method, "--file", mod],
             capture_output=True, text=True, cwd=root)
-        out[f"{mod}.rs"] = r.stdout if r.returncode == 0 else \
-            f"EMIT FAILED ({r.returncode})\n{r.stderr}"
+        if r.returncode != 0:
+            bad.append(f"{mod}: emit.py exited {r.returncode}: "
+                       f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else '(no stderr)'}")
+            out[f"{mod}.rs"] = f"EMIT FAILED ({r.returncode})\n{r.stderr}"
+            continue
+        # A plausible module has a header, a `reg` module and a layout fn. A
+        # short or headerless one means emit succeeded at producing nothing.
+        if "pub fn define_registers" not in r.stdout or len(r.stdout) < 500:
+            bad.append(f"{mod}: emitted {len(r.stdout)} bytes with no layout "
+                       f"function -- not a module")
+        out[f"{mod}.rs"] = r.stdout
     for name, script in (("gaps.txt", "gap_census.py"),
                          ("compile.txt", "compile_check.py")):
         r = subprocess.run([sys.executable, str(root / "scripts" / script)],
                            capture_output=True, text=True, cwd=root)
+        if r.returncode != 0:
+            bad.append(f"{script} exited {r.returncode}")
         out[name] = r.stdout
-    return out
+    return out, bad
 
 
 def main() -> int:
@@ -77,8 +100,26 @@ def main() -> int:
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
 
+    # Checked before anything runs, because its absence is the failure that
+    # made a green baseline meaningless. The database is gitignored, so a fresh
+    # clone or worktree does not have one.
+    db = root / "rulesdb" / "patterns.db"
+    if not db.exists():
+        log.error("no corpus at rulesdb/patterns.db -- it is gitignored, so a")
+        log.error("fresh worktree does not have one. Copy it in or re-ingest;")
+        log.error("without it every emit fails and a baseline recorded now")
+        log.error("would compare equal to itself forever.")
+        return 1
+
     gold = root / args.dir
-    current = produce(root)
+    current, bad = produce(root)
+    if bad:
+        log.error("REFUSING: the converter did not produce usable output.")
+        for b in bad:
+            log.error("    %s", b)
+        log.error("A crash is not an artefact. Recording or comparing one gives")
+        log.error("a result that is green and means nothing.")
+        return 1
 
     if args.record:
         gold.mkdir(parents=True, exist_ok=True)
