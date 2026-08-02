@@ -57,6 +57,15 @@ GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/syscfg_registers.rs",
      ["scripts/emit.py", "--type", "STM32_SYSCFG", "--method", "CreateRegisters",
       "--file", "syscfg_registers"]),
+    ("src/renode-stm32/src/exti_registers.rs",
+     ["scripts/emit.py", "--type", "STM32F4_EXTI", "--method", "DefineRegisters",
+      "--file", "exti_registers"]),
+    ("src/renode-stm32/src/adc_registers.rs",
+     ["scripts/emit.py", "--type", "STM32_ADC", "--method", "DefineRegisters",
+      "--file", "adc_registers"]),
+    ("src/renode-stm32/src/dma_registers.rs",
+     ["scripts/emit.py", "--type", "STM32DMA", "--method", "DefineRegisters",
+      "--file", "dma_registers"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is

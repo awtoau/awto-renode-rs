@@ -13,3 +13,12 @@ pub mod gpio_registers;
 /// tests/generated_trace.rs -- the first generated module to be EXECUTED
 /// rather than merely compiled.
 pub mod syscfg_registers;
+
+/// GENERATED layout for STM32F4_EXTI, under trace replay.
+pub mod exti_registers;
+
+/// GENERATED layout for STM32_ADC, under trace replay.
+pub mod adc_registers;
+
+/// GENERATED layout for STM32DMA, under trace replay.
+pub mod dma_registers;
