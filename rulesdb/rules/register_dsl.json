@@ -24,9 +24,30 @@
       "note": "A flag is a 1-bit value, so a computed flag routes through the same combinator rather than needing a parallel with_flag_cb."
     },
     {
-      "name": "WITH_FLAG_TAG",
+      "name": "WITH_FLAG_ANONYMOUS",
       "matches": "WithFlag",
-      "emit": ".with_tagged_flag({pos})"
+      "emit": ".with_flag_anon({pos}, {mode})",
+      "note": "A `WithFlag` that binds no `out` and carries no callback is still a STORED field -- the C# overload calls DefineFlagField, which appends to `registerFields`. It is anonymous, not tagged. This used to emit `.with_tagged_flag({pos})`, which is reserved, so `Bank::write` skipped it and the bit became write-ignored and read-as-zero. It also discarded `mode`: the tagged form hardcodes READ_WRITE, so five STM32F4_RTC `Read | WriteZeroToClear` flags and one write-only flag all lost their mode as well.",
+      "negative": [
+        {
+          "shape": "WithTag / WithTaggedFlag / WithTags / WithTaggedFlags",
+          "must_not_match": "WithTag|WithTaggedFlag|WithTags|WithTaggedFlags",
+          "why": "those call PeripheralRegister.Tag, which appends to the separate `tags` list and stores NOTHING. Storing them would invent state the C# does not have -- the mirror of the bug this rule fixes, and equally invisible to a trace."
+        },
+        {
+          "shape": "WithReservedBits",
+          "must_not_match": "WithReservedBits",
+          "why": "reserved bits exist so the register knows which bits are accounted for; giving them storage would make them readable."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_tagged_flag",
+            "with_reserved"
+          ],
+          "why": "every one of those pushes with reserved = true, which is what dropped the writes. An anonymous field must reach a storing combinator."
+        }
+      ]
     },
     {
       "name": "WITH_VALUE_BOUND",
@@ -42,9 +63,29 @@
       "note": "The callbacks become free fns emitted alongside; see peripheral_methods for why they cannot be closures."
     },
     {
-      "name": "WITH_VALUE_TAG",
+      "name": "WITH_VALUE_ANONYMOUS",
       "matches": "WithValueField|WithEnumField",
-      "emit": ".with_tag({pos}, {width})"
+      "emit": ".with_value_anon({pos}, {width}, {mode})",
+      "note": "The value-field counterpart of WITH_FLAG_ANONYMOUS, and the site the bug was found at: STM32F4_EXTI's `WithValueField(0, 32, name: \"EMR\")`, whose C# comment calls it a blank implementation kept for backwards compatibility. It is a read-write scratch register, and emitting `.with_tag(0, 32)` made it write-ignored and read-as-zero. The exti trace has no writes at all, so the oracle scored it 0 divergences throughout.",
+      "negative": [
+        {
+          "shape": "WithTag / WithTaggedFlag / WithTags / WithTaggedFlags",
+          "must_not_match": "WithTag|WithTaggedFlag|WithTags|WithTaggedFlags",
+          "why": "see WITH_FLAG_ANONYMOUS: a tag is a separate C# concept with no storage, and `name:` on a value field is documented as 'ignored ... treat it as a comment', so a name never makes a field a tag."
+        },
+        {
+          "shape": "WithReservedBits",
+          "must_not_match": "WithReservedBits",
+          "why": "same as WITH_FLAG_ANONYMOUS."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_reserved"
+          ],
+          "why": "a reserved push is exactly the over-match; the field must store."
+        }
+      ]
     },
     {
       "name": "WITH_FIELDS_BOUND",
@@ -58,17 +99,39 @@
     {
       "name": "WITH_TAGGED_FLAG",
       "matches": "WithTaggedFlag",
-      "emit": ".with_tagged_flag({pos})"
+      "emit": ".with_tagged_flag({pos})",
+      "note": "A GENUINE tag: `WithTaggedFlag` calls PeripheralRegister.TaggedFlag, which appends to `tags`, a list the register's read and write paths never consult. Reserved is correct here and only here.",
+      "negative": [
+        {
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "why": "anonymity is not tagging. `name:` is documented in the C# as 'Ignored parameter, for convenience. Treat it as a comment.' -- the field is still created by DefineFlagField and still stores. Keying this rule on the absence of an `out` is what dropped 171 fields' writes."
+        }
+      ]
     },
     {
       "name": "WITH_TAG",
       "matches": "WithTag",
-      "emit": ".with_tag({pos}, {width})"
+      "emit": ".with_tag({pos}, {width})",
+      "negative": [
+        {
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "why": "see WITH_TAGGED_FLAG. Note the C# `WithIgnoredBits` is implemented as an anonymous `WithValueField` precisely BECAUSE it must cover the bits without tagging them -- so even a tag-like intent stores, and the discriminator is the combinator, never the argument list."
+        }
+      ]
     },
     {
       "name": "WITH_RESERVED_BITS",
       "matches": "WithReservedBits",
-      "emit": ".with_reserved({pos}, {width})"
+      "emit": ".with_reserved({pos}, {width})",
+      "negative": [
+        {
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "why": "the third combinator that pushes reserved, and the one the invented `.with_reserved(9, 23)` came in as. A field with no handle is not a reserved field."
+        }
+      ]
     },
     {
       "name": "REGISTER_CALLBACK",

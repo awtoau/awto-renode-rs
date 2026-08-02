@@ -72,6 +72,21 @@ def main() -> int:
               "is deleted -- it is not observing locks", file=sys.stderr)
         return 1
 
+    # 1d. A rule must not acquire a shape its own `negative` forbids. The
+    #     over-match this guards was live for the whole project: 171 anonymous
+    #     `WithValueField`/`WithFlag` sites emitted as TAGS, so `Bank::write`
+    #     skipped them and their writes vanished -- while every trace still
+    #     scored zero divergences, because behaviourally inert wrong code is
+    #     invisible to an oracle. Recording the negative as prose beside the
+    #     rule would not have caught the edit that introduced it.
+    neg = subprocess.run([py, "scripts/check_rule_negatives.py"],
+                         cwd=root, capture_output=True, text=True)
+    if neg.returncode != 0:
+        print(neg.stdout[-1200:], file=sys.stderr)
+        print("pre-commit: a rule matches a shape its own negative forbids",
+              file=sys.stderr)
+        return 1
+
     # 2. Regenerate the scorecard and stage it if it moved. Never fail the
     #    commit on this -- a stale scorecard is a nuisance, not a defect, and
     #    blocking a commit because `gh` was offline would be worse than useless.
