@@ -59,6 +59,13 @@ def main() -> int:
         ("scripts/check_inheritance.py",
          "dispatch stopped resolving strictly, or the collision guard stopped "
          "being able to fire"),
+        # Cheap (in-memory SQLite, no corpus) and it guards the one claim the
+        # rule DB makes about correctness: that `committed` means a trace
+        # checked the output. The key it replaced counted which files were
+        # ingested, which stopped meaning anything the moment the corpus cut
+        # was removed -- and nothing would have said so.
+        ("scripts/check_commit_tier.py",
+         "`committed` is no longer keyed on the oracle"),
     ):
         if subprocess.run([py, script], cwd=root).returncode != 0:
             print(f"\npre-commit: {why} -- commit refused.", file=sys.stderr)

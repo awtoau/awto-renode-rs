@@ -43,30 +43,28 @@ WHAT IS COUNTED, AND WHAT EACH NUMBER DECIDES
 
 NOT MEASURED HERE, DELIBERATELY
 -------------------------------
-Whether either output is CORRECT. Per CLAUDE.md only trace replay can say that,
-and traces exist for the cut's peripherals, not for a layout choice. This
-counts shapes and sites; it makes no claim about behaviour.
+Whether the output is CORRECT. Per CLAUDE.md only trace replay can say that, and
+traces exist for a handful of peripherals, not for a layout choice. This counts
+shapes and sites; it makes no claim about behaviour.
 
-TWO TIERS, KEPT APART
----------------------
-The cut has 29 classes with a base, which is too small a population for "zero
-collisions" to mean anything. So this runs over both corpora and writes two
-files, each stating its own tier -- because CLAUDE.md is explicit that breadth
-may DISCOVER and may never claim correctness. A census of shapes is a discovery
-question, and answering it from the cut alone would have reported that base and
-derived field names never collide.
+ONE CORPUS NOW, AND STILL ONLY A DISCOVERY TIER
+-----------------------------------------------
+This used to run over two corpora and write two files, because the cut had 29
+classes with a base -- too small a population for "zero collisions" to mean
+anything, and it duly reported that base and derived field names never collide.
+They do; the cut could not see it.
+
+The cut is gone (docs/decisions/remove-the-cut.md), so there is one corpus:
 
     python3 scripts/inheritance_census.py
-        -> docs/status/inheritance.json            the F427 cut
+        -> docs/status/inheritance.json            the whole Renode tree
 
-    RENODE_SRC=... dotnet run --project frontend/RenodeIngest -- \
-        --all --db tmp/breadth.db
-    python3 scripts/inheritance_census.py --db tmp/breadth.db \
-        --out docs/status/inheritance-breadth.json
-        -> the whole Renode tree, DISCOVERY tier
+A wider corpus does not promote this above DISCOVERY. Counting shapes is not
+validating output, and the tier line in the file says so.
 
-`--all` refuses to write the canonical database, so the breadth run cannot
-contaminate the corpus the rules are drawn from.
+`docs/status/inheritance-breadth.json` is kept as the exact artefact
+docs/decisions/inheritance-layout.md cites; it is no longer regenerated, because
+it would now be a byte-for-byte second copy of the file above.
 
 Log:  ./tmp/logs/inheritance_census.log
 """
@@ -459,15 +457,13 @@ class Census:
     # ---- 6. does any of it reach the deliverable? -------------------------
 
     def cut_overlap(self, cut_db: Path) -> dict:
-        """Which breadth findings land on a type that is IN the cut.
+        """Which findings also land on a type present in a SECOND corpus.
 
-        This is the bridge between the two tiers, and it has to be computed
-        rather than eyeballed. A collision found only on `LiteX_Framebuffer` is
-        a fact about Renode; the same collision on a type this project ships is
-        a fact about the deliverable. The distinction cannot be drawn from the
-        breadth corpus alone, because the cut's own `STM32_Timer` derives from
-        a base the cut does not contain -- so the collision is invisible on one
-        side and unattributed on the other.
+        Kept as a general intersection against another database, because the
+        question it answers is still real -- a collision on `LiteX_Framebuffer`
+        and a collision on a type the workspace ships are different facts. With
+        the cut removed there is no second corpus to pass by default, so this
+        runs only when `--cut-db` is given, and answers nothing about tiers.
         """
         con = sqlite3.connect(cut_db)
         names = {n for (n,) in con.execute("SELECT DISTINCT name FROM type")}
@@ -486,21 +482,19 @@ class Census:
     def tier(self) -> str:
         """Which validated tier this file belongs to, stated IN the file.
 
-        CLAUDE.md keeps the two apart on purpose: breadth proves a shape EXISTS
-        in real C#, and can never prove any output is right, because the oracle
-        is trace replay and traces exist only for the cut. A census of shapes is
-        squarely a discovery question, so breadth is admissible for it -- but
-        only if the file says so, otherwise the next reader treats 24 collisions
-        as a validated fact about the deliverable.
+        Always DISCOVERY, and the wider corpus did not change that. A census
+        counts shapes that EXIST in real C#; the oracle is trace replay, and it
+        reaches only the handful of peripherals with recorded traces. Saying so
+        in the file is the point -- otherwise the next reader takes 24
+        collisions for a validated fact about the output.
         """
         cfg = self.con.execute(
             "SELECT config FROM corpus_run ORDER BY id LIMIT 1").fetchone()[0]
-        if cfg == "breadth":
-            return ("DISCOVERY. Whole-tree run: it shows which shapes EXIST in "
-                    "real C#. It cannot validate any translation -- no traces "
-                    "cover this code. Do not quote it as coverage.")
-        return ("CUT. The deliverable's corpus; the only tier the trace oracle "
-                "can reach.")
+        scratch = " Read from a SCRATCH health-check database." if cfg == "breadth" else ""
+        return ("DISCOVERY. Whole-tree run: it shows which shapes EXIST in "
+                "real C#. It cannot validate any translation -- traces cover a "
+                "few peripherals, not this. Do not quote it as coverage."
+                + scratch)
 
     # ---- 4. overrides ----------------------------------------------------
 
@@ -597,9 +591,10 @@ def main() -> int:
     ap.add_argument("--max-sites", type=int, default=400,
                     help="per-site rows above this are replaced by a count")
     ap.add_argument("--cut-db", default=None,
-                    help="second corpus to intersect findings against; pass "
-                         "the cut when --db is the breadth run, so a finding "
-                         "can be told from a finding that reaches us")
+                    help="second corpus to intersect findings against, so a "
+                         "finding somewhere in Renode can be told from one on "
+                         "a type this workspace ships. No default: the corpus "
+                         "cut that used to supply it is gone")
     args = ap.parse_args()
 
     root = repo_root()

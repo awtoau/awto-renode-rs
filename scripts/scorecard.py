@@ -86,15 +86,20 @@ def rules_stats(root: Path) -> dict | None:
         rules = count("rule", "WHERE status='committed'")
         general = count("rule", "WHERE status='general'")
         # Instances-per-rule is the headline metric, so both sides of the
-        # division must mean the same thing. Counting ALL instances (breadth
-        # included) against COMMITTED rules would inflate it with matches the
-        # oracle cannot validate -- the exact blur decision D5 forbids.
+        # division must mean the same thing. Counting ALL instances against
+        # COMMITTED rules would inflate it with matches the oracle never
+        # validated -- the exact blur decision D5 forbids.
+        #
+        # Keyed on `oracle_tier > 0`, the same key `rule_commit_threshold` uses.
+        # It used to key on `corpus_run.config <> 'breadth'`, which measured
+        # which files were ingested rather than whether a trace checked the
+        # output; that became vacuous when the corpus cut was removed, since
+        # every canonical run is non-breadth. See
+        # docs/decisions/remove-the-cut.md.
         try:
             inst = con.execute(
-                "SELECT COUNT(*) FROM rule_instance ri "
-                "JOIN operation o ON o.id = ri.operation_id "
-                "JOIN corpus_run cr ON cr.id = o.run_id "
-                "WHERE cr.config <> 'breadth'").fetchone()[0]
+                "SELECT COUNT(*) FROM rule_instance "
+                "WHERE oracle_tier > 0").fetchone()[0]
         except sqlite3.Error:
             inst = 0
         all_inst = count("rule_instance")

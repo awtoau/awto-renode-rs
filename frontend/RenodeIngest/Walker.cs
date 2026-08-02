@@ -337,6 +337,19 @@ public static class Walker
                 ICompoundAssignmentOperation c => c.OperatorKind.ToString(),
                 IIncrementOrDecrementOperation i => i.IsPostfix ? "Postfix" : "Prefix",
                 IConversionOperation cv => cv.Conversion.IsImplicit ? "Implicit" : "Explicit",
+                // PATTERNS carry an operator kind for exactly the same reason
+                // expressions do, and it was not being read. `RelationalPattern`
+                // without it cannot distinguish `> 5` from `< 5`; `BinaryPattern`
+                // without it cannot distinguish `and` from `or`. Both are
+                // `Microsoft.CodeAnalysis.Operations.BinaryOperatorKind`, the
+                // same enum stored for IBinaryOperation above, so it lands in
+                // the same column the emitters already read.
+                //
+                // The ninth ingest gap, and again a property Roslyn always
+                // exposed. It was invisible until the corpus cut was removed:
+                // the cut contained no C# pattern matching at all.
+                IRelationalPatternOperation rp => rp.OperatorKind.ToString(),
+                IBinaryPatternOperation bp => bp.OperatorKind.ToString(),
                 _ => null,
             };
 

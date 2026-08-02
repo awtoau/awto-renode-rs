@@ -27,7 +27,7 @@
 //!   - UpdateTransmitInterruptLine: withheld, reaches state this peripheral does not have: st.connections
 //!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
 //!   - get_IsSlave: withheld, reaches state this peripheral does not have: st.master
-//!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
+//!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `FifoFiltersPrioritized`: no Rust mapping for `System.Collections.Generic.List<Antmicro.Renode.Peripherals.CAN.STMCAN.FilterBank>[]`
 //!   - state field `FilterBanks`: reference-typed, so the object-graph rule maps it to `Vec<Gc<FilterBank>>`; blocked: `FilterBank` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `FrameSent`: no Rust mapping for `System.Action<Antmicro.Renode.Core.CAN.CANMessageFrame>`

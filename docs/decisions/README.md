@@ -33,6 +33,7 @@ flattening and argued for as though it were a fresh decision, when PLAN.md line
 
 | # | decision | state |
 |---|---|---|
+| — | [remove the corpus cut; retier `committed` on `oracle_tier`](remove-the-cut.md) | taken 2026-08-02 |
 | [#56](inheritance-layout.md) | inheritance: dispatch trait + collision guard | **taken 2026-08-02** — merge-vs-embed deliberately deferred until the cut is closed |
 | — | [prove behaviour generation on UART before widening](target-one-peripheral-end-to-end.md) | taken 2026-08-02 |
 | — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |

@@ -13,12 +13,12 @@
 //!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq
 //!   - layout: top-level `Loop` calls register combinators that were not emitted -- those fields are missing from the bank
 //!   - on_gpio: withheld, calls withheld method(s): warning_log
-//!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
-//!   - state field `engine`: no Rust mapping for `Antmicro.Renode.Peripherals.DMA.DmaEngine`
-//!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
-//!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 17
+//!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
+//!   - state field `engine`: reference-typed, so the object-graph rule maps it to `Gc<DmaEngine>`; blocked: `DmaEngine` has no emitted Rust type yet, so there is nothing to point at
+//!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
+//!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
 //!   - stream: StreamConfiguration: callback for bit 0 needs peer method(s) not yet emitted: handle_enable
-//!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
+//!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - stream: state field `parent`: reference-typed, so the object-graph rule maps it to `Gc<STM32DMA>`; blocked: `STM32DMA` has no emitted Rust type yet, so there is nothing to point at
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};

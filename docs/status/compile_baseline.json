@@ -1,8 +1,9 @@
 {
-  "errors": 25,
-  "modules_clean": 17,
-  "modules_total": 24,
+  "errors": 3072,
+  "modules_clean": 204,
+  "modules_total": 567,
   "note": "A RATCHET, not a target. The gate fails when errors RISE above this, never when they merely stay put. A hard zero would block every commit today; a ratchet stops the regression that actually happened -- a format-string rule that was never called survived two commits because nothing compiled the 23 modules it broke.",
   "lower_me": "When errors fall, lower this. That is the whole mechanism.",
-  "why_the_totals_moved": "Lowered from 27 on 2026-08-02 after the unhandled-guard fix, which compared the LENGTH of a counter and so caught only the first site of any construct. Two errors went with it, including a `for` loop with no iterable. Lowering when errors fall IS the mechanism; leaving it high would have banked the win as slack."
+  "why_the_totals_moved": "Rebased on 2026-08-02 when the corpus cut was removed (docs/decisions/remove-the-cut.md). The converter did not get worse: it is now asked to emit 567 modules instead of 24, and the 543 new ones had never been near a compiler. 25 -> 3072 errors, 17/24 -> 204/567 clean. The CLEAN RATE is the number that moved in the right direction: 71% -> 36% looks like a fall, but the old 71% was measured over a hand-picked 24 types chosen because they were the deliverable, and 204 modules now compile that no gate had ever compiled. Earlier moves: lowered 27 -> 25 after the unhandled-guard fix, which compared the LENGTH of a counter and so caught only the first site of any construct.",
+  "why_this_ratchet_is_now_weaker": "A single broken rule that adds 50 errors is a 200% regression against 25 and a 1.6% one against 3072, so this gate no longer notices small breakage. It still catches the failure it was built for -- a rule that breaks whole modules -- and the per-module counts in tmp/logs/compile_check.log are the finer instrument. A per-module ratchet is the fix; it is not built."
 }
