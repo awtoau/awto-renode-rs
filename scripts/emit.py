@@ -588,6 +588,12 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         self._emitted_fns = set(emitted)
         self.gaps = []
         stmts, fields, gaps = self.emit_registers(type_name, method_name)
+        # Constructors. Last, so a statement it withholds cannot disturb the
+        # counters the method and layout paths above read. Its own module owns
+        # the decision about what a constructor can and cannot become.
+        from emitter.lang.constructor import emit as _ctor_emit
+        ctor_lines, ctor_gaps = _ctor_emit(self, type_name)
+        gaps.extend(ctor_gaps)
         gaps.extend(method_gaps)
         gaps.extend(state_gaps)
         gaps.extend(sub_gaps)
@@ -716,6 +722,13 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             a(f"    pub {n}: {ty},")
         a("}")
         a("")
+        if ctor_lines:
+            a("// C# constructors, as field assignments over the derived")
+            a("// `Default`. Only assignments to this type's own storage can")
+            a("// live here; everything else the constructor did is a gap above.")
+            for line in ctor_lines:
+                a(line.rstrip())
+            a("")
         if methods:
             a("// The peripheral's own methods. C# reaches its state through")
             a("// `this`; these receive it as (bank, st) instead, so a callback")

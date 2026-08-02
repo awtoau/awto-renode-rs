@@ -269,6 +269,23 @@ def fields_of(comb: str, args: list[str], line_no: int, raw: str) -> list[Field]
         return [mk(pos + i * width, width, mode, False) for i in range(count)]
     if comb == "with_value_cb":
         return [mk(n(0), n(1), args[2], False, _cb(args[3]), _cb(args[4]))]
+    # The `out`-binding forms of the two above. They differ from `with_flag` /
+    # `with_value` only in also carrying callbacks, so the field they install is
+    # identical apart from the two callback slots.
+    if comb == "with_flag_cb":
+        return [mk(n(0), 1, args[2], False, _cb(args[3]), _cb(args[4]))]
+    if comb == "with_value_out_cb":
+        return [mk(n(0), n(1), args[3], False, _cb(args[4]), _cb(args[5]))]
+    if comb == "with_values_cb":
+        pos, width, count, mode = n(0), n(1), n(2), args[3]
+        prov, onw = _cb(args[4]), _cb(args[5])
+        return [mk(pos + i * width, width, mode, False, prov, onw)
+                for i in range(count)]
+    # Register-level, not field-level: it installs no bit-field at all, so an
+    # empty list is the model rather than an omission. Named explicitly so it
+    # does not fall through to the raise below.
+    if comb == "with_write_callback":
+        return []
     if comb == "with_fields_cb":
         pos, width, count, mode = n(0), n(1), n(2), args[4]
         prov, onw = _cb(args[5]), _cb(args[6])

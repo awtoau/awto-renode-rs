@@ -56,6 +56,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Gap text -> a stable category. Ordered: first match wins, so put the specific
 # patterns above the general ones.
 CATEGORIES: list[tuple[str, str]] = [
+    # FIRST, and each one separately, because these were SILENCE until the
+    # constructor rule landed: 32 constructors were dropped with no output and
+    # no gap. Folded into one line they would read as a single problem, and
+    # they are five different ones -- only two of which are the converter's to
+    # solve. A ctor gap also mentions parameters and statement kinds, so these
+    # must out-rank the general patterns below or they would be filed as
+    # unmapped parameters.
+    (r"\.\.ctor .*: a base constructor", "constructor: base not inlined"),
+    (r"\.\.ctor .*: statement \d+ withheld",
+     "constructor: statement not an initialiser"),
+    (r"\.\.ctor .*C# default value that the corpus does not record",
+     "constructor: parameter default not ingested"),
+    (r"\.\.ctor .*(no statement could be translated|body assigns nothing)",
+     "constructor: nothing to initialise"),
+    (r"\.\.ctor", "constructor: emitted, nothing constructs with it"),
     (r"nullability|conditional access", "null safety (?. and ??)"),
     (r"cannot emit stmt:Throw|Throw", "exceptions"),
     (r"cannot emit stmt:Switch|Switch", "switch / pattern matching"),

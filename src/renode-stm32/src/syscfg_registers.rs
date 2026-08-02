@@ -25,6 +25,12 @@
 //!   - ExternalInterruptConfiguration4: DefineValueField bit 8: `changeCallback` is bound in the C# and no rule consumes it -- that behaviour is missing
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - Reset: withheld, reaches state this peripheral does not have: st.internal_receivers_cache
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: no statement could be translated, so no initialiser is emitted at all
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: statement 1 withheld -- not an assignment to the type's own storage, but VariableDeclarationGroup; an initialiser can only assign the struct it is building
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: statement 2 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: statement 3 withheld -- assigns `Connections`, which the emitted struct has no storage for
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: statement 4 withheld -- assigns `internalReceiversCache`, which the emitted struct has no storage for
+//!   - STM32_SYSCFG..ctor `STM32_SYSCFG()`: statement 5 withheld -- assigns `registers`, which the emitted struct has no storage for
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `internalReceiversCache`: no Rust mapping for `System.Collections.Generic.Dictionary<int, Antmicro.Renode.Peripherals.Miscellaneous.STM32_SYSCFG.InternalReceiver>`
 
