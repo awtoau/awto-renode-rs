@@ -102,6 +102,26 @@ those five cost more to find than the fix cost to make.
 The same principle is now enforced where it can be: a normalisation named in
 data with no registered handler raises, rather than doing nothing.
 
+## A path that emits nothing must say why
+
+Six paths in one session produced no output and reported no reason. Each was
+indistinguishable from a rule that correctly declines, so review could not
+catch them -- there was nothing to see. Two were reported as landed before
+anyone noticed; one survived two commits.
+
+`core.must_explain` enforces the invariant where it applies: if a wrapped
+path returns empty and neither `self.gaps` nor `self.unhandled` grew, it
+raises.
+
+It cannot be applied blindly. `emit_stmt` returns nothing for an `Empty`
+statement, and `emit_call` returns nothing when a rule declares `emit: null`
+deliberately. Both are correct.
+
+**So decide which kind your path is when you write it.** If empty means "I
+could not", wrap it. If empty means "there was nothing", say so in the
+docstring. Leaving it undecided is how all six got in. The running audit is
+issue #53.
+
 ## When you cannot do it generally
 
 **Withhold and report a gap.** That is a correct outcome, not a failure.
