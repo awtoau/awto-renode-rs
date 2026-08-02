@@ -1,0 +1,17 @@
+[package]
+name = "renode-sync"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[features]
+# Deletes the lock from the "locked" arm of every experiment. Not a build
+# option -- a mutation, used only by scripts/check_sync_harness.py to prove the
+# tests can fail. Never enable it for anything else.
+prove-the-harness-can-fail = []
+
+[dependencies]
+
+[dev-dependencies]
+renode-regs = { path = "../renode-regs" }
+renode-oracle = { path = "../renode-oracle" }
