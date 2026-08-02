@@ -155,11 +155,12 @@ def main() -> int:
     # graph is small enough that longer ones are visible in the diagram.
     cycles = sorted({tuple(sorted((a, b))) for a, b in edges if (b, a) in edges})
 
-    # Name outputs by SCOPE. Running this against the breadth DB used to
-    # overwrite the cut's files, replacing a readable 52-edge graph with an
-    # unreadable 1,278-edge one -- and the cut is the deliverable, so the
-    # useful artefact was the one that got clobbered.
-    scope = "tree" if breadth else "cut"
+    # Name outputs by the RUN, not by scope: since the corpus cut was removed
+    # both runs read the same files, so the only distinction left is canonical
+    # corpus vs scratch health check. Kept separate because a health-check
+    # database can be half-written, and clobbering the canonical graph with one
+    # is how a readable 52-edge diagram became an unreadable 1,278-edge one.
+    scope = "breadth" if breadth else "tree"
     status = root / "docs" / "status"
     status.mkdir(parents=True, exist_ok=True)
     tsv = status / f"ownership-{scope}.tsv"

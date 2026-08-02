@@ -126,63 +126,67 @@ scripts alone". Saying it was not enough, so it is now checked.
 These are hard rules for the conversion pipeline. Full rationale and schema:
 [docs/rulesdb-design.md](docs/rulesdb-design.md).
 
-### Breadth discovers; only the cut validates
+### Emitting is not validating; the oracle is the only judge
 
-*Amended. The original rule said breadth "must never produce rules, clusters,
-coverage numbers, or work items" — written when the deliverable was ~16k lines
-of F427 code. The deliverable is now a general C#-to-Rust transpiler, and that
-changes what breadth is for. Reasoning recorded on the decision issue; do not
-re-litigate it here.*
+*Amended twice. The original rule was "breadth discovers; only the cut
+validates". The cut is gone — see [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md).
+Do not re-litigate it here; the part that survives is below, and it is the part
+that always mattered.*
 
-`--all` runs the ingest over the whole Renode tree (~448k lines, ~57s, 308 MB).
-It answers two questions now.
+**The corpus is the whole Renode tree.** ~448k lines, ~1,708 files, ~55s to
+re-ingest, 308 MB. There is no file list to maintain and nothing to keep
+transitively closed by hand — the previous one was not, and truncated 69% of
+inheritance chains while looking complete.
 
-**1. Does the tooling crash or lose data silently?** A breadth failure is a
-**bug in our tooling**, not a fact about Renode. It found one on its first run:
-5,123 methods (24.7%) claimed a body while emitting no operations, with zero
-exceptions thrown, because `partial void Foo();` is neither abstract nor extern.
+**A wider corpus is a discovery instrument, not a confidence one.**
 
-**2. What C# exists that the cut cannot show us?** The tree is 22x the code but
-only 1.3x the operation kinds (71 → 90) — and those 19 extra kinds are
-`SwitchExpression`, `RelationalPattern`, `Await`, `Tuple`,
-`DeconstructionAssignment` and friends. Modern C# that any real transpiler must
-handle and that the cut would never reveal. The BCL surface is 4.6x larger
-(531 → 2,420 members). For **discovery**, and for **negative examples** showing
-where a rule over-matches, breadth is the best source we have.
+> A rule that EMITS a thousand times has been shown to produce plausible output
+> a thousand times. It has never been shown to produce right output.
 
-**What breadth still may not do: claim correctness.**
-
-> Breadth can prove a rule EMITS. It can never prove the output is RIGHT.
-
-The oracle is trace replay, and traces exist only for the cut. A rule matched a
-thousand times across the tree has produced *plausible* output a thousand times
-— which is exactly how the invented `.with_reserved(9, 23)` survived a
-33,000-access trace: behaviourally inert wrong code is invisible.
+That is exactly how the invented `.with_reserved(9, 23)` survived a
+33,000-access trace: behaviourally inert wrong code is invisible to tests. The
+oracle is trace replay, and it reaches the peripherals that have recorded
+traces — 8 of them — not the corpus.
 
 So the rule DB has **two validated tiers**, enforced by triggers in
 `rulesdb/schema.sql`, not by review:
 
 | tier | threshold | guarantee |
 |---|---|---|
-| `general` | ≥3 instances **anywhere**, breadth included | emits on real code; correctness unknown |
-| `committed` | ≥3 instances **in the cut**, each oracle-backed | the output is right |
+| `general` | ≥3 instances **anywhere** in the corpus | emits on real code; correctness unknown |
+| `committed` | ≥3 instances with **`oracle_tier > 0`** | a trace checked the output |
 
-`rule_commit_threshold` counts only instances whose `corpus_run.config <>
-'breadth'`, so breadth cannot manufacture confidence it has no way to supply.
+`rule_commit_threshold` counts only `rule_instance.oracle_tier > 0`.
+It used to count `corpus_run.config <> 'breadth'` — keying on *which files were
+ingested* rather than on *whether anything checked the output*, which was the
+wrong question even when the cut existed. `scripts/check_commit_tier.py` proves
+the new key refuses a rule the old key would have accepted.
 
 **Metrics report the tiers separately.** Coverage and instances-per-rule mean
 "validated", never "emitted". Blur the two and the headline metric quietly
-becomes a measure of how much we produced rather than how much works — which is
-the failure the original rule was guarding against, and the part of it that
-still stands.
+becomes a measure of how much we produced rather than how much works.
+
+**A bigger corpus means more gaps, and that is correct.** The gap census rose
+from 520 over 25 types to 20,321 over 569 when the cut went. Nothing got worse:
+the converter always could not emit those constructs, it was simply never asked.
+Do not "fix" a gap count by emitting something plausible.
+
+**`--all` no longer widens anything** — every run reads every file. It now
+declares the run's *purpose*: a tooling health check
+(`scripts/check_breadth.py`) whose output goes to a scratch database tagged
+`config = 'breadth'` and is refused by every rule/cluster consumer. That check
+still earns its place: it found 5,123 methods (24.7%) claiming a body while
+emitting no operations, with zero exceptions thrown, because `partial void
+Foo();` is neither abstract nor extern.
 
 ### Corpus before translation
 
 - **The translator reads only from the corpus database.** No code path may read a
   `.cs` file directly. An unpopulated database therefore translates nothing —
   skipping ingestion is impossible, not merely discouraged.
-- **Ingest the whole cut, never a hand-picked subset.** Cherry-picking is exactly
-  what makes the leverage measurement unavailable.
+- **Ingest the whole tree, never a hand-picked subset.** Cherry-picking is exactly
+  what makes the leverage measurement unavailable — and the hand-picked subset
+  that used to be permitted is the one this rule now forbids.
 
 ### A rule is not a rule until it has three validated instances
 

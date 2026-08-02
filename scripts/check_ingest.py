@@ -40,6 +40,12 @@ STRUCTURAL = {
     "DefaultCaseClause", "CaseClause", "CatchClause", "Finally", "While",
     "ForLoop", "ForEachLoop", "ForToLoop", "Tuple", "Parenthesized",
     "ArrayInitializer", "IsPattern", "DeclarationPattern", "ConstantPattern",
+    # Pattern-matching nodes whose whole meaning is their position. An arm is
+    # (pattern, guard, value); `not p` is its child negated; `_` matches
+    # anything and has nothing to say about itself. Their siblings
+    # RelationalPattern and BinaryPattern are NOT here -- those carry an
+    # OperatorKind, and the walker now reads it.
+    "SwitchExpressionArm", "NegatedPattern", "DiscardPattern",
     "VariableInitializer", "Loop", "ConstructorBodyOperation",
     "YieldReturn", "YieldBreak", "InterpolatedStringAppendLiteral",
     "InterpolatedStringAppendFormatted",

@@ -52,6 +52,13 @@ def main() -> int:
         ("scripts/check_layering.py", "corpus knowledge in the generic layer"),
         ("scripts/check_generated.py", "a generated file was hand-edited"),
         ("scripts/check_ingest.py", "an operation kind lost its extraction"),
+        # Cheap (in-memory SQLite, no corpus) and it guards the one claim the
+        # rule DB makes about correctness: that `committed` means a trace
+        # checked the output. The key it replaced counted which files were
+        # ingested, which stopped meaning anything the moment the corpus cut
+        # was removed -- and nothing would have said so.
+        ("scripts/check_commit_tier.py",
+         "`committed` is no longer keyed on the oracle"),
     ):
         if subprocess.run([py, script], cwd=root).returncode != 0:
             print(f"\npre-commit: {why} -- commit refused.", file=sys.stderr)

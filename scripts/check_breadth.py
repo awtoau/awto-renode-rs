@@ -4,15 +4,20 @@
 WHAT THIS IS: a smoke test for the tooling. It runs the walker over all ~1,708
 files and asserts the tool neither crashes nor loses data silently.
 
-WHAT THIS IS NOT: a source of rules, clusters, coverage numbers or work.
-Renode is ~448k lines against an F427 deliverable of ~16k. Treating breadth
-output as corpus data would generate hundreds of clusters from EFR32xG2, Xtensa
-and RISC-V peripherals that will never be translated -- polluting the rule DB,
-inflating coverage, and spending LLM budget on patterns that are not the
-deliverable. The ingest enforces this by refusing to write the canonical
-database in --all mode and tagging the run config as 'breadth'.
+IT NO LONGER READS MORE THAN A NORMAL RUN. The corpus cut is gone
+(docs/decisions/remove-the-cut.md), so the canonical ingest already walks every
+file. `--all` now declares the run's PURPOSE rather than its scope: the output
+is SCRATCH. It goes to tmp/, it is tagged `config = 'breadth'`, and every
+rule/cluster consumer refuses a database with that tag.
 
-It is cheap enough to run routinely (~50s), which is the only reason it is worth
+That fence is still worth having, and not because it gates tiering -- the
+`committed` tier is keyed on `oracle_tier > 0` now
+(scripts/check_commit_tier.py), so a run's config cannot manufacture confidence.
+It is worth having because a smoke test can be interrupted, re-run mid-walk, or
+left half-written, and overwriting the canonical corpus with one is a real way
+to lose a corpus.
+
+It is cheap enough to run routinely (~55s), which is the only reason it is worth
 having: Renode is small enough that full coverage costs almost nothing, unlike
 the kernel corpus this method was borrowed from.
 
@@ -131,8 +136,9 @@ def main() -> int:
     try:
         config = con.execute("SELECT config FROM corpus_run ORDER BY id DESC LIMIT 1").fetchone()
         if not config or config[0] != "breadth":
-            log.error("FAIL: run not tagged 'breadth' (got %r) -- breadth output must "
-                      "never be mistakable for corpus data", config)
+            log.error("FAIL: run not tagged 'breadth' (got %r) -- a scratch "
+                      "health-check database must never be mistakable for the "
+                      "canonical corpus", config)
             defects += 1
 
         for label, sql, tolerance in ASSERTIONS:

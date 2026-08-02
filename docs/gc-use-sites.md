@@ -360,7 +360,7 @@ needs running peripherals that do not exist yet.
 
 ## What phase 2 needs from this API
 
-The tracer's job is to turn `docs/status/ownership-cut.tsv`'s `static` evidence
+The tracer's job is to turn `docs/status/ownership-tree.tsv`'s `static` evidence
 column into a measured one — which objects were *actually* shared, *actually*
 cyclic, *actually* long-lived — so a field the tracer never saw shared can be
 demoted to a plain owned value. What that needs, and what already exists:

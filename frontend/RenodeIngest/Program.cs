@@ -8,9 +8,16 @@ namespace RenodeIngest;
 /// <summary>
 /// Roslyn corpus ingest. Issue #30 (R1).
 ///
-/// Loads Renode's compilation, filters to the ARM/STM32F427 cut, walks the
-/// IOperation tree, and writes the corpus to SQLite. The translator reads only
-/// from that database -- see docs/rulesdb-design.md.
+/// Loads Renode's compilation, walks the IOperation tree of EVERY file in it,
+/// and writes the corpus to SQLite. The translator reads only from that
+/// database -- see docs/rulesdb-design.md.
+///
+/// There is no corpus cut. It was a hand-typed file list that was not
+/// transitively closed -- it held types whose base classes and interfaces it
+/// lacked -- so it truncated 69% of inheritance chains and hid two real field
+/// collisions. It was also the wrong proxy: trace availability is a fact about
+/// which peripherals have recorded traces, not about which files an ingest
+/// walked. See docs/decisions/remove-the-cut.md.
 ///
 /// Started on MSBuildWorkspace deliberately: the design doc calls for bypassing
 /// it with CSharpCompilation.Create, but says to MEASURE the serial load before
@@ -27,17 +34,22 @@ public static class Program
         var dbPath = ArgValue(args, "--db") ?? "rulesdb/patterns.db";
         var threads = int.TryParse(ArgValue(args, "-j"), out var j) && j > 0
                       ? j : Environment.ProcessorCount;
-        // Breadth mode: ingest EVERY file. This is a TOOLING HEALTH CHECK --
-        // does the walker crash, does it lose data silently -- and nothing more.
+        // `--all` NO LONGER SELECTS SCOPE. Every run reads every file, so there
+        // is nothing left for it to widen. What it still declares is the run's
+        // PURPOSE: this is a TOOLING HEALTH CHECK -- does the walker crash, does
+        // it lose data silently (scripts/check_breadth.py) -- and not the
+        // canonical corpus.
         //
-        // It must NEVER be a source of rules or work. Renode is 448k lines
-        // against an F427 deliverable of ~16k, so breadth data would generate
-        // hundreds of clusters from EFR32xG2, Xtensa and RISC-V peripherals we
-        // will never translate: polluting the rule DB, inflating coverage, and
-        // spending LLM budget on patterns that are not the deliverable.
-        //
-        // Enforced below by refusing the canonical database path and tagging the
-        // run config as 'breadth', which the rule engine must reject.
+        // The guard below is deliberately KEPT, and not because it still gates
+        // tiering: `rule_commit_threshold` now counts `oracle_tier > 0`, so a
+        // run's config can no longer manufacture a `committed` rule
+        // (scripts/check_commit_tier.py). It is kept because a health-check run
+        // goes to a scratch database that may be truncated, re-run mid-walk or
+        // left half-written, and every rule/cluster consumer -- analyse_corpus,
+        // census, rules.py -- refuses a database tagged 'breadth' rather than
+        // silently deriving work from one. Overwriting the canonical corpus with
+        // a smoke test is a real way to lose a corpus, and costs nothing to
+        // refuse.
         var all = args.Contains("--all");
 
         // Reflection audit of Roslyn's own API surface. Needs no corpus and no
@@ -60,7 +72,8 @@ public static class Program
         {
             Console.Error.WriteLine(
                 "--all is a tooling health check and must not write the canonical corpus.\n" +
-                "Rules come from the F427 cut only. Pass --db tmp/breadth.db instead.");
+                "It reads the same files a normal run does -- it differs only in that its\n" +
+                "output is scratch. Pass --db tmp/breadth.db instead.");
             return 1;
         }
 
@@ -126,33 +139,24 @@ public static class Program
                         + $"{errors.Count} workspace failures");
         foreach (var d in errors.Take(5)) Console.WriteLine($"  ! {Truncate(d.Message, 120)}");
 
-        // Resolve the corpus cut against real documents, and report anything
-        // that did not match -- a silently-missing file would quietly shrink
-        // the corpus and invalidate every coverage number downstream.
+        // Every document in the compilation. The only exclusion is a tree with
+        // no file path -- a generated or in-memory tree, which has no source to
+        // point provenance at.
+        //
+        // Nothing is filtered by name. The previous file list was hand-typed and
+        // silently incomplete; the corpus is now defined by the compilation
+        // itself, which is the one description of it that cannot drift.
         var trees = compilation.SyntaxTrees
-            .Where(t => !string.IsNullOrEmpty(t.FilePath)
-                        && (all || CorpusCut.Contains(t.FilePath)))
+            .Where(t => !string.IsNullOrEmpty(t.FilePath))
             .ToList();
 
-        var matched = new HashSet<string>();
-        foreach (var t in trees)
-        {
-            var norm = t.FilePath.Replace('\\', '/');
-            foreach (var s in CorpusCut.All())
-                if (norm.EndsWith(s, StringComparison.Ordinal)) matched.Add(s);
-        }
-        var missing = CorpusCut.All().Where(s => !matched.Contains(s)).ToList();
-
+        var skipped = compilation.SyntaxTrees.Count() - trees.Count;
         var loc = trees.Sum(t => t.GetText().Lines.Count);
         Console.WriteLine();
-        Console.WriteLine(all
-            ? $"corpus    BREADTH MODE: {trees.Count} files, {loc:N0} lines"
-            : $"corpus    {trees.Count}/{CorpusCut.All().Count()} files resolved, {loc:N0} lines");
-        if (!all && missing.Count > 0)
-        {
-            Console.WriteLine($"          {missing.Count} NOT FOUND -- corpus is incomplete:");
-            foreach (var m in missing) Console.WriteLine($"            {m}");
-        }
+        Console.WriteLine($"corpus    {trees.Count} files, {loc:N0} lines"
+                        + (all ? "   [HEALTH CHECK -- scratch database]" : ""));
+        if (skipped > 0)
+            Console.WriteLine($"          {skipped} tree(s) skipped: no file path (generated source)");
 
         // Compilation diagnostics tell us whether the semantic model is
         // trustworthy. Ingesting from a compilation with unresolved types would
@@ -166,12 +170,18 @@ public static class Program
         if (dryRun)
         {
             Console.WriteLine($"\ndry run -- nothing written. total {total.Elapsed.TotalSeconds:F1}s");
-            return missing.Count == 0 ? 0 : 1;
+            // A compilation that produced no document is a broken load, not an
+            // empty corpus. It is the only way a dry run can now fail: there is
+            // no file list left to come up short against.
+            return trees.Count > 0 ? 0 : 1;
         }
 
         var commit = GitCommit(renodeSrc);
+        // 'tree' is the canonical corpus -- the whole compilation. 'breadth' is
+        // the same files written to a scratch database as a health check, and is
+        // refused by every rule/cluster consumer.
         var written = await Ingest.RunAsync(compilation, trees, dbPath, renodeSrc, commit,
-                                            threads, all ? "breadth" : "f427");
+                                            threads, all ? "breadth" : "tree");
         Console.WriteLine($"\ntotal     {total.Elapsed.TotalSeconds:F1}s");
         return written ? 0 : 1;
     }

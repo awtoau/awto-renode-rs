@@ -53,7 +53,7 @@ CREATE TABLE corpus_run (
     started_at    TEXT NOT NULL,          -- ISO 8601 with offset
     renode_commit TEXT NOT NULL,
     tool_version  TEXT NOT NULL,          -- ingest tool git describe
-    config        TEXT NOT NULL,          -- which corpus cut (F427)
+    config        TEXT NOT NULL,          -- run purpose: 'tree' | 'breadth'
     notes         TEXT
 );
 ```
@@ -300,7 +300,7 @@ CREATE TABLE progress_snapshot (
 ## The pipeline
 
 ```
-Renode C# (F427 cut)
+Renode C# (the whole tree)
       │
       ▼  [ingest]  Roslyn IOperation walk → serialised IR
 corpus database ──────────────────────────────────────────┐
@@ -488,8 +488,10 @@ The rules are also **the durable asset**: they carry forward to the other 419
 DSL-style peripheral files (208,580 lines) at no additional LLM cost. Per-function
 translation carries nothing forward.
 
-**Caveat, stated plainly:** for the F427 cut alone (~28k lines), this tooling is
-more expensive up front than hand-translating. It is justified by two things —
-the full-tree scale, and the regeneration capability above. If the goal were ever
-narrowed to F427-and-stop *and* the architecture were known to be right first
-time, hand-translation would be cheaper. Neither of those holds.
+**Caveat, stated plainly:** for an F427-sized slice alone (~28k lines), this
+tooling is more expensive up front than hand-translating. It is justified by two
+things — the full-tree scale, and the regeneration capability above. If the goal
+were ever narrowed to F427-and-stop *and* the architecture were known to be right
+first time, hand-translation would be cheaper. Neither of those holds, and the
+corpus is now the full tree
+([docs/decisions/remove-the-cut.md](decisions/remove-the-cut.md)).

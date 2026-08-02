@@ -23,7 +23,11 @@ CREATE TABLE IF NOT EXISTS corpus_run (
     finished_at   TEXT,
     renode_commit TEXT    NOT NULL,
     tool_version  TEXT    NOT NULL,   -- ingest tool git describe
-    config        TEXT    NOT NULL,   -- corpus cut, e.g. 'f427'
+    -- Run PURPOSE, not run scope. There is only one scope: the whole Renode
+    -- tree (the corpus cut was removed -- docs/decisions/remove-the-cut.md).
+    -- 'tree' is the canonical corpus; 'breadth' is a tooling health check
+    -- written to a scratch database and refused by every rule/cluster consumer.
+    config        TEXT    NOT NULL,
     host          TEXT,
     notes         TEXT
 );
@@ -267,21 +271,22 @@ CREATE TABLE IF NOT EXISTS rule (
     --
     -- TWO validated tiers, because there are two different guarantees:
     --
-    --   general    >=3 instances ANYWHERE, including the breadth corpus. The
-    --              rule demonstrably EMITS on real code. It carries NO
-    --              correctness guarantee, because the oracle is trace replay
-    --              and traces exist only for the cut -- so a rule matched a
-    --              thousand times outside it has been shown to produce
-    --              plausible output, never correct output. That is exactly the
-    --              failure mode of the invented `.with_reserved(9, 23)`, which
-    --              survived a 33k-access trace by being behaviourally inert.
+    --   general    >=3 instances ANYWHERE in the corpus. The rule demonstrably
+    --              EMITS on real code. It carries NO correctness guarantee,
+    --              because the oracle is trace replay and most of the corpus
+    --              has no trace -- so a rule matched a thousand times has been
+    --              shown to produce plausible output, never correct output.
+    --              That is exactly the failure mode of the invented
+    --              `.with_reserved(9, 23)`, which survived a 33k-access trace
+    --              by being behaviourally inert.
     --
-    --   committed  >=3 instances IN THE CUT, each backed by an oracle tier.
-    --              This is the only tier that claims the output is right.
+    --   committed  >=3 instances with oracle_tier > 0 -- each one an instance
+    --              whose output a trace has actually checked. This is the only
+    --              tier that claims the output is right.
     --
-    -- Keeping them apart is what lets breadth improve rule GENERALITY without
-    -- inflating any number that claims correctness. Blur them and the coverage
-    -- metric silently becomes a measure of how much we emitted.
+    -- Keeping them apart is what lets a wider corpus improve rule GENERALITY
+    -- without inflating any number that claims correctness. Blur them and the
+    -- coverage metric silently becomes a measure of how much we emitted.
     CHECK (status IN ('proposed','validated','general','committed','retired')),
     CHECK (min_instances_required >= 1)
 );
@@ -301,6 +306,9 @@ CREATE TABLE IF NOT EXISTS rule_instance (
     rule_id      INTEGER NOT NULL REFERENCES rule(id) ON DELETE CASCADE,
     operation_id INTEGER NOT NULL REFERENCES operation(id),
     validated_at TEXT    NOT NULL,
+    -- 0 means "no trace has checked this instance". The commit trigger below
+    -- counts only rows above 0, so this column -- not corpus membership -- is
+    -- what `committed` is keyed on.
     oracle_tier  INTEGER NOT NULL,
     evidence     TEXT    NOT NULL,
     PRIMARY KEY (rule_id, operation_id)
@@ -324,22 +332,28 @@ CREATE TABLE IF NOT EXISTS rule_deviation (
 
 -- Enforce the commit threshold in the database, not in review.
 --
--- `committed` counts only instances from a NON-BREADTH run. A rule may match a
--- thousand times across the whole tree and still not be committable, because
--- none of those matches can be validated: the oracle replays traces, and the
--- traces are of the cut. Counting them here would let breadth manufacture
--- confidence it cannot supply.
+-- `committed` counts only instances with `oracle_tier > 0`: instances whose
+-- emitted output a trace has actually checked. A rule may match a thousand
+-- times across the tree and still not be committable, because matching is not
+-- validation -- the oracle is trace replay, and most of the corpus has no
+-- trace.
+--
+-- This used to count `corpus_run.config <> 'breadth'` instead, i.e. it keyed on
+-- WHICH FILES WERE INGESTED rather than on whether anything checked the output.
+-- That was already wrong while the cut existed (growing the cut by one file
+-- manufactured confidence), and it would have become vacuous the moment the cut
+-- was removed, since every canonical run is non-breadth. See
+-- docs/decisions/remove-the-cut.md; scripts/check_commit_tier.py proves the
+-- new key fires and the old one would not.
 CREATE TRIGGER IF NOT EXISTS rule_commit_threshold
 BEFORE UPDATE OF status ON rule
 WHEN NEW.status = 'committed'
      AND (SELECT COUNT(*) FROM rule_instance ri
-          JOIN operation o   ON o.id = ri.operation_id
-          JOIN corpus_run cr ON cr.id = o.run_id
-          WHERE ri.rule_id = NEW.id AND cr.config <> 'breadth')
+          WHERE ri.rule_id = NEW.id AND ri.oracle_tier > 0)
          < NEW.min_instances_required
 BEGIN
     SELECT RAISE(ABORT,
-        'rule cannot be committed below min_instances_required validated instances IN THE CUT -- breadth matches do not count; record it as a patch, or as general');
+        'rule cannot be committed below min_instances_required ORACLE-BACKED instances (oracle_tier > 0) -- a match no trace has checked does not count; record it as a patch, or as general');
 END;
 
 -- `general` has a threshold too, just a weaker one: instances from anywhere.
@@ -353,6 +367,22 @@ WHEN NEW.status = 'general'
 BEGIN
     SELECT RAISE(ABORT,
         'rule cannot be general below min_instances_required matches -- one site is a patch');
+END;
+
+-- Both of the above fire on UPDATE only, so a rule INSERTED at 'committed' or
+-- 'general' walked straight past them. Nothing populates these tables yet, which
+-- means the whole population path is still to be written -- and a tool that
+-- creates a rule already carrying its status is the obvious way to write it.
+--
+-- A freshly inserted rule has no rule_instance rows at all (they reference it),
+-- so the only correct answer is that no rule may be BORN validated: it earns the
+-- status by accumulating instances and then being promoted.
+CREATE TRIGGER IF NOT EXISTS rule_insert_status
+BEFORE INSERT ON rule
+WHEN NEW.status IN ('committed', 'general')
+BEGIN
+    SELECT RAISE(ABORT,
+        'a rule cannot be INSERTED as committed or general -- it has no instances yet. Insert it as proposed and promote it once the threshold is met');
 END;
 
 -- ===========================================================================

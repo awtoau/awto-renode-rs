@@ -8,17 +8,21 @@ A gap type that appears once is a curiosity. One that appears four hundred
 times across unrelated peripherals is the next piece of work, and the ranking
 between them is not guessable from reading the code.
 
-BREADTH IS A HEALTH CHECK, NEVER A SOURCE OF WORK
--------------------------------------------------
-Run against `tmp/breadth.db` this covers the whole tree, which is far larger
-than the deliverable. Per CLAUDE.md that data may not produce rules, clusters,
-coverage numbers or work items -- it exists to show whether the tooling breaks
-or silently loses data on code it was not designed against. Rules come from the
-cut alone, and this script writes nothing back.
+A GAP COUNT IS NOT A CORRECTNESS CLAIM
+--------------------------------------
+The corpus is the whole Renode tree (the cut was removed --
+docs/decisions/remove-the-cut.md), so these counts cover ~448k lines rather
+than a hand-picked ~22k. The total went UP as a direct result, and that is the
+correct reading: the converter always could not emit those constructs; it was
+simply never asked.
 
-The useful comparison is the two runs side by side: a gap type that is common
-in the cut is work, and one that appears only outside it is somebody else's
-architecture.
+What this still cannot say is whether anything it DID emit is right. That is
+trace replay, and it reaches only the peripherals with recorded traces. A
+falling gap count means more was emitted, never that more was validated.
+
+A database tagged `config = 'breadth'` is a scratch health-check run of the
+same files (scripts/check_breadth.py); it is labelled below so its output is
+never mistaken for the canonical corpus.
 
 RELATIONSHIP TO THE RULE ENGINE (#35)
 -------------------------------------
@@ -130,8 +134,9 @@ def main() -> int:
     if args.limit:
         rows = rows[:args.limit]
 
-    log.info("gap census over %s%s", args.db, "  [BREADTH -- health check only]"
-             if breadth else "  [the cut]")
+    log.info("gap census over %s%s", args.db,
+             "  [BREADTH -- scratch health-check database]"
+             if breadth else "  [the corpus: the whole Renode tree]")
     log.info("%d type(s) with a register-defining method", len(rows))
     log.info("")
 
@@ -219,10 +224,10 @@ def main() -> int:
 
     if breadth:
         log.info("")
-        log.info("BREADTH RUN -- health check only. Per CLAUDE.md this produces")
-        log.info("no rules, no clusters and no work items. Rules come from the")
-        log.info("cut. A crash here is a bug in our tooling, not a fact about")
-        log.info("the tree.")
+        log.info("BREADTH RUN -- a scratch health-check database, not the")
+        log.info("canonical corpus. It reads the same files; it exists so a")
+        log.info("smoke test cannot overwrite the corpus. A crash here is a bug")
+        log.info("in our tooling, not a fact about the tree.")
     return 0
 
 

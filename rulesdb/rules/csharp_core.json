@@ -88,6 +88,13 @@
       "fix": "emit the receiver, treating only InstanceReference as `self`",
       "impact": "1,555 of 5,915 references (26%) read the wrong object -- `receiveFifo.Count` became `self.count()`",
       "why_it_hid": "the two peripherals converted so far access state through `this`, so both generated files were byte-identical and correct while the rule was wrong for a quarter of the corpus. Found only by emitting a lambda body, which is the first code that reaches through a named receiver. This is the breadth-is-a-health-check rule earning its place."
+    },
+    {
+      "bug": "pattern operators unrecorded",
+      "cause": "IRelationalPatternOperation.OperatorKind and IBinaryPatternOperation.OperatorKind not extracted, though IBinaryOperation's has been read since the fourth fix above and it is the same enum",
+      "fix": "record both, in the same column the expression operator kinds use",
+      "impact": "`> 5` was indistinguishable from `< 5`, and `and` from `or`, on 21 pattern nodes",
+      "why_it_hid": "the hand-typed corpus cut contained no C# pattern matching whatsoever, so the kinds never appeared. Surfaced the first time the ingest read the whole tree."
     }
   ],
   "statements": {
