@@ -16,6 +16,7 @@ for work in progress, which is why `docs/issues-draft.md` was deleted earlier.
 | [3-loop-builder](3-loop-builder.md) | **LANDED, premise wrong** — see the note at the top |
 | [4-unread-corpus-facts](4-unread-corpus-facts.md) | partly landed; the ingest half was reverted |
 | [5-subblocks-latent](5-subblocks-latent.md) | open |
+| [6-selector-by-name](6-selector-by-name.md) | open — the register-method selector is a name match; both failure modes silent |
 | [p2-not-in-the-corpus](p2-not-in-the-corpus.md) | open — deferred only for want of instances |
 
 Three landed the same night they were drafted, so file those as **closed** with
