@@ -1022,6 +1022,60 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             (type_name,)).fetchall()
         return {(s or "").split("(")[0].split(".")[-1] for (s,) in rows}
 
+    def emit_interface_trait(self, iface: str) -> tuple[list[str], list[str]]:
+        """A C# interface as a Rust trait: every member the converter can TYPE.
+
+        Returns (lines, omitted). Omitted members are LISTED, not silently
+        dropped -- a trait named `IMachine` that is not IMachine must at least
+        say so. See interface_traits in the rules for why membership is
+        translatability-driven rather than usage-driven."""
+        spec = self.project.get("interface_traits", {})
+        row = self.con.execute("SELECT id FROM type WHERE name=?", (iface,)).fetchone()
+        if not row:
+            return [], [f"{iface}: not in the corpus cut"]
+        members = self.con.execute(
+            "SELECT mb.name, mb.kind, mb.declared_type, m.return_type, mb.id "
+            "FROM member mb LEFT JOIN method m ON m.member_id = mb.id "
+            "WHERE mb.type_id=? AND mb.kind IN ('method','property') "
+            "ORDER BY mb.name", (row[0],)).fetchall()
+
+        out: list[str] = [spec.get("decl", "pub trait {name} {{").format(name=iface)]
+        omitted: list[str] = []
+        seen: set[str] = set()
+        for name, kind, dt, rt, mid in members:
+            cs = rt if kind == "method" else dt
+            ret = "()" if (cs or "void") == "void" else (self.rust_type(cs or "") or "")
+            if not ret:
+                omitted.append(f"{name}: `{(cs or '').split('.')[-1]}`")
+                continue
+            extra = ""
+            bad = False
+            for pname, ptype in self.con.execute(
+                    "SELECT name, type FROM parameter WHERE method_id=? ORDER BY ordinal",
+                    (mid,)):
+                prt = self.rust_type(ptype or "")
+                if prt is None:
+                    omitted.append(f"{name}: parameter `{pname}: "
+                                   f"{(ptype or '').split('.')[-1]}`")
+                    bad = True
+                    break
+                extra += f", {snake(pname)}: {prt}"
+            if bad:
+                continue
+            # Property accessors arrive as `get_IsSet` AND as `IsSet`; both
+            # would emit, giving `get__is_set` beside `is_set` -- a duplicate
+            # method and an ugly name. fn_name strips the prefix, and the seen
+            # set keeps the first.
+            fname = self.fn_name(name)
+            if fname in seen:
+                continue
+            seen.add(fname)
+            out.append(spec.get("method",
+                                "    fn {name}(&mut self{extra}) -> {ret};")
+                       .format(name=fname, extra=extra, ret=ret))
+        out.append("}")
+        return out, omitted
+
     def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
         """The peripheral's State, from its non-handle instance fields."""
         spec = self.project.get("state_struct", {})
