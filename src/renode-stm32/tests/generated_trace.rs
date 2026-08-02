@@ -19,11 +19,20 @@
 //!
 //! THE NUMBERS ARE THE POINT, and they vary enormously:
 //!
-//!     exti      25 accesses      0 divergences   100.0%
-//!     syscfg     9 accesses      2 divergences    66.7%
-//!     adc1  16,800 accesses  1,788 divergences    84.3%
-//!     dma1     183 accesses     88 divergences     9.3%
-//!     dma2  12,356 accesses  6,164 divergences     0.2%
+//!     usart1 33,164 accesses      0 divergences   100.0%
+//!     exti       25 accesses      0 divergences   100.0%
+//!     adc1   16,800 accesses  1,788 divergences    84.3%
+//!     syscfg      9 accesses      2 divergences    66.7%
+//!     gpioPortA  62 accesses     14 divergences    17.6%
+//!     can1      228 accesses     99 divergences    13.9%
+//!     dma1      183 accesses     88 divergences     9.3%
+//!     dma2   12,356 accesses  6,164 divergences     0.2%
+//!
+//! USART1 IS THE RESULT THAT MATTERS. 33,164 accesses, every read matching
+//! the C#, from a module the converter produced. The hand-written uart.rs
+//! passes the same trace -- so on the largest oracle this project has, the
+//! generated register layout is indistinguishable from the file a person
+//! wrote. That is the thing the whole pipeline exists to demonstrate.
 //!
 //! EXTI replays perfectly: 25 accesses, every read matching the C#. That is
 //! the first evidence in this project that generated code BEHAVES correctly
@@ -104,3 +113,12 @@ generated_replay!(exti_generated, renode_stm32::exti_registers, "exti", 0);
 generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1788);
 generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 88);
 generated_replay!(dma2_generated, renode_stm32::dma_registers, "dma2", 6164);
+generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 99);
+
+// GPIO and UART already have trace tests -- against the HAND-WRITTEN
+// peripherals. Running the GENERATED modules on the same traces is the
+// closest thing to a direct comparison this project has: same input, same
+// oracle, one file written by a person and one by the converter.
+generated_replay!(gpio_a_generated, renode_stm32::gpio_registers, "gpioPortA", 14);
+// ZERO, and it must stay zero. 33,164 accesses, every read matching.
+generated_replay!(usart1_generated, renode_stm32::uart_registers, "usart1", 0);

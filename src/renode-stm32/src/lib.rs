@@ -22,3 +22,6 @@ pub mod adc_registers;
 
 /// GENERATED layout for STM32DMA, under trace replay.
 pub mod dma_registers;
+
+/// GENERATED layout for STMCAN, under trace replay.
+pub mod can_registers;

@@ -66,6 +66,9 @@ GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/dma_registers.rs",
      ["scripts/emit.py", "--type", "STM32DMA", "--method", "DefineRegisters",
       "--file", "dma_registers"]),
+    ("src/renode-stm32/src/can_registers.rs",
+     ["scripts/emit.py", "--type", "STMCAN", "--method",
+      "AddressIsWithinFilterRegistersArea", "--file", "can_registers"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is
