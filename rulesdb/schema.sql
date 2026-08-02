@@ -137,7 +137,12 @@ CREATE TABLE IF NOT EXISTS local (
 CREATE TABLE IF NOT EXISTS operation (
     id          INTEGER PRIMARY KEY,
     run_id      INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    method_id   INTEGER NOT NULL REFERENCES method(member_id) ON DELETE CASCADE,
+    -- The MEMBER the code belongs to, not necessarily a method. It referenced
+    -- `method(member_id)`, which was true only while method bodies were the
+    -- only code walked -- a field INITIALISER is code too, and it belongs to a
+    -- field. The name stays `method_id` because every query in the tree reads
+    -- it and renaming buys nothing; the constraint is what was wrong.
+    method_id   INTEGER NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     parent_id   INTEGER REFERENCES operation(id),
     ordinal     INTEGER NOT NULL,   -- position among siblings
     depth       INTEGER NOT NULL,
@@ -164,7 +169,10 @@ CREATE INDEX IF NOT EXISTS idx_op_symbol ON operation(run_id, symbol);
 CREATE TABLE IF NOT EXISTS call_site (
     id            INTEGER PRIMARY KEY,
     run_id        INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    caller_id     INTEGER NOT NULL REFERENCES method(member_id),
+    -- A MEMBER, for the same reason as operation.method_id: a field
+    -- initialiser calls things (`= Enumerable.Range(..).ToArray()`) and is not
+    -- a method. Queries that want methods only should join `method`.
+    caller_id     INTEGER NOT NULL REFERENCES member(id),
     callee_id     INTEGER REFERENCES method(member_id),  -- null when outside the corpus
     callee_extern TEXT,             -- BCL/external target name, when callee_id is null
     operation_id  INTEGER NOT NULL REFERENCES operation(id),
@@ -176,7 +184,7 @@ CREATE INDEX IF NOT EXISTS idx_call_callee ON call_site(callee_id);
 CREATE TABLE IF NOT EXISTS field_access (
     id           INTEGER PRIMARY KEY,
     run_id       INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    method_id    INTEGER NOT NULL REFERENCES method(member_id),
+    method_id    INTEGER NOT NULL REFERENCES member(id),   -- see call_site.caller_id
     member_id    INTEGER NOT NULL REFERENCES member(id),
     operation_id INTEGER NOT NULL REFERENCES operation(id),
     is_write     INTEGER NOT NULL DEFAULT 0
