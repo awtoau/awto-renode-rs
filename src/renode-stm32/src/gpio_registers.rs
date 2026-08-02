@@ -48,6 +48,10 @@
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - write_state: withheld, calls withheld method(s): write_pin
+//!
+//! WARNINGS -- these DID emit, and their semantics DIFFER from
+//! the source. Marked at every site, not only summarised here:
+//!   ! WARN(narrowed) x3: a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -81,6 +85,7 @@ pub enum Mode {
     AnalogMode = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl Mode {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -103,6 +108,7 @@ pub enum OutputSpeed {
     High = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl OutputSpeed {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -125,6 +131,7 @@ pub enum PullUpPullDown {
     Reserved = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl PullUpPullDown {
     pub fn from_u64(v: u64) -> Self {
         match v {

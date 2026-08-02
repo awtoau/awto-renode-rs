@@ -134,6 +134,8 @@ import pkgutil
 from emitter.lang.dispatch_trait import DispatchTrait  # noqa: E402
 from emitter.lang.expressions import Expressions  # noqa: E402
 from emitter.lang.interface_trait import InterfaceTrait  # noqa: E402
+from emitter.lang.postcondition import Postcondition  # noqa: E402
+from emitter.lang.severity import Severity  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
 from emitter.lang.types import Types  # noqa: E402
 from emitter.plugins.register_dsl import RegisterDsl, to_const  # noqa: E402
@@ -158,7 +160,7 @@ _load_registered()
 
 
 class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
-              DispatchTrait, InterfaceTrait, Types):
+              DispatchTrait, InterfaceTrait, Types, Postcondition, Severity):
     # Keys read from the project layer as DATA rather than as rules, so they are
     # not offered to a handler looking for a rule of that name.
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")
@@ -502,6 +504,9 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         enforce it byte-for-byte.
         """
         self._enum_names = self.enum_names(type_name)
+        # Queued type warnings are per FILE: one left over from the previous
+        # file would attach to the first declaration of this one.
+        self.take_type_warnings()
         # Before state_fields, which must map a sub-block array to the child
         # module rather than report it as an unmappable type.
         from emitter.plugins.sub_blocks import sub_blocks as _find_subs
@@ -625,6 +630,10 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             a("//! GAPS the converter reports rather than guessing:")
             for g in sorted(set(gaps)):
                 a(f"//!   - {g}")
+        # The WARNING summary is spliced in HERE at the end of the method, not
+        # written now: several of the marked sites are emitted below this point,
+        # so a summary written now would list a subset and read as complete.
+        warn_at = len(L)
         a("")
         a("use renode_regs::{Bank, FieldMode, FlagId, ValueId};")
         a("")
@@ -709,6 +718,12 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             if conv.get("impl"):
                 arms = "\n".join(conv.get("arm", "            {value} => Self::{member},")
                                   .format(value=v, member=m) for m, v in members)
+                # The `_ =>` fallback is a DEVIATION, not a total function: the
+                # source keeps an out-of-range value and this cannot. Marked at
+                # every conversion, because the note that used to say so lived
+                # in the rule file and the generated code read as faithful.
+                for line in self.warn_line(conv.get("warning", ""), 0):
+                    a(line)
                 a(conv["impl"].format(name=ename, arms=arms))
                 a("")
         a("/// The peripheral's own state: every C# instance member that actually")
@@ -719,6 +734,12 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         a("    /// Register field handles, bound by the C# `out` parameters.")
         a("    pub f: Fields,")
         for n, ty in state:
+            # A type whose mapping is not an equivalence marks its own
+            # declaration. The marker is a comment: it can never change what
+            # this struct does, which is the condition on the whole tier.
+            for wid in self._decl_warn.get(n, []):
+                for line in self.warn_line(wid, 1):
+                    a(line)
             a(f"    pub {n}: {ty},")
         a("}")
         a("")
@@ -755,6 +776,21 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                             else sub["count"])
             a(self.project.get("sub_blocks", {}).get("loop", "").format(**env))
         a("}")
+        # Every marked site is now emitted, so the summary can be complete.
+        # A gap withholds; a warning does not -- the header states which of the
+        # two the reader is looking at, because the code below reads the same
+        # either way.
+        summary = self.warning_summary(L[warn_at:])
+        if summary:
+            L[warn_at:warn_at] = [
+                "//!",
+                "//! WARNINGS -- these DID emit, and their semantics DIFFER from",
+                "//! the source. Marked at every site, not only summarised here:",
+                # `!` and not `-`: three tools count `//!   - ` lines as GAPS,
+                # and a warning is the opposite of a gap -- it emitted. Sharing
+                # the bullet made twelve warnings arrive in the gap census as
+                # twelve new gaps of unknown category.
+                *[f"//!   ! {s}" for s in summary]]
         return "\n".join(L).rstrip() + "\n"
 
     def base_chain(self, type_name: str) -> list[str]:
@@ -831,6 +867,12 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
     def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
         """The peripheral's State, from its non-handle instance fields."""
         spec = self.project.get("state_struct", {})
+        # Rust field name -> the WARNING identifiers its TYPE mapping carries.
+        # A side channel rather than a third tuple element: the collision guard
+        # and every caller of this method take (name, type) pairs, and widening
+        # that shape to carry a marker would touch code that has nothing to do
+        # with severity.
+        self._decl_warn: dict[str, list[str]] = {}
         handles = spec.get("handle_types", [])
         _ = spec.get("requires_storage")  # documented in the rule; applied in SQL
         # (rust name, rust type, DECLARING C# class). The third element is what
@@ -858,8 +900,17 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 continue          # a register handle: already in `Fields`
             if (dt or "").strip() in spec.get("elided", {}).get("types", []):
                 continue          # the Bank already is this -- see elided.note
+            # Drain first, so a warning queued by an EARLIER lookup whose
+            # caller never drained cannot be attributed to this field. A
+            # misattributed marker is worse than a missing one -- it names the
+            # wrong line and would be believed.
+            self.take_type_warnings()
             rt = spec.get("type_map", {}).get((dt or "").strip()) \
                 or self.rust_type(dt or "")
+            if rt is not None:
+                warned = self.take_type_warnings()
+                if warned:
+                    self._decl_warn[snake(n)] = warned
             if rt is None and (dt or "").strip() == "object" and n in locked:
                 # A bare `object` field that is locked on is the lock-sentinel
                 # idiom: it holds no data and exists only for mutual exclusion.

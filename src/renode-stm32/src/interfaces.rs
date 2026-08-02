@@ -151,6 +151,11 @@
 //! `-=` has no form -- a boxed closure has no identity to remove
 //! by -- and the multicast narrowing is the one already recorded
 //! in stdlib.delegates.
+//!
+//! WARNINGS -- these DID emit, and their semantics DIFFER from
+//! the source. Marked at every site, not only summarised here:
+//!   ! WARN(eager) x5: a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
+//!   ! WARN(multicast) x6: a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
 
 /// C# `Antmicro.Renode.Backends.Display.XInput.IInputHandler`, member for member.
 pub trait IInputHandler {
@@ -221,7 +226,9 @@ pub trait IMappedSegment {
 
 /// C# `Antmicro.Renode.Core.INetworkLog<T>`, member for member.
 pub trait INetworkLog<T>: IExternal {
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_frame_processed(&mut self, handler: Option<Box<dyn FnMut(std::rc::Rc<std::cell::RefCell<dyn IExternal>>, T, Vec<u8>)>>);
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_frame_transmitted(&mut self, handler: Option<Box<dyn FnMut(std::rc::Rc<std::cell::RefCell<dyn IExternal>>, T, T, Vec<u8>)>>);
 }
 
@@ -235,13 +242,16 @@ pub trait ICovariantRegisterablePeripheral<TPeripheral, TRegistrationPoint>: IEm
 
 /// C# `Antmicro.Renode.Core.Structure.IHasChildren<T>`, member for member.
 pub trait IHasChildren<T> {
+    // WARN(eager): a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
     fn get_names(&mut self) -> Vec<String>;
     fn try_get_by_name(&mut self, name: String, success: &mut bool) -> T;
 }
 
 /// C# `Antmicro.Renode.Core.Structure.IPeripheralContainer<TPeripheral, TRegistrationPoint>`, member for member.
 pub trait IPeripheralContainer<TPeripheral, TRegistrationPoint>: IRegisterablePeripheral<TPeripheral, TRegistrationPoint> {
+    // WARN(eager): a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
     fn get_registration_points(&mut self, peripheral: TPeripheral) -> Vec<TRegistrationPoint>;
+    // WARN(eager): a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
     fn children(&mut self) -> Vec<std::rc::Rc<std::cell::RefCell<dyn IRegistered<TPeripheral, TRegistrationPoint>>>>;
 }
 
@@ -445,6 +455,7 @@ pub trait IKnownSize: IBusPeripheral {
 
 /// C# `Antmicro.Renode.Peripherals.IMapped`, member for member.
 pub trait IMapped: IBusPeripheral {
+    // WARN(eager): a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
     fn mapped_segments(&mut self) -> Vec<std::rc::Rc<std::cell::RefCell<dyn IMappedSegment>>>;
 }
 
@@ -503,17 +514,20 @@ pub trait ISMMUv3StreamController {
 
 /// C# `Antmicro.Renode.Peripherals.Miscellaneous.ILed`, member for member.
 pub trait ILed: IPeripheral {
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_state_changed(&mut self, handler: Option<Box<dyn FnMut(std::rc::Rc<std::cell::RefCell<dyn ILed>>, bool)>>);
     fn state(&mut self) -> bool;
 }
 
 /// C# `Antmicro.Renode.Peripherals.Miscellaneous.INRFEventProvider`, member for member.
 pub trait INRFEventProvider {
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_event_triggered(&mut self, handler: Option<Box<dyn FnMut(u32)>>);
 }
 
 /// C# `Antmicro.Renode.Peripherals.Miscellaneous.ISideloadableKey`, member for member.
 pub trait ISideloadableKey {
+    // WARN(eager): a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.
     fn set_sideload_key(&mut self, value: Vec<u8>) -> ();
 }
 
@@ -607,6 +621,7 @@ pub trait IInterferenceQueueListener {
 
 /// C# `Antmicro.Renode.Peripherals.Wireless.IRadio`, member for member.
 pub trait IRadio: IPeripheral + INetworkInterface {
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_frame_sent(&mut self, handler: Option<Box<dyn FnMut(std::rc::Rc<std::cell::RefCell<dyn IRadio>>, Vec<u8>)>>);
     fn receive_frame(&mut self, frame: Vec<u8>, sender: std::rc::Rc<std::cell::RefCell<dyn IRadio>>) -> ();
     fn channel(&mut self) -> i32;
@@ -646,6 +661,7 @@ pub trait IProgressMonitorHandler {
 
 /// C# `Antmicro.Renode.Utilities.RESD.IRESDSampleSource<T>`, member for member.
 pub trait IRESDSampleSource<T>: IPeripheral {
+    // WARN(multicast): a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.
     fn subscribe_new_sample(&mut self, handler: Option<Box<dyn FnMut(T)>>);
     fn sample(&mut self) -> T;
 }

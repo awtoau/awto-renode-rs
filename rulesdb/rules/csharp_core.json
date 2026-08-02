@@ -53,6 +53,71 @@
       "not_redirected": "Divide and Remainder stay operators. C# throws DivideByZeroException on a zero divisor and OverflowException on `int.MinValue / -1`; Rust PANICS on both, unconditionally and in every profile. The error mode already agrees closely enough that a helper would add a call and change nothing -- and the fourth-layer test asks whether the semantic can be checked at the call site, not whether a helper is possible."
     }
   },
+  "severity": {
+    "note": "How loudly a mapping declares itself. There used to be one marker class: a GAP, which means the converter could not express something and the member is WITHHELD. Nothing could say the other thing — that it DID emit and its semantics differ — so three mappings sat in that position described accurately in this file and invisible in the output. Prose next to a rule cannot be counted, grepped or failed on. A severity can.",
+    "why_a_tier_and_not_a_gap": "A gap withholds. Turning these into gaps would delete working code to make a point: the pass-through still chains, the eager sequence is still read, the single subscriber still fires. What is wrong is the CLAIM of equivalence, so what has to change is the claim, not the emission.",
+    "tiers": {
+      "faithful": {
+        "rank": 0,
+        "emits": true,
+        "means": "equivalence is claimed. No marker — the ordinary case, and the reason a marker means something."
+      },
+      "warning": {
+        "rank": 1,
+        "emits": true,
+        "means": "it emitted, and the semantics DIFFER. Marked at the site, counted on the scorecard.",
+        "line": "// {tag}({id}): {text}",
+        "inline": "/* {tag}({id}): {text} */",
+        "default_tag": "WARN",
+        "marker_is_a_comment": "Both forms are comments and must stay comments. A marker that can break a build creates pressure to stop emitting markers, and the mechanism dies of its own cost.",
+        "inline_form_why": "Some deviations are in an EXPRESSION, where a line comment would swallow the rest of the line. The block form is the same marker and greps the same."
+      },
+      "gap": {
+        "rank": 2,
+        "emits": false,
+        "means": "it did not emit. The member is withheld whole and the reason is in the file header."
+      }
+    },
+    "warnings": {
+      "measure": {
+        "tag": "SYNC",
+        "text": "C# `lock`. Structure preserved; TIMING IS NOT.",
+        "severity": "warning",
+        "why": "See locking.no_guarantee. This marker is the one that already existed; it is here now so that it is an instance of the mechanism rather than the only thing resembling one. Its tag and text are unchanged, so everything that already looked for it still finds it.",
+        "oracle": "invisible to trace replay by construction — replay is single-threaded, so no interleaving difference can appear in it."
+      },
+      "orderby": {
+        "tag": "WARN",
+        "text": "ordering is a PASS-THROUGH: the key selector is discarded and the sequence keeps its source order.",
+        "severity": "warning",
+        "why": "See linq.orderby_deviation. Faithful ordering needs the key's type and an Ord bound the converter cannot yet establish; a pass-through at least chains and compiles. It is WRONG wherever order is observable, which is a property of the caller and not knowable here.",
+        "oracle": "a trace sees it only if the ordering is observable through the recorded interface, which for a caller that consumes the sequence internally it is not."
+      },
+      "eager": {
+        "tag": "WARN",
+        "text": "a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ.",
+        "severity": "warning",
+        "why": "See stdlib.ienumerable_deviation. The divergence is bounded — the source language already forbids mutating a collection during enumeration — so it is observable only for an infinite sequence or one whose enumeration has side effects. Bounded is not absent, and which side of the bound a given site falls on is not decidable from the signature.",
+        "oracle": "not covered. Evaluation order is not part of any recorded interface."
+      },
+      "narrowed": {
+        "tag": "WARN",
+        "text": "a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.",
+        "severity": "warning",
+        "why": "C# lets an enum hold any value of its underlying type, so a cast of an out-of-range number keeps that number. Rust enums are closed, so a conversion has to decide, and the only faithful-ish choice is a default. Whether the fallback is reachable depends on how wide the value that reaches it can be, which is a property of the caller and not of this mapping.",
+        "oracle": "a trace sees it only when an out-of-range value is actually written, which no captured trace so far does."
+      },
+      "multicast": {
+        "tag": "WARN",
+        "text": "a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first.",
+        "severity": "warning",
+        "why": "See interface_traits.event_deviation and stdlib.delegates. A boxed closure has no identity, so removal has no form. The corpora seen so far attach exactly one handler, which makes the narrowing harmless HERE and not harmless in general.",
+        "oracle": "not covered. Handler registration is not visible through a recorded interface."
+      }
+    },
+    "header_bullet": "A warning summarised in a file header is bulleted `!`, not `-`. Three separate tools count a `//!   - ` line as a GAP, and a warning is the opposite of a gap — it emitted. Sharing the bullet made the first twelve warnings arrive in the gap census as twelve new uncategorised gaps, which is exactly the metric contamination the tiers exist to prevent.",
+    "ratchet": "The count of marked sites is a number on the scorecard, per identifier. It is allowed to fall and it is allowed to rise when a new deviation is found and declared — what it may not do is stay flat because a deviation went unmarked."
+  },
   "deviations": [
     {
       "construct": "integer overflow",
@@ -204,6 +269,11 @@
       "DateTime": "std::time::SystemTime"
     },
     "interface_types_note": "The BCL COLLECTION INTERFACES, added because an interface's own signatures are stated in terms of them: 93 uses of IEnumerable, 21 of IReadOnlyDictionary, 11 of IList in this corpus, all above the >=3 threshold. Each maps to the same Rust type its concrete sibling does, so a signature and its implementation agree.",
+    "warn_types": {
+      "note": "C# type name -> the severity.warnings identifier its mapping carries. Read by the type mapper, which cannot place a marker itself -- a comment inside a nested generic risks the build, and a marker may never do that -- so it queues one and whoever emits the DECLARATION places it on the line above.",
+      "IEnumerable": "eager",
+      "why_not_the_others": "IList and IReadOnlyList also become Vec, and that is not a deviation: both are already materialised collections in the source. Only the lazy one changes evaluation."
+    },
     "ienumerable_deviation": "IEnumerable<T> to Vec<T> is a DEVIATION and not an equivalence: C# enumeration is lazy and Vec is materialised. It is bounded rather than free-floating -- C# already forbids mutating a collection while enumerating it (InvalidOperationException), so eager evaluation can only be observed for an infinite sequence or one whose enumeration has side effects. Neither appears in a signature translated so far; if one does, it needs Box<dyn Iterator> and that is a different rule, not a tweak to this one.",
     "datetime_deviation": "System.DateTime to std::time::SystemTime maps the TYPE only. DateTime is a calendar instant with Year/Month/Day and arithmetic; SystemTime is an opaque point in time with none of that. So a signature mentioning DateTime translates, and any MEMBER ACCESS on one still reports a gap rather than guessing -- which is the intended split. A calendar type in csharp-rt is the answer if member access is ever needed; it is not needed to state a signature, and inventing it before then would be a type with no caller.",
     "no_rust_form": {
@@ -310,7 +380,8 @@
     "out_param_note": "C# `out` and `ref` both become &mut. `out` additionally promises the callee assigns before returning, which Rust cannot state; the direction is preserved and the promise is not, which is a narrowing rather than a change of behaviour.",
     "nullability_note": "A reference-typed parameter is NOT wrapped in Option. The corpus is not nullable-annotated, so every reference is potentially null and blanket Option would be noise -- the deferred D4 analysis recorded under deviations, applied consistently here rather than decided separately for signatures.",
     "object_ref_note": "An interface-typed parameter or return becomes the shared, interior-mutable handle the object-graph rule uses for a field of that type. The alternative, a plain borrow, would make lifetimes part of every signature and the graph is cyclic, so no lifetime can be stated.",
-    "event_deviation": "A C# event becomes ONE subscribe method. C# offers add and remove over a multicast delegate; a boxed closure has no identity, so remove has no form, and the single-subscriber narrowing is the one already recorded in stdlib.delegates. Emitted files state this in their header.",
+    "event_warning": "multicast",
+    "event_deviation": "A C# event becomes ONE subscribe method. C# offers add and remove over a multicast delegate; a boxed closure has no identity, so remove has no form, and the single-subscriber narrowing is the one already recorded in stdlib.delegates. Emitted files state this in their header — and now, via `event_warning`, at every site, because a header note is read once and a member is read every time.",
     "bcl_namespaces": ["System."],
     "blocker_reasons": {
       "note": "The reason names the converter reports. They are separate because each is a different piece of work, and merging them would hide which.",
@@ -400,7 +471,8 @@
     "note": "C# `lock(x) { ... }` becomes a Mutex guard, and the locked field's type becomes Mutex<T>. Both are DERIVED: a field that appears as a lock target is one the source says needs mutual exclusion, so the type follows from the corpus rather than from a judgement.",
     "guard": "let _sync = {target}.lock().unwrap();",
     "field_type": "std::sync::Mutex<{inner}>",
-    "marker": "// SYNC(measure): C# `lock`. Structure preserved; TIMING IS NOT.",
+    "warning": "measure",
+    "marker_moved": "The marker text used to live here as a literal, and was the ONLY thing in the emitter resembling a severity. It now comes from severity.warnings.measure — same tag, same text, same emitted bytes — so that it is one instance of a general mechanism instead of a special case that three other deviations could not reuse.",
     "no_guarantee": "NO EQUIVALENCE IS CLAIMED FOR THREADING OR TIMING, and the translation must not pretend otherwise. Translated code runs at different rates, so lock hold times, contention and interleaving all differ. No transpiler can get this exactly right. Our oracle cannot see it either: trace replay feeds recorded register accesses through a single-threaded replay, so a threading difference is invisible to it BY CONSTRUCTION -- which means 'the oracle passes' is not evidence here. Each site is marked so it can be found and MEASURED rather than assumed.",
     "rejected_alternative": "PLAN.md D3 proposes deleting locks entirely on the grounds that a single-core guest has nothing to parallelise. That is an argument about THROUGHPUT, not fidelity, and PLAN.md itself records D3 as the one place the plan knowingly departs from faithful and as requiring re-validation that has not happened. Deleting 842 synchronisation points on an unvalidated performance argument, in a place the oracle is blind, is not a translation. Preserving the structure costs nothing under single-threaded execution -- an uncontended Mutex is close to free -- and keeps the decision reversible.",
     "sentinel": {
@@ -457,6 +529,9 @@
     },
     "runtime_members_why": "`OrderBy` and `First` are the two LINQ operators that are not renames, and both were wrong here before the runtime existed. OrderBy needs to BUFFER the sequence -- a sort is not a lazy operation, so something has to hold it -- and the previous mapping was `{recv}`, the receiver unchanged: a sort that does not sort, which compiles and replays any trace that does not observe ordering. First has an ERROR MODE: C# throws InvalidOperationException where `.next().unwrap()` panics saying `called Option::unwrap() on a None value`, and under D4 those are not the same thing. Everything else in this table stays a template, because everything else IS a rename. See docs/decisions/runtime-is-the-fourth-layer.md.",
     "unwrap_still_here_why": "`Max/1` and `Min/1` keep `.unwrap()` and are NOT routed to the runtime. Same error mode as First, so the argument applies -- but neither has a single instance in the cut, and a runtime function with no emitting instance is a type with no caller. They are named here so the next person sees a decision rather than an oversight; when one appears, it takes a `csharp_rt::` call and the reason is already written.",
+    "warn": {
+      "note": "Member name -> the severity.warnings identifier its mapping carries. A member absent here is claimed FAITHFUL, which is the point of listing the unfaithful ones by name rather than describing them in prose above. EMPTY as of the runtime migration: `OrderBy` carried the only entry, and it is no longer a warning because it no longer approximates -- `csharp_rt::order_by` performs a stable sort. A warning that outlives the defect it described is worse than none, because the next reader trusts it."
+    },
     "cloned_note": "ToArray/ToList insert `.cloned()`: iterating a collection yields references, and collecting them into an owned Vec needs the copy. Mined from depyler DEPYLER-1001, which hit the same wall.",
     "orderby_history": "This entry used to read: *OrderBy is a NO-OP pass-through, and that is a recorded DEVIATION, not a mapping... A pass-through at least chains correctly and is honest about doing nothing.* It was not honest about doing nothing -- it produced a sort that does not sort, in code labelled a translation, and no trace could see it. The stated blocker was real and was the wrong conclusion: the key's type and its Ord bound are exactly what a GENERIC FUNCTION states for you, and `csharp_rt::order_by` states them in one place. Kept as history because the reasoning is the argument for the fourth layer: a template has to solve the type problem at every site, so a template author concludes it cannot be solved.",
     "chaining_note": "The receiver gets `.iter()` only when it is a COLLECTION. A chained LINQ call already yields an iterator, and `xs.iter().filter(..).iter()` does not compile. Detected by whether the emitted receiver already ends in an iterator-producing call, which is textual but exact for what this emitter produces -- the alternative is tracking expression types, which the corpus does not yet give us for chained generics.",

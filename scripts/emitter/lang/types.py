@@ -43,6 +43,18 @@ def split_args(inner: str) -> list[str]:
 class Types:
     """Mixin: C# type to Rust type."""
 
+    def _warn_for_type(self, outer: str) -> None:
+        """Queue a WARNING marker if this mapping is not an equivalence.
+
+        Called only where the mapping SUCCEEDS. Queuing on a lookup that then
+        returns None would attach the marker to whatever declaration drains
+        next, which is a marker pointing at the wrong line -- worse than none,
+        because it would be believed.
+        """
+        wid = self.language.get("stdlib", {}).get("warn_types", {}).get(outer)
+        if wid:
+            self.note_type_warning(wid)
+
     def resolve_declared_type(self, cs: str, args: tuple[str, ...] = ()) -> str | None:
         """A type the stdlib rules do not name -- one DECLARED by the input.
 
@@ -112,9 +124,13 @@ class Types:
                 return None
             o = types.get(outer)
             if o:
+                self._warn_for_type(outer)
                 return std.get("generic_form", "{outer}<{inner}>").format(
                     outer=o, inner=", ".join(mapped))
             return self.resolve_declared_type(cs.split("<")[0], tuple(mapped))
-        return (types.get(cs.split(".")[-1])
-                or self.resolve_declared_type(cs))
+        bare = cs.split(".")[-1]
+        if bare in types:
+            self._warn_for_type(bare)
+            return types[bare]
+        return self.resolve_declared_type(cs)
 

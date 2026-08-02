@@ -360,10 +360,18 @@ class RegisterDsl:
         if template is None:
             return None
         try:
-            return template.format(**env)
+            text = template.format(**env)
         except KeyError as missing:
             self.unhandled[f"{rule['name']}:missing {missing}"] = 1
             return None
+        # THE EMIT-SHAPE POSTCONDITION. Everything above this line is a
+        # judgement about the INPUT -- which combinator, which arm, which
+        # bindings. This is the only check on what came OUT, and it is the one
+        # that can refuse a link the source did not ask for. It raises: a rule
+        # whose output does not match its own declared shape is a defect in the
+        # rule or in this method, never a fact about the corpus, so recording it
+        # as a gap would file it under the wrong heading and keep going.
+        return self.assert_postcondition(rule, text)
 
     def emit_callbacks(self, oid: int, name: str, env: dict, rule: dict,
                        bound: list[str], template: str | None) -> dict[str, str]:
