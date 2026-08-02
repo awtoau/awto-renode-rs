@@ -175,14 +175,13 @@ def emit_all(root: Path, db: Path, log: logging.Logger,
     are named from the type, written to their own path, and `mods` is built in
     task order, so nothing here depends on which worker finished first.
     """
+    # The register-defining member of each type, chosen by what its body
+    # CONTAINS. The query that used to be here chose by NAME, so it dropped
+    # every type that builds its map in a constructor and picked an unrelated
+    # `Register` overload where one existed -- see scripts/register_owners.py.
+    from register_owners import owners
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    rows = con.execute("""
-        SELECT t.name, MIN(mb.name) FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m ON m.member_id = mb.id
-        WHERE t.kind='class' AND m.has_body=1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')
-        GROUP BY t.name ORDER BY t.name""").fetchall()
+    rows = owners(con)
 
     crate = root / "tmp" / "compile_check"
     shutil.rmtree(crate, ignore_errors=True)
