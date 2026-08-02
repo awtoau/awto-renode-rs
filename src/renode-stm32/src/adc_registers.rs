@@ -96,7 +96,7 @@ fn control2_30_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _curren
 }
 
 fn regular_sequence1_20_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, val: u64) -> () {
-    st.regular_sequence_len = ((val as u32) + 1);
+    st.regular_sequence_len = csharp_rt::unchecked_add((val as u32), 1);
     return;
 }
 
