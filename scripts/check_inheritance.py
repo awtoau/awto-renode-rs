@@ -282,7 +282,15 @@ def main() -> int:
 
     bad = check_strict_dispatch(root, log)
     bad += check_collision_guard(root, log)
-    report_breadth(root, log)
+    # OPT-IN, because it costs ~2 MINUTES against a 309 MB breadth database and
+    # this script runs in the pre-commit hook. It timed a commit out the day it
+    # landed. It is a REPORT, never an assertion, so skipping it weakens no
+    # guard -- and a hook slow enough to be bypassed is a hook that does not
+    # run, which is the failure this repo has already had three times.
+    if "--tree" in sys.argv:
+        report_breadth(root, log)
+    else:
+        log.info("tree-wide count skipped -- pass --tree for it (~2 min)")
 
     if bad:
         log.error("FAIL: %d inheritance guard problem(s)", bad)
