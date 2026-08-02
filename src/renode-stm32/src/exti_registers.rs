@@ -99,7 +99,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::PENDING_REGISTER, 0)
-        .with_value(0, 32, &mut f.pending_interrupts, FieldMode::READ | FieldMode::WRITE_ONE_TO_CLEAR)
+        .with_value_out_cb(0, 32, &mut f.pending_interrupts, FieldMode::READ | FieldMode::WRITE_ONE_TO_CLEAR, None, None)
         .done();
 
 }

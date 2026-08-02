@@ -94,44 +94,51 @@ def corpus_violations(con: sqlite3.Connection, rules: list[dict],
             names = set((neg.get("must_not_match") or "").split("|")) - {""}
             forbidden.setdefault(rule["name"], set()).update(names)
 
+    # EVERY declaring type the combinator table names, not one of the four.
+    # `PeripheralRegisterExtensions` alone was the whole query, which left the
+    # register-level extensions and both instance forms unverified -- the same
+    # "one of four" blind spot the combinator table itself had. The markers are
+    # read from the data so widening the table widens the check with it.
+    markers = [p["symbol_contains"] for p in
+               em.project.get("combinator_providers", {}).get("providers", [])]
+    if not markers:
+        raise SystemExit("combinator_providers names no provider -- the corpus "
+                         "half of this check would silently examine nothing")
+    where = " OR ".join("o.symbol LIKE ?" for _ in markers)
     rows = con.execute(
         "SELECT o.id, o.symbol, t.name, f.path, o.span_start FROM operation o "
         "JOIN member mb ON mb.id = o.method_id "
         "JOIN type t ON t.id = mb.type_id "
         "JOIN file f ON f.id = t.file_id "
         "WHERE o.kind='Invocation' AND o.symbol IS NOT NULL "
-        "AND o.symbol LIKE '%PeripheralRegisterExtensions.%' "
-        "ORDER BY t.name, o.span_start").fetchall()
+        f"AND ({where}) "
+        "ORDER BY t.name, o.span_start",
+        [f"%{m}%" for m in markers]).fetchall()
 
+    aliases = em.callback_aliases()
     bad: list[str] = []
     checked = 0
     for oid, symbol, type_name, path, span in rows:
         name = em.combinator(symbol)
         if name is None:
             continue
+        # The EMITTER's own arm selection, not a second copy of it. The copy
+        # that used to be here read `when` as a disjunction only and knew three
+        # flags, so once the rules grew `a and b` conditions and three more
+        # callback kinds it silently validated a different arm than the one the
+        # converter picks -- a checker that agrees with nothing.
         b = em.bind(oid, symbol)
-
-        def present(param: str, b=b) -> bool:
-            v = b.get(param)
-            return v is not None and v[0] != "DefaultValue"
-
-        flags = {
-            "field": em.out_field(oid, symbol) is not None,
-            "provider": present("valueProviderCallback"),
-            "writer": present("writeCallback"),
-        }
-        for rule in em.rules:
-            if name not in rule["matches"].split("|"):
-                continue
-            cond = rule.get("when")
-            if cond and not any(flags.get(tok.strip(), False)
-                                for tok in cond.split(" or ")):
-                continue
-            checked += 1
-            if name in forbidden.get(rule["name"], ()):
-                bad.append(f"{type_name} {path}@{span}: `{name}` selected rule "
-                           f"{rule['name']}, which must not match it")
-            break
+        flags = {"field": (em.out_field(oid, symbol)
+                           or em.assigned_field(oid)) is not None}
+        for param in em.bound_callbacks(b):
+            flags[aliases.get(param, param)] = True
+        rule = em.select_rule(name, flags)
+        if rule is None:
+            continue
+        checked += 1
+        if name in forbidden.get(rule["name"], ()):
+            bad.append(f"{type_name} {path}@{span}: `{name}` selected rule "
+                       f"{rule['name']}, which must not match it")
     return bad, checked
 
 
