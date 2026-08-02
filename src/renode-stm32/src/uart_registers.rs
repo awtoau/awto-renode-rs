@@ -7,9 +7,13 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - Control1: conditional access `?.` needs nullability analysis
 //!   - Data: conditional access `?.` needs nullability analysis
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
+//!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
+//!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: parameter(s) `frequency` have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false
+//!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: statement 2 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
@@ -121,6 +125,18 @@ pub struct State {
     pub frequency: u32,
     pub idle_line_detected_cancellation_token_src: Option<std::rc::Rc<std::cell::Cell<bool>>>,
     pub receive_fifo: std::collections::VecDeque<u8>,
+}
+
+// C# constructors, as field assignments over the derived
+// `Default`. Only assignments to this type's own storage can
+// live here; everything else the constructor did is a gap above.
+impl State {
+    /// C# `STM32_UART(IMachine, uint)`, field assignments only.
+    pub fn new(frequency: u32) -> Self {
+        let mut st = Self::default();
+        st.frequency = frequency;
+        st
+    }
 }
 
 // The peripheral's own methods. C# reaches its state through

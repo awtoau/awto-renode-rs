@@ -1,0 +1,153 @@
+{
+  "layer": "language",
+  "version": 1,
+  "constructors": {
+    "why": [
+      "A C# constructor does three unrelated things in one body, and they do not",
+      "map to one Rust construct:",
+      "",
+      "  1. it initialises the object's own fields;",
+      "  2. it builds things the emitted module already emits separately;",
+      "  3. it has effects on OTHER objects -- wiring, subscriptions, calls back",
+      "     into the type's own methods.",
+      "",
+      "Only (1) is expressible as an initialiser for a plain data struct, so only",
+      "(1) is translated. The other two are named as gaps against the statement",
+      "that produced them, because a `new` that silently skipped them would read",
+      "as a complete constructor and would not be one.",
+      "",
+      "This replaces SILENCE, which is what was there before: the driver's member",
+      "query asked for methods only, so every constructor was dropped with no gap",
+      "and no output. The emitted struct derives Default, so every field a",
+      "constructor assigned started at 0/false and nothing said so."
+    ],
+    "shape": {
+      "why": [
+        "`new` starts from `Self::default()` and applies the constructor's",
+        "assignments in order, rather than naming every field in a struct",
+        "literal. Two reasons, both about faithfulness:",
+        "",
+        "  * the struct literal would have to supply a value for every field,",
+        "    including the ones this constructor never touches -- inventing an",
+        "    initial value the source does not state;",
+        "  * C# runs the assignments in order over a zero-initialised object, so",
+        "    `default()` then assign IS the source's own sequence."
+      ],
+      "struct": "State",
+      "open": "impl {struct} {{",
+      "close": "}",
+      "doc": "    /// C# `{signature}`, field assignments only.",
+      "decl": "    pub fn {name}({params}) -> Self {{",
+      "param": "{name}: {type}",
+      "seed": "        let mut st = Self::default();",
+      "tail": "        st",
+      "end": "    }"
+    },
+    "naming": {
+      "why": [
+        "Rust has no constructor overloading. One constructor keeps the",
+        "conventional name; where a type declares several, the parameter COUNT is",
+        "the only thing that distinguishes them without inventing a name, so it",
+        "is the suffix. Two constructors of equal arity are indistinguishable",
+        "under that scheme and are both withheld rather than one silently winning."
+      ],
+      "one": "new",
+      "many": "new_{arity}"
+    },
+    "value_kinds": {
+      "why": [
+        "The operation kinds allowed anywhere inside an assigned VALUE. It is a",
+        "whitelist, not a blacklist, and that is the whole safety argument: an",
+        "initialiser has no access to anything but the struct being built, so a",
+        "value that calls a method, constructs an object, or subscribes to an",
+        "event cannot be expressed there at all. Whitelisting means a kind nobody",
+        "has considered is withheld and named, rather than emitted and hoped for."
+      ],
+      "allowed": [
+        "Literal",
+        "ParameterReference",
+        "FieldReference",
+        "InstanceReference",
+        "LocalReference",
+        "Conversion",
+        "Binary",
+        "Unary",
+        "Conditional",
+        "DefaultValue",
+        "Parenthesized"
+      ]
+    },
+    "gaps": {
+      "withheld_statement": "{owner}..ctor `{signature}`: statement {n} withheld -- {why}",
+      "not_an_assignment": "not an assignment to the type's own storage, but {kind}; an initialiser can only assign the struct it is building",
+      "no_storage": "assigns `{field}`, which the emitted struct has no storage for",
+      "value_kind": "the assigned value contains {kind}, which an initialiser cannot evaluate",
+      "value_unmapped": "the assigned value could not be emitted ({detail})",
+      "param_unmapped": "reads parameter `{param}`, whose C# type `{type}` has no Rust mapping",
+      "shape_changed": "emitted as `{emitted}`, which is not a plain assignment to the struct, so it is not an initialiser statement",
+      "chained": "{owner}..ctor `{signature}`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default",
+      "arity_collision": "{owner}..ctor `{signature}`: withheld -- {n} constructors of this type take {arity} parameter(s) and Rust cannot overload, so no name distinguishes them",
+      "nothing_emitted": "{owner}..ctor `{signature}`: no statement could be translated, so no initialiser is emitted at all",
+      "empty_body": "{owner}..ctor `{signature}`: the body assigns nothing -- everything it does happens in the chained call, which is not inlined",
+      "default_unrecorded": "{owner}..ctor `{signature}`: parameter(s) {params} have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false",
+      "unused": "{owner}..ctor `{signature}`: `{name}` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them"
+    },
+    "ingest_gaps_blocking_this_rule": {
+      "why": [
+        "Two facts this rule needs are not in the corpus. Neither is a Roslyn",
+        "limitation -- both are properties Roslyn exposes that the walker does",
+        "not read -- and neither was fixed here, because the ingest is owned",
+        "elsewhere. Recorded as data so the cost is countable rather than",
+        "rediscovered."
+      ],
+      "parameter_default_value": {
+        "recorded": "parameter.has_default (a flag)",
+        "missing": "the default's VALUE",
+        "roslyn": "IParameterSymbol.ExplicitDefaultValue",
+        "costs": [
+          "A field assigned from a defaulted parameter cannot be folded into",
+          "`Default`, so the derived all-zero value stands and the emitted",
+          "struct starts that field at 0/false however the source declared it.",
+          "Measured in this cut: 4 such parameters across 3 constructors."
+        ]
+      },
+      "field_initialiser": {
+        "recorded": "nothing",
+        "missing": "the initialiser expression on a field DECLARATION",
+        "roslyn": "IFieldInitializerOperation",
+        "verified": [
+          "Checked, not assumed. No operation in the corpus has a field member",
+          "as its owner, and no operation kind is a field initialiser; a field",
+          "declared with an initialiser carries const_value NULL unless it is a",
+          "compile-time constant. So an initialiser that is not `const` is",
+          "unrecoverable, and a bool field declared `= true` is indistinguishable",
+          "from one declared bare -- which silently inverts the initial value of",
+          "every field written that way."
+        ]
+      }
+    },
+    "deviations": [
+      {
+        "what": "Each C# constructor becomes an associated function, never a Default impl.",
+        "why": [
+          "Folding a constructor into `Default` would need every assigned value to",
+          "be knowable with no arguments. Where a field is assigned from a",
+          "parameter that is exactly what is missing: the corpus records THAT a",
+          "parameter has a default and not WHAT it is, so a `Default` built from",
+          "one would be guessing. `Default` is left as the derived all-zero value,",
+          "which is at least an honest zero, and the gap says which fields it",
+          "leaves wrong."
+        ]
+      },
+      {
+        "what": "A `new` takes only the parameters its emitted assignments read.",
+        "why": [
+          "The C# signature's other parameters are consumed by statements that",
+          "were withheld; declaring them would produce a signature that promises",
+          "to use values it discards. Each withheld statement is named as a gap,",
+          "so the missing parameters are recoverable from the output."
+        ]
+      }
+    ]
+  }
+}

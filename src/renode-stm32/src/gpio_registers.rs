@@ -9,6 +9,7 @@
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - BaseGPIOPort..ctor `BaseGPIOPort(IMachine, int)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
@@ -25,6 +26,18 @@
 //!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: parameter(s) `modeResetValue`, `outputSpeedResetValue`, `pullUpPullDownResetValue`, `numberOfAFs` have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 1 withheld -- not an assignment to the type's own storage, but Conditional; an initialiser can only assign the struct it is building
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 11 withheld -- assigns `alternateFunctionOutputs`, which the emitted struct has no storage for
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 12 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 13 withheld -- assigns `registers`, which the emitted struct has no storage for
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 14 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 2 withheld -- not an assignment to the type's own storage, but Conditional; an initialiser can only assign the struct it is building
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 3 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 4 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 5 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
+//!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 6 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
@@ -140,6 +153,21 @@ pub struct State {
     pub output_speed_reset_value: u32,
     pub pull_up_pull_down: Vec<PullUpPullDown>,
     pub pull_up_pull_down_reset_value: u32,
+}
+
+// C# constructors, as field assignments over the derived
+// `Default`. Only assignments to this type's own storage can
+// live here; everything else the constructor did is a gap above.
+impl State {
+    /// C# `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`, field assignments only.
+    pub fn new(mode_reset_value: u32, output_speed_reset_value: u32, pull_up_pull_down_reset_value: u32, number_of_a_fs: u32) -> Self {
+        let mut st = Self::default();
+        st.mode_reset_value = mode_reset_value;
+        st.output_speed_reset_value = output_speed_reset_value;
+        st.pull_up_pull_down_reset_value = pull_up_pull_down_reset_value;
+        st.number_of_a_fs = number_of_a_fs;
+        st
+    }
 }
 
 // The peripheral's own methods. C# reaches its state through

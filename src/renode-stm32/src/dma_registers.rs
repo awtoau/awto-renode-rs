@@ -7,9 +7,17 @@
 //! Source: STM32DMA.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - ClearIrqFlagOnCondition: parameter `flag` has no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.IFlagRegisterField`
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - Reset: withheld, calls reset on each `Stream` -- the sub-block emits its register layout, not its methods
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: no statement could be translated, so no initialiser is emitted at all
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 1 withheld -- the assigned value contains Invocation, which an initialiser cannot evaluate
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 2 withheld -- assigns `Connections`, which the emitted struct has no storage for
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 3 withheld -- assigns `engine`, which the emitted struct has no storage for
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 4 withheld -- assigns `transferCompleteIrqStatus`, which the emitted struct has no storage for
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 5 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 6 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq
 //!   - layout: top-level `Loop` calls register combinators that were not emitted -- those fields are missing from the bank
 //!   - on_gpio: withheld, calls withheld method(s): warning_log

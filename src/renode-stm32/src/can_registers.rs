@@ -19,6 +19,19 @@
 //!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers, st.rx_fifo
 //!   - ReceiveCANMessage: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: no statement could be translated, so no initialiser is emitted at all
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 1 withheld -- assigns `master`, which the emitted struct has no storage for
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 10 withheld -- assigns `UpdateInterruptLine`, which the emitted struct has no storage for
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 11 withheld -- not an assignment to the type's own storage, but Conditional; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 12 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 2 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 3 withheld -- not an assignment to the type's own storage, but VariableDeclarationGroup; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 4 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 5 withheld -- assigns `Connections`, which the emitted struct has no storage for
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 6 withheld -- assigns `registers`, which the emitted struct has no storage for
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 7 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 8 withheld -- assigns `UpdateInterruptLine`, which the emitted struct has no storage for
+//!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 9 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - TransmitData: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - UpdateFifo0InterruptLine: withheld, reaches state this peripheral does not have: st.connections
 //!   - UpdateFifo1InterruptLine: withheld, reaches state this peripheral does not have: st.connections

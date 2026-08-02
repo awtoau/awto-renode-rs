@@ -7,9 +7,18 @@
 //! Source: STM32F4_EXTI.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - OnGPIO: withheld, cannot emit expr:DeclarationExpression
 //!   - PendingRegister: callback for bit 0 needs peer method(s) not yet emitted: foreach_active_bit, st.connections, st.unset
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: no statement could be translated, so no initialiser is emitted at all
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 1 withheld -- not an assignment to the type's own storage, but VariableDeclarationGroup; an initialiser can only assign the struct it is building
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 2 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 3 withheld -- assigns `Connections`, which the emitted struct has no storage for
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 4 withheld -- assigns `core`, which the emitted struct has no storage for
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 5 withheld -- the assigned value contains Invocation, which an initialiser cannot evaluate
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 6 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 7 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - SoftwareInterruptEvent: callback for bit 0 needs peer method(s) not yet emitted: foreach_active_bit, st.connections, st.set
 //!   - number_of_lines: withheld, calls withheld method(s): connections
 //!   - reset: withheld, calls withheld method(s): connections, unset

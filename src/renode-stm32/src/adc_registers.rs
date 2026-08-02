@@ -7,6 +7,7 @@
 //! Source: STM32_ADC.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - Control2: WithFlag bit 0: `changeCallback` is bound in the C# and no rule consumes it -- that behaviour is missing
 //!   - Control2: callback for bit 30 needs peer method(s) not yet emitted: start_conversion
 //!   - EnableADC: withheld, reaches state this peripheral does not have: st.channels, st.current_channel
@@ -15,6 +16,11 @@
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - OnConversionFinished: withheld, reaches state this peripheral does not have: st.channels, st.current_channel, st.machine, st.sampling_timer
 //!   - Reset: withheld, reaches state this peripheral does not have: st.channels
+//!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: no statement could be translated, so no initialiser is emitted at all
+//!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: statement 1 withheld -- assigns `channels`, which the emitted struct has no storage for
+//!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: statement 2 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
+//!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: statement 3 withheld -- assigns `samplingTimer`, which the emitted struct has no storage for
+//!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: statement 4 withheld -- not an assignment to the type's own storage, but EventAssignment; an initialiser can only assign the struct it is building
 //!   - StartConversion: withheld, reaches state this peripheral does not have: st.machine, st.sampling_timer
 //!   - state field `channels`: reference-typed, so the object-graph rule maps it to `Vec<Gc<ADCChannel>>`; blocked: `ADCChannel` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `currentChannel`: reference-typed, so the object-graph rule maps it to `Gc<ADCChannel>`; blocked: `ADCChannel` has no emitted Rust type yet, so there is nothing to point at
