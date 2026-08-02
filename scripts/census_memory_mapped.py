@@ -79,21 +79,21 @@ def memory_mapped(con: sqlite3.Connection) -> set[str]:
           AND mb.name IN ({marks})""", BUS_METHODS)}
 
 
-def selected(con: sqlite3.Connection) -> set[str]:
-    """Types the name selector picks a register method for.
+def selected(con: sqlite3.Connection) -> dict[str, str]:
+    """type -> the register-defining member the emission tooling picks.
 
-    Deliberately the SAME query `compile_check.py` and
-    `check_emitted_registers.py` use. Copying a CORRECTED selector here would
-    make two tools disagree about which types exist; copying the current one
-    is what makes the disagreement measurable.
+    Was a copy of the name-based query, deliberately, so that the disagreement
+    it measured was the same disagreement `compile_check.py` had. That query is
+    gone -- `scripts/register_owners.py` selects by what a body CONTAINS -- and
+    the same reasoning now says to IMPORT it: a copy here would make this
+    census describe a selector nothing uses.
+
+    The census still earns its place. Selecting by content did not empty this
+    set: five hand-rolled types have a stray dictionary `Add` somewhere, pass
+    the form test, and emit a module with no registers in it.
     """
-    return {n for (n,) in con.execute("""
-        SELECT t.name FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m  ON m.member_id = mb.id
-        WHERE t.kind = 'class' AND m.has_body = 1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')
-        GROUP BY t.name""")}
+    from register_owners import owners
+    return dict(owners(con))
 
 
 def main() -> int:
@@ -116,7 +116,7 @@ def main() -> int:
 
     mm, dsl, sel = memory_mapped(con), dsl_users(con), selected(con)
     no_dsl = mm - dsl
-    silent = sorted(no_dsl & sel)
+    silent = sorted(no_dsl & set(sel))
 
     log.info("%d type(s) serve a memory-mapped bus (%s with a body)",
              len(mm), "/".join(BUS_METHODS))
@@ -124,23 +124,17 @@ def main() -> int:
     log.info("%d of those use NO register DSL -- invisible to "
              "check_emitted_registers", len(no_dsl))
     log.info("")
-    log.info("Of the %d, the name selector still picks a method for %d, so each "
+    log.info("Of the %d, the selector still picks a member for %d, so each "
              "emits", len(no_dsl), len(silent))
-    log.info("a module with an empty `define_registers` and reports no gap "
-             "saying why:")
+    log.info("a module with an empty `define_registers`:")
     for name in silent:
-        method = con.execute("""
-            SELECT MIN(mb.name) FROM type t JOIN member mb ON mb.type_id = t.id
-            JOIN method m ON m.member_id = mb.id
-            WHERE t.name = ? AND m.has_body = 1
-              AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')""",
-            (name,)).fetchone()[0]
-        log.info("    %-24s selector picks `%s`", name, method)
+        log.info("    %-24s selector picks `%s`", name, sel[name])
     log.info("")
-    log.info("The other %d are dropped from the run entirely, which is the "
-             "failure", len(no_dsl) - len(silent))
-    log.info("check_emitted_registers already names for DSL types -- it just "
-             "cannot see these.")
+    log.info("The other %d are dropped from the run entirely.",
+             len(no_dsl) - len(silent))
+    log.info("`check_emitted_registers.py` now names both: it reads this same "
+             "bus set, counts the hand-rolled types as a category, and FAILS on "
+             "the ones that emit a module anyway.")
     return 0
 
 

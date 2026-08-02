@@ -172,15 +172,12 @@ def main() -> int:
     cfg = con.execute("SELECT config FROM corpus_run LIMIT 1").fetchone()
     breadth = bool(cfg and cfg[0] == "breadth")
 
-    where = "AND t.name LIKE ?" if args.filter else ""
-    params: tuple = (f"%{args.filter}%",) if args.filter else ()
-    rows = con.execute(f"""
-        SELECT t.name, MIN(mb.name) FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m ON m.member_id = mb.id
-        WHERE t.kind='class' AND m.has_body=1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%') {where}
-        GROUP BY t.name ORDER BY t.name""", params).fetchall()
+    # Selected by what each body CONTAINS, not by the member's name -- see
+    # scripts/register_owners.py. The census is a denominator, and the query
+    # that used to be here dropped every type that builds its register map in
+    # a constructor, so the census read as complete over a set that was not.
+    from register_owners import owners
+    rows = owners(con, name_filter=args.filter)
     if args.limit:
         rows = rows[:args.limit]
 

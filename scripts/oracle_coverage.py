@@ -60,12 +60,14 @@ def main() -> int:
 
     con = sqlite3.connect(
         f"file:{root / 'rulesdb' / 'patterns.db'}?mode=ro", uri=True)
-    emittable = {r[0] for r in con.execute("""
-        SELECT DISTINCT t.name FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m ON m.member_id = mb.id
-        WHERE t.kind='class' AND m.has_body=1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')""")}
+    # "Can the converter emit this type" is the same question the emission
+    # tooling asks, so it is the same selector -- by what a body CONTAINS, not
+    # by the member's name. Restricted to the platform's own types: the answer
+    # for the other 580 is not wanted here, and asking for it costs a scan of
+    # every candidate body in the corpus.
+    from register_owners import owners
+    emittable = {t for t, _m in owners(
+        con, types={e["type"].split(".")[-1] for e in peripherals.values()})}
 
     reachable: list[tuple[str, str, int]] = []
     unreachable: list[tuple[str, str]] = []

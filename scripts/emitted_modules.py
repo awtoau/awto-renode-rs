@@ -380,19 +380,18 @@ def parse(type_name: str, cs_method: str, mod_name: str, text: str) -> Module:
 
 
 def selector_rows(con: sqlite3.Connection) -> list[tuple[str, str]]:
-    """(type, register-defining method) exactly as compile_check.py selects them.
+    """(type, register-defining member) exactly as compile_check.py selects them.
 
-    Deliberately the SAME query, wrong as it is: `check_emitted_registers.py`
-    already reports what that selector misses, and duplicating a corrected
-    selector here would make two checks disagree about which types exist.
+    One selector, imported from `scripts/register_owners.py`. It used to be a
+    copy of the query, chosen by member NAME, and the copy was deliberate --
+    two checks disagreeing about which types exist is worse than both being
+    wrong the same way. The selector is now chosen by what a body CONTAINS, and
+    it is still exactly one selector: this function stays so that the four
+    checks in this module keep naming their dependency, not so that it can
+    diverge.
     """
-    return con.execute("""
-        SELECT t.name, MIN(mb.name) FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m ON m.member_id = mb.id
-        WHERE t.kind='class' AND m.has_body=1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')
-        GROUP BY t.name ORDER BY t.name""").fetchall()
+    from register_owners import owners
+    return owners(con)
 
 
 def emit_all(db: Path, log: logging.Logger) -> list[Module]:
