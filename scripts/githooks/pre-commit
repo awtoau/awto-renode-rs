@@ -60,6 +60,18 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # 1c. The interleaving oracle must still FAIL when a lock is deleted.
+    #     Cheap (two cached `cargo test` runs) and it guards the one thing a
+    #     concurrency harness cannot be trusted to prove about itself: that its
+    #     green tick is not unconditional.
+    sync = subprocess.run([py, "scripts/check_sync_harness.py"],
+                          cwd=root, capture_output=True, text=True)
+    if sync.returncode != 0:
+        print(sync.stdout[-1200:], file=sys.stderr)
+        print("pre-commit: the interleaving oracle no longer fails when a lock "
+              "is deleted -- it is not observing locks", file=sys.stderr)
+        return 1
+
     # 2. Regenerate the scorecard and stage it if it moved. Never fail the
     #    commit on this -- a stale scorecard is a nuisance, not a defect, and
     #    blocking a commit because `gh` was offline would be worse than useless.

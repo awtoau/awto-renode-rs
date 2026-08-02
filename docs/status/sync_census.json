@@ -1,0 +1,3697 @@
+{
+  "corpus": "f427",
+  "not_derivable": [
+    "which thread enters a method -- C# does not declare it",
+    "hold time, contention, interleaving -- properties of a running program"
+  ],
+  "site_detail": [
+    {
+      "body": 4405,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Core.GPIO.Set(bool)",
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()"
+        ],
+        "nested_locks": 0,
+        "operations": 60
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "activeIRQs": {
+          "member": 442,
+          "reads": 1,
+          "writes": 0
+        },
+        "irqs": {
+          "member": 447,
+          "reads": 2,
+          "writes": 0
+        },
+        "pendingIRQs": {
+          "member": 441,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "irqs",
+        "maskedInterruptPresent",
+        "minLevel",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AcknowledgeIRQ()",
+      "operation": 4402,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 4403,
+      "type": "NVIC"
+    },
+    {
+      "body": 6205,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()"
+        ],
+        "nested_locks": 0,
+        "operations": 19
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "NonSecureVal": {
+          "member": 490,
+          "reads": 1,
+          "writes": 1
+        },
+        "basepri": {
+          "member": 455,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "irqs",
+        "maskedInterruptPresent",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_NS.set",
+      "operation": 6202,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 6203,
+      "type": "NVIC"
+    },
+    {
+      "body": 6174,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()"
+        ],
+        "nested_locks": 0,
+        "operations": 19
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "SecureVal": {
+          "member": 489,
+          "reads": 1,
+          "writes": 1
+        },
+        "basepri": {
+          "member": 455,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "irqs",
+        "maskedInterruptPresent",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_S.set",
+      "operation": 6171,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 6172,
+      "type": "NVIC"
+    },
+    {
+      "body": 10577,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 52
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "irqs": {
+          "member": 447,
+          "reads": 2,
+          "writes": 0
+        },
+        "pendingIRQs": {
+          "member": 441,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "minLevel"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ClearPending(int)",
+      "operation": 10574,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 10575,
+      "type": "NVIC"
+    },
+    {
+      "body": 4258,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.Log(Antmicro.Renode.IEmulationElement, Antmicro.Renode.Logging.LogLevel, string, object)",
+          "Antmicro.Renode.Logging.Logger.Log(Antmicro.Renode.IEmulationElement, Antmicro.Renode.Logging.LogLevel, string, object, object)",
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()"
+        ],
+        "nested_locks": 0,
+        "operations": 141
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "activeIRQs": {
+          "member": 442,
+          "reads": 1,
+          "writes": 0
+        },
+        "irqs": {
+          "member": 447,
+          "reads": 3,
+          "writes": 0
+        },
+        "pendingIRQs": {
+          "member": 441,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "irqs",
+        "maskedInterruptPresent",
+        "minLevel",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.CompleteIRQ(int)",
+      "operation": 4255,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 4256,
+      "type": "NVIC"
+    },
+    {
+      "body": 10244,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Logging.Logger.WarningLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 124
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "irqs": {
+          "member": 447,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "irqs",
+        "maskedInterruptPresent",
+        "minLevel",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.EnableOrDisableInterrupt(int, uint, bool, bool)",
+      "operation": 10241,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 10242,
+      "type": "NVIC"
+    },
+    {
+      "body": 3943,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Core.GPIO.Set(bool)",
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AdjustPriority(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DoesAPreemptB(int, int, bool, bool)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsCandidate(Antmicro.Renode.Peripherals.IRQControllers.NVIC.IRQState, int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ShouldRaiseException(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 165
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "activeIRQs": {
+          "member": 442,
+          "reads": 2,
+          "writes": 0
+        },
+        "irqs": {
+          "member": 447,
+          "reads": 1,
+          "writes": 0
+        },
+        "maskedInterruptPresent": {
+          "member": 435,
+          "reads": 0,
+          "writes": 2
+        },
+        "pendingIRQs": {
+          "member": 441,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "NonSecureVal",
+        "SecureVal",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "minLevel",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets",
+        "tlibGetFaultmask",
+        "tlibGetPrimask"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+      "operation": 3940,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 3941,
+      "type": "NVIC"
+    },
+    {
+      "body": 10374,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.Log(Antmicro.Renode.IEmulationElement, Antmicro.Renode.Logging.LogLevel, string, params object[])",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 126
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "irqs": {
+          "member": 447,
+          "reads": 4,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "cpu",
+        "minLevel",
+        "targetInterruptSecurityState"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandleEnableRead(int, bool)",
+      "operation": 10371,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 10372,
+      "type": "NVIC"
+    },
+    {
+      "body": 8785,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetStartingInterrupt(long, bool)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 74
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "priorities": {
+          "member": 445,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "cpu",
+        "targetInterruptSecurityState"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandlePriorityRead(long, bool, bool)",
+      "operation": 8782,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 8783,
+      "type": "NVIC"
+    },
+    {
+      "body": 8667,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Logging.Logger.Log(Antmicro.Renode.IEmulationElement, Antmicro.Renode.Logging.LogLevel, string, object, object, object)",
+          "Antmicro.Renode.Logging.Logger.WarningLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetStartingInterrupt(long, bool)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 112
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "priorities": {
+          "member": 445,
+          "reads": 2,
+          "writes": 0
+        },
+        "priorityMask": {
+          "member": 452,
+          "reads": 3,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "cpu",
+        "minLevel",
+        "targetInterruptSecurityState"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandlePriorityWrite(long, bool, uint, bool)",
+      "operation": 8664,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 8665,
+      "type": "NVIC"
+    },
+    {
+      "body": 10734,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 71
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "targetInterruptSecurityState": {
+          "member": 449,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "minLevel"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ModifySecurityTarget(int, uint)",
+      "operation": 10731,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 10732,
+      "type": "NVIC"
+    },
+    {
+      "body": 4155,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 31
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "irqs": {
+          "member": 447,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "NonSecureVal",
+        "SecureVal",
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "currentSevOnPending",
+        "irqs",
+        "machine",
+        "maskedInterruptPresent",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.OnGPIO(int, bool)",
+      "operation": 4152,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 4153,
+      "type": "NVIC"
+    },
+    {
+      "body": 5852,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Core.Structure.Registers.BaseRegisterCollection<T, R>.Read(long)"
+        ],
+        "nested_locks": 0,
+        "operations": 11
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "isNextAccessSecure": {
+          "member": 439,
+          "reads": 0,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [
+        "afterReadHooks",
+        "beforeReadHooks",
+        "parent",
+        "registers"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ReadDoubleWord(long, bool)",
+      "operation": 5849,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.RegisterCollection",
+      "target_kind": "PropertyReference",
+      "target_op": 5850,
+      "type": "NVIC"
+    },
+    {
+      "body": 10635,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.WarningLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ClearPending(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 93
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {},
+      "guards_transitively": [
+        "NonSecureVal",
+        "SecureVal",
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "currentSevOnPending",
+        "irqs",
+        "machine",
+        "maskedInterruptPresent",
+        "minLevel",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetOrClearPendingInterrupt(int, uint, bool, bool)",
+      "operation": 10632,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 10633,
+      "type": "NVIC"
+    },
+    {
+      "body": 4232,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ExceptionToString(int)",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+          "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 20
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {},
+      "guards_transitively": [
+        "NonSecureVal",
+        "SecureVal",
+        "activeIRQs",
+        "basepri",
+        "binaryPointPosition",
+        "cpu",
+        "currentSevOnPending",
+        "irqs",
+        "machine",
+        "maskedInterruptPresent",
+        "minLevel",
+        "pendingIRQs",
+        "priorities",
+        "prioritizeSecureInterrupts",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targetInterruptSecurityState",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPendingIRQ(int)",
+      "operation": 4229,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs",
+      "target_kind": "FieldReference",
+      "target_op": 4230,
+      "type": "NVIC"
+    },
+    {
+      "body": 5287,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Core.Structure.Registers.BaseRegisterCollection<T, R>.Write(long, T)"
+        ],
+        "nested_locks": 0,
+        "operations": 13
+      },
+      "file": "src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs",
+      "guards": {
+        "isNextAccessSecure": {
+          "member": 439,
+          "reads": 0,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [
+        "afterWriteHooks",
+        "beforeWriteHooks",
+        "parent",
+        "registers"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+      "operation": 5284,
+      "target": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.RegisterCollection",
+      "target_kind": "PropertyReference",
+      "target_op": 5285,
+      "type": "NVIC"
+    },
+    {
+      "body": 12108,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Core.IGPIOReceiver.OnGPIO(int, bool)"
+        ],
+        "nested_locks": 0,
+        "operations": 42
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "state": {
+          "member": 686,
+          "reads": 1,
+          "writes": 0
+        },
+        "targets": {
+          "member": 689,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Connect(Antmicro.Renode.Core.IGPIOReceiver, int)",
+      "operation": 12105,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12106,
+      "type": "GPIO"
+    },
+    {
+      "body": 12156,
+      "calls": {
+        "external": 1,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 4
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "targets": {
+          "member": 689,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Disconnect()",
+      "operation": 12153,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12154,
+      "type": "GPIO"
+    },
+    {
+      "body": 12166,
+      "calls": {
+        "external": 1,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 6
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "targets": {
+          "member": 689,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Disconnect(Antmicro.Renode.Core.GPIOEndpoint)",
+      "operation": 12163,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12164,
+      "type": "GPIO"
+    },
+    {
+      "body": 12207,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "targets": {
+          "member": 689,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Endpoints.get",
+      "operation": 12204,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12205,
+      "type": "GPIO"
+    },
+    {
+      "body": 12195,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 6
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "targets": {
+          "member": 689,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.IsConnected.get",
+      "operation": 12192,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12193,
+      "type": "GPIO"
+    },
+    {
+      "body": 12186,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "state": {
+          "member": 686,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.IsSet.get",
+      "operation": 12183,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12184,
+      "type": "GPIO"
+    },
+    {
+      "body": 12020,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Core.IGPIOReceiver.OnGPIO(int, bool)"
+        ],
+        "nested_locks": 0,
+        "operations": 51
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {
+        "state": {
+          "member": 686,
+          "reads": 2,
+          "writes": 1
+        },
+        "stateChangedHook": {
+          "member": 687,
+          "reads": 1,
+          "writes": 0
+        },
+        "targets": {
+          "member": 689,
+          "reads": 3,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Set(bool)",
+      "operation": 12017,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12018,
+      "type": "GPIO"
+    },
+    {
+      "body": 12077,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Core.GPIO.Set(bool)"
+        ],
+        "nested_locks": 0,
+        "operations": 7
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Core/GPIO.cs",
+      "guards": {},
+      "guards_transitively": [
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targets"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Core.GPIO.Toggle()",
+      "operation": 12074,
+      "target": "Antmicro.Renode.Core.GPIO.sync",
+      "target_kind": "FieldReference",
+      "target_op": 12075,
+      "type": "GPIO"
+    },
+    {
+      "body": 19987,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.LogEntry.EqualsWithoutIdTimeAndCount(Antmicro.Renode.Logging.LogEntry)",
+          "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+          "Antmicro.Renode.Logging.Logger.ActualLogger.WriteLogEntryToBackends(Antmicro.Renode.Logging.LogEntry)"
+        ],
+        "nested_locks": 0,
+        "operations": 40
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {
+        "lastLoggedEntry": {
+          "member": 1101,
+          "reads": 1,
+          "writes": 1
+        },
+        "nextEntryId": {
+          "member": 1071,
+          "reads": 0,
+          "writes": 1
+        },
+        "repeatLogEntryCount": {
+          "member": 1100,
+          "reads": 1,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [
+        "lastLoggedEntry",
+        "logAggregatorTimer",
+        "repeatLogEntryCount"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+      "operation": 19984,
+      "target": "Antmicro.Renode.Logging.Logger.ActualLogger.aggregationFlushLock",
+      "target_kind": "FieldReference",
+      "target_op": 19985,
+      "type": "ActualLogger"
+    },
+    {
+      "body": 19605,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.ActualLogger.WriteLogEntryToBackends(Antmicro.Renode.Logging.LogEntry)"
+        ],
+        "nested_locks": 0,
+        "operations": 11
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {
+        "nextEntryId": {
+          "member": 1071,
+          "reads": 0,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.ActualLogger.ObjectInnerLog(object, Antmicro.Renode.Logging.LogLevel, string, params object[])",
+      "operation": 19602,
+      "target": "Antmicro.Renode.Logging.Logger.ActualLogger.innerLock",
+      "target_kind": "FieldReference",
+      "target_op": 19603,
+      "type": "ActualLogger"
+    },
+    {
+      "body": 20213,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()"
+        ],
+        "nested_locks": 1,
+        "operations": 58
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {
+        "aggregateLogs": {
+          "member": 1103,
+          "reads": 1,
+          "writes": 0
+        },
+        "aggregationFlushLock": {
+          "member": 1107,
+          "reads": 1,
+          "writes": 0
+        },
+        "cancellationToken": {
+          "member": 1109,
+          "reads": 0,
+          "writes": 1
+        },
+        "logAggregatorTimer": {
+          "member": 1102,
+          "reads": 0,
+          "writes": 1
+        },
+        "loggingThread": {
+          "member": 1108,
+          "reads": 3,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [
+        "lastLoggedEntry",
+        "logAggregatorTimer",
+        "repeatLogEntryCount"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.ActualLogger.StartLoggingThread()",
+      "operation": 20210,
+      "target": "Antmicro.Renode.Logging.Logger.ActualLogger.innerLock",
+      "target_kind": "FieldReference",
+      "target_op": 20211,
+      "type": "ActualLogger"
+    },
+    {
+      "body": 20230,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()"
+        ],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {},
+      "guards_transitively": [
+        "lastLoggedEntry",
+        "logAggregatorTimer",
+        "repeatLogEntryCount"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.ActualLogger.StartLoggingThread()",
+      "operation": 20227,
+      "target": "Antmicro.Renode.Logging.Logger.ActualLogger.aggregationFlushLock",
+      "target_kind": "FieldReference",
+      "target_op": 20228,
+      "type": "ActualLogger"
+    },
+    {
+      "body": 20277,
+      "calls": {
+        "external": 3,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 40
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {
+        "cancellationToken": {
+          "member": 1109,
+          "reads": 1,
+          "writes": 0
+        },
+        "logAggregatorTimer": {
+          "member": 1102,
+          "reads": 1,
+          "writes": 1
+        },
+        "loggingThread": {
+          "member": 1108,
+          "reads": 2,
+          "writes": 1
+        },
+        "stopThread": {
+          "member": 1110,
+          "reads": 0,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.ActualLogger.StopLoggingThread()",
+      "operation": 20274,
+      "target": "Antmicro.Renode.Logging.Logger.ActualLogger.innerLock",
+      "target_kind": "FieldReference",
+      "target_op": 20275,
+      "type": "ActualLogger"
+    },
+    {
+      "body": 18139,
+      "calls": {
+        "external": 3,
+        "internal": [
+          "Antmicro.Renode.Logging.ILoggerBackend.GetCustomLogLevels()",
+          "Antmicro.Renode.Logging.ILoggerBackend.GetLogLevel()",
+          "Antmicro.Renode.Logging.Logger.UpdateMinimumLevel()",
+          "Antmicro.Renode.Utilities.Collections.FastReadConcurrentCollection<T>.Add(T)"
+        ],
+        "nested_locks": 0,
+        "operations": 69
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {},
+      "guards_transitively": [
+        "Backend",
+        "SourceId",
+        "minLevel"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.AddBackend(Antmicro.Renode.Logging.ILoggerBackend, string, bool)",
+      "operation": 18137,
+      "target": "Antmicro.Renode.Logging.Logger.backendsChangeLock",
+      "target_kind": "FieldReference",
+      "target_op": 18138,
+      "type": "Logger"
+    },
+    {
+      "body": 18287,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {},
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.GetBackends()",
+      "operation": 18285,
+      "target": "Antmicro.Renode.Logging.Logger.backendsChangeLock",
+      "target_kind": "FieldReference",
+      "target_op": 18286,
+      "type": "Logger"
+    },
+    {
+      "body": 18213,
+      "calls": {
+        "external": 7,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.UpdateMinimumLevel()",
+          "Antmicro.Renode.Utilities.Collections.FastReadConcurrentCollection<T>.Remove(T)"
+        ],
+        "nested_locks": 0,
+        "operations": 69
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Logging/Logger.cs",
+      "guards": {
+        "Backend": {
+          "member": 1123,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "minLevel"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Logging.Logger.RemoveBackend(Antmicro.Renode.Logging.ILoggerBackend)",
+      "operation": 18211,
+      "target": "Antmicro.Renode.Logging.Logger.backendsChangeLock",
+      "target_kind": "FieldReference",
+      "target_op": 18212,
+      "type": "Logger"
+    },
+    {
+      "body": 25803,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.AddClockEntry(Antmicro.Renode.Time.ClockEntry)"
+        ],
+        "nested_locks": 0,
+        "operations": 10
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {},
+      "guards_transitively": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "sync",
+        "unaccountedTimes"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.AddClockEntries(System.Collections.Generic.IEnumerable<Antmicro.Renode.Time.ClockEntry>)",
+      "operation": 25800,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25801,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25207,
+      "calls": {
+        "external": 4,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()",
+          "Antmicro.Renode.Time.BaseClockSource.UpdateUpdateHandler(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 57
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 3,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.AddClockEntry(Antmicro.Renode.Time.ClockEntry)",
+      "operation": 25204,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25205,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25730,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.AdvanceInner(Antmicro.Renode.Time.TimeInterval, bool)",
+          "Antmicro.Renode.Time.TimeInterval.Min(Antmicro.Renode.Time.TimeInterval, Antmicro.Renode.Time.TimeInterval)"
+        ],
+        "nested_locks": 0,
+        "operations": 51
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "nearestLimitIn": {
+          "member": 1539,
+          "reads": 2,
+          "writes": 0
+        },
+        "skipAdvancesHigherThanNearestLimit": {
+          "member": 1544,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "ticks",
+        "toNotify",
+        "totalElapsed",
+        "unaccountedTimes",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.Advance(Antmicro.Renode.Time.TimeInterval, bool)",
+      "operation": 25727,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25728,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 26107,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)"
+        ],
+        "nested_locks": 0,
+        "operations": 88
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "elapsed": {
+          "member": 1540,
+          "reads": 1,
+          "writes": 2
+        },
+        "nearestLimitIn": {
+          "member": 1539,
+          "reads": 2,
+          "writes": 1
+        },
+        "reupdateNeeded": {
+          "member": 1542,
+          "reads": 3,
+          "writes": 0
+        },
+        "skipAdvancesHigherThanNearestLimit": {
+          "member": 1544,
+          "reads": 1,
+          "writes": 0
+        },
+        "totalElapsed": {
+          "member": 1541,
+          "reads": 0,
+          "writes": 1
+        },
+        "updateAlreadyInProgress": {
+          "member": 1543,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "nearestLimitIn",
+        "sync",
+        "toNotify",
+        "unaccountedTimes",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.AdvanceInner(Antmicro.Renode.Time.TimeInterval, bool)",
+      "operation": 26104,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 26105,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25690,
+      "calls": {
+        "external": 4,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 25
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 3,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.EjectClockEntries()",
+      "operation": 25687,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25688,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25283,
+      "calls": {
+        "external": 6,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()",
+          "Antmicro.Renode.Time.BaseClockSource.UpdateUpdateHandler(int)"
+        ],
+        "nested_locks": 0,
+        "operations": 88
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 5,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.ExchangeClockEntryWith(System.Action, System.Func<Antmicro.Renode.Time.ClockEntry, Antmicro.Renode.Time.ClockEntry>, System.Func<Antmicro.Renode.Time.ClockEntry>)",
+      "operation": 25280,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25281,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25198,
+      "calls": {
+        "external": 1,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {},
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.ExecuteInLock(System.Action)",
+      "operation": 25195,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25196,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25787,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()"
+        ],
+        "nested_locks": 0,
+        "operations": 10
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.GetAllClockEntries()",
+      "operation": 25784,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25785,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25377,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateHandlerDelegate.Invoke(ref Antmicro.Renode.Time.ClockEntry, Antmicro.Renode.Time.TimeInterval, ref Antmicro.Renode.Time.TimeInterval)",
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()",
+          "Antmicro.Renode.Utilities.Misc.IndexOf<TSource>(System.Collections.Generic.IEnumerable<TSource>, System.Func<TSource, bool>)"
+        ],
+        "nested_locks": 0,
+        "operations": 185
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 6,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "elapsed": {
+          "member": 1540,
+          "reads": 2,
+          "writes": 1
+        },
+        "nearestLimitIn": {
+          "member": 1539,
+          "reads": 2,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 4,
+          "writes": 0
+        },
+        "updateAlreadyInProgress": {
+          "member": 1543,
+          "reads": 3,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.GetClockEntry(System.Action)",
+      "operation": 25374,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25375,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25568,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()"
+        ],
+        "nested_locks": 0,
+        "operations": 36
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.GetClockEntryInLockContext(System.Action, System.Action<Antmicro.Renode.Time.ClockEntry>)",
+      "operation": 25565,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25566,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25833,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 6
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.HasEntries.get",
+      "operation": 25830,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25831,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25819,
+      "calls": {
+        "external": 0,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 3
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "nearestLimitIn": {
+          "member": 1539,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.NearestLimitIn.get",
+      "operation": 25816,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25817,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 25613,
+      "calls": {
+        "external": 4,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateLimits()"
+        ],
+        "nested_locks": 0,
+        "operations": 54
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 3,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "sync",
+        "totalElapsed",
+        "updateAlreadyInProgress"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.TryRemoveClockEntry(System.Action)",
+      "operation": 25610,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 25611,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 26245,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Time.BaseClockSource.UpdateHandlerDelegate.Invoke(ref Antmicro.Renode.Time.ClockEntry, Antmicro.Renode.Time.TimeInterval, ref Antmicro.Renode.Time.TimeInterval)"
+        ],
+        "nested_locks": 0,
+        "operations": 91
+      },
+      "file": "src/Infrastructure/src/Emulator/Main/Time/BaseClockSource.cs",
+      "guards": {
+        "clockEntries": {
+          "member": 1546,
+          "reads": 3,
+          "writes": 0
+        },
+        "clockEntriesUpdateHandlers": {
+          "member": 1547,
+          "reads": 1,
+          "writes": 0
+        },
+        "nearestLimitIn": {
+          "member": 1539,
+          "reads": 1,
+          "writes": 1
+        },
+        "toNotify": {
+          "member": 1545,
+          "reads": 1,
+          "writes": 0
+        },
+        "unaccountedTimes": {
+          "member": 1548,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+      "operation": 26242,
+      "target": "Antmicro.Renode.Time.BaseClockSource.sync",
+      "target_kind": "FieldReference",
+      "target_op": 26243,
+      "type": "BaseClockSource"
+    },
+    {
+      "body": 47374,
+      "calls": {
+        "external": 1,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string)",
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.I2C.II2CPeripheral.FinishTransmission()",
+          "Antmicro.Renode.Peripherals.I2C.II2CPeripheral.Write(byte[])",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateIdle()",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+          "Antmicro.Renode.Utilities.Misc.DequeueAll<T>(System.Collections.Generic.Queue<T>)",
+          "Antmicro.Renode.Utilities.Misc.PrettyPrintCollectionHex<T>(System.Collections.Generic.IEnumerable<T>)"
+        ],
+        "nested_locks": 0,
+        "operations": 204
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "address": {
+          "member": 2543,
+          "reads": 1,
+          "writes": 0
+        },
+        "byteTransferFinished": {
+          "member": 2537,
+          "reads": 2,
+          "writes": 0
+        },
+        "child": {
+          "member": 2544,
+          "reads": 2,
+          "writes": 0
+        },
+        "data": {
+          "member": 2546,
+          "reads": 4,
+          "writes": 0
+        },
+        "dataDirection": {
+          "member": 2542,
+          "reads": 2,
+          "writes": 0
+        },
+        "dataState": {
+          "member": 2527,
+          "reads": 2,
+          "writes": 3
+        },
+        "mode": {
+          "member": 2541,
+          "reads": 2,
+          "writes": 0
+        },
+        "start": {
+          "member": 2529,
+          "reads": 4,
+          "writes": 0
+        },
+        "startBit": {
+          "member": 2535,
+          "reads": 1,
+          "writes": 0
+        },
+        "stop": {
+          "member": 2530,
+          "reads": 4,
+          "writes": 0
+        },
+        "txDataEmpty": {
+          "member": 2539,
+          "reads": 2,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "acknowledgeFailure",
+        "addressSent",
+        "bufferInterruptEnable",
+        "byteTransferFinished",
+        "dataDirection",
+        "dataState",
+        "errorInterruptEnabled",
+        "eventInterruptEnable",
+        "minLevel",
+        "mode",
+        "peripheralEnable",
+        "rxDataNotEmpty",
+        "startBit",
+        "txDataEmpty",
+        "updateLock"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+      "operation": 47371,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 47372,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 47653,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateSchedule(bool?)"
+        ],
+        "nested_locks": 0,
+        "operations": 5
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {},
+      "guards_transitively": [
+        "Value",
+        "ValueResiduum"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+      "operation": 47650,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 47651,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 48538,
+      "calls": {
+        "external": 1,
+        "internal": [],
+        "nested_locks": 0,
+        "operations": 6
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "scheduledAction": {
+          "member": 2526,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.ExecuteScheduledAction()",
+      "operation": 48535,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 48536,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 49030,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string)",
+          "Antmicro.Renode.Logging.Logger.WarningLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.I2C.II2CPeripheral.FinishTransmission()",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.QueueUpdate(System.Action)",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateIdle()",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateSchedule(bool?)"
+        ],
+        "nested_locks": 0,
+        "operations": 123
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "byteTransferFinished": {
+          "member": 2537,
+          "reads": 2,
+          "writes": 0
+        },
+        "child": {
+          "member": 2544,
+          "reads": 1,
+          "writes": 0
+        },
+        "dataState": {
+          "member": 2527,
+          "reads": 2,
+          "writes": 2
+        },
+        "mode": {
+          "member": 2541,
+          "reads": 1,
+          "writes": 0
+        },
+        "rxDataNotEmpty": {
+          "member": 2538,
+          "reads": 2,
+          "writes": 0
+        },
+        "stop": {
+          "member": 2530,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "Value",
+        "ValueResiduum",
+        "acknowledgeFailure",
+        "address",
+        "addressSent",
+        "byteTransferFinished",
+        "child",
+        "data",
+        "dataDirection",
+        "dataState",
+        "minLevel",
+        "mode",
+        "peripheralEnable",
+        "scheduledAction",
+        "startBit",
+        "updateLock"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.HandleDataRead()",
+      "operation": 49027,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 49028,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 48729,
+      "calls": {
+        "external": 2,
+        "internal": [
+          "Antmicro.Renode.Core.Structure.SimpleContainerBase<T>.TryGetByAddress(int, out T)",
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Logging.Logger.DebugLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Logging.Logger.WarningLog(Antmicro.Renode.IEmulationElement, string, object)",
+          "Antmicro.Renode.Peripherals.I2C.II2CPeripheral.Read(int)",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.QueueUpdate(System.Action)",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateIdle()",
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+          "Antmicro.Renode.Utilities.BitHelper.GetValue(byte, int, int)",
+          "Antmicro.Renode.Utilities.BitHelper.IsBitSet(uint, byte)",
+          "Antmicro.Renode.Utilities.Misc.EnqueueRange<T>(System.Collections.Generic.Queue<T>, System.Collections.Generic.IEnumerable<T>, int?)",
+          "Antmicro.Renode.Utilities.Misc.PrettyPrintCollectionHex<T>(System.Collections.Generic.IEnumerable<T>)"
+        ],
+        "nested_locks": 0,
+        "operations": 295
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "acknowledgeFailure": {
+          "member": 2540,
+          "reads": 1,
+          "writes": 0
+        },
+        "address": {
+          "member": 2543,
+          "reads": 4,
+          "writes": 2
+        },
+        "addressSent": {
+          "member": 2536,
+          "reads": 1,
+          "writes": 0
+        },
+        "byteTransferFinished": {
+          "member": 2537,
+          "reads": 1,
+          "writes": 0
+        },
+        "child": {
+          "member": 2544,
+          "reads": 2,
+          "writes": 1
+        },
+        "data": {
+          "member": 2546,
+          "reads": 7,
+          "writes": 0
+        },
+        "dataDirection": {
+          "member": 2542,
+          "reads": 3,
+          "writes": 0
+        },
+        "dataState": {
+          "member": 2527,
+          "reads": 2,
+          "writes": 3
+        },
+        "rxDataNotEmpty": {
+          "member": 2538,
+          "reads": 1,
+          "writes": 0
+        },
+        "startBit": {
+          "member": 2535,
+          "reads": 1,
+          "writes": 0
+        },
+        "txDataEmpty": {
+          "member": 2539,
+          "reads": 3,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "acknowledgeFailure",
+        "addressSent",
+        "bufferInterruptEnable",
+        "byteTransferFinished",
+        "dataDirection",
+        "dataState",
+        "errorInterruptEnabled",
+        "eventInterruptEnable",
+        "minLevel",
+        "mode",
+        "peripheralEnable",
+        "rxDataNotEmpty",
+        "scheduledAction",
+        "startBit",
+        "txDataEmpty",
+        "updateLock"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.HandleDataWrite(byte)",
+      "operation": 48726,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 48727,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 48605,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateSchedule(bool?)"
+        ],
+        "nested_locks": 0,
+        "operations": 11
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "scheduledAction": {
+          "member": 2526,
+          "reads": 0,
+          "writes": 1
+        }
+      },
+      "guards_transitively": [
+        "Value",
+        "ValueResiduum"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.QueueUpdate(System.Action)",
+      "operation": 48602,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 48603,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 49232,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateSchedule(bool?)"
+        ],
+        "nested_locks": 0,
+        "operations": 55
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/I2C/STM32F1_I2C.cs",
+      "guards": {
+        "acknowledgeFailure": {
+          "member": 2540,
+          "reads": 1,
+          "writes": 0
+        },
+        "addressSent": {
+          "member": 2536,
+          "reads": 1,
+          "writes": 0
+        },
+        "byteTransferFinished": {
+          "member": 2537,
+          "reads": 1,
+          "writes": 0
+        },
+        "dataDirection": {
+          "member": 2542,
+          "reads": 1,
+          "writes": 0
+        },
+        "dataState": {
+          "member": 2527,
+          "reads": 1,
+          "writes": 0
+        },
+        "mode": {
+          "member": 2541,
+          "reads": 1,
+          "writes": 0
+        },
+        "peripheralEnable": {
+          "member": 2528,
+          "reads": 1,
+          "writes": 0
+        },
+        "startBit": {
+          "member": 2535,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "Value",
+        "ValueResiduum"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateIdle()",
+      "operation": 49229,
+      "target": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock",
+      "target_kind": "FieldReference",
+      "target_op": 49230,
+      "type": "STM32F1_I2C"
+    },
+    {
+      "body": 57917,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Peripherals.SPI.STM32SPI.Update()",
+          "Antmicro.Renode.Utilities.Collections.CircularBuffer<T>.TryDequeue(out T)"
+        ],
+        "nested_locks": 0,
+        "operations": 17
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/SPI/STM32SPI.cs",
+      "guards": {
+        "receiveBuffer": {
+          "member": 2791,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "errorInterruptEnable",
+        "fifoReceptionThreshold",
+        "overrun",
+        "receiveBuffer",
+        "rxBufferNotEmptyInterruptEnable",
+        "series",
+        "state",
+        "stateChangedHook",
+        "sync",
+        "targets",
+        "txBufferEmptyInterruptEnable"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.HandleDataRead()",
+      "operation": 57914,
+      "target": "Antmicro.Renode.Peripherals.SPI.STM32SPI.receiveBuffer",
+      "target_kind": "FieldReference",
+      "target_op": 57915,
+      "type": "STM32SPI"
+    },
+    {
+      "body": 57952,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Core.IGPIOExtensions.Blink(Antmicro.Renode.Core.IGPIO)",
+          "Antmicro.Renode.Logging.Logger.Log(Antmicro.Renode.IEmulationElement, Antmicro.Renode.Logging.LogLevel, string)",
+          "Antmicro.Renode.Logging.Logger.NoisyLog(Antmicro.Renode.IEmulationElement, string, object, object)",
+          "Antmicro.Renode.Peripherals.SPI.ISPIPeripheral.Transmit(byte)",
+          "Antmicro.Renode.Utilities.Collections.CircularBuffer<T>.Enqueue(T)"
+        ],
+        "nested_locks": 0,
+        "operations": 94
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/SPI/STM32SPI.cs",
+      "guards": {
+        "overrun": {
+          "member": 2787,
+          "reads": 1,
+          "writes": 0
+        },
+        "receiveBuffer": {
+          "member": 2791,
+          "reads": 4,
+          "writes": 0
+        },
+        "rxDmaEnable": {
+          "member": 2784,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [
+        "minLevel"
+      ],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.HandleDataWrite(uint)",
+      "operation": 57949,
+      "target": "Antmicro.Renode.Peripherals.SPI.STM32SPI.receiveBuffer",
+      "target_kind": "FieldReference",
+      "target_op": 57950,
+      "type": "STM32SPI"
+    },
+    {
+      "body": 57892,
+      "calls": {
+        "external": 0,
+        "internal": [
+          "Antmicro.Renode.Utilities.Collections.CircularBuffer<T>.Clear()"
+        ],
+        "nested_locks": 0,
+        "operations": 4
+      },
+      "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/SPI/STM32SPI.cs",
+      "guards": {
+        "receiveBuffer": {
+          "member": 2791,
+          "reads": 1,
+          "writes": 0
+        }
+      },
+      "guards_transitively": [],
+      "malformed": false,
+      "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.Reset()",
+      "operation": 57889,
+      "target": "Antmicro.Renode.Peripherals.SPI.STM32SPI.receiveBuffer",
+      "target_kind": "FieldReference",
+      "target_op": 57890,
+      "type": "STM32SPI"
+    }
+  ],
+  "sites": 56,
+  "targets": {
+    "Antmicro.Renode.Core.GPIO.sync": {
+      "guards": [
+        "state",
+        "stateChangedHook",
+        "targets"
+      ],
+      "methods": [
+        "Antmicro.Renode.Core.GPIO.Connect(Antmicro.Renode.Core.IGPIOReceiver, int)",
+        "Antmicro.Renode.Core.GPIO.Disconnect()",
+        "Antmicro.Renode.Core.GPIO.Disconnect(Antmicro.Renode.Core.GPIOEndpoint)",
+        "Antmicro.Renode.Core.GPIO.Endpoints.get",
+        "Antmicro.Renode.Core.GPIO.IsConnected.get",
+        "Antmicro.Renode.Core.GPIO.IsSet.get",
+        "Antmicro.Renode.Core.GPIO.Set(bool)",
+        "Antmicro.Renode.Core.GPIO.Toggle()"
+      ],
+      "nested_locks": 0,
+      "sites": 8
+    },
+    "Antmicro.Renode.Logging.Logger.ActualLogger.aggregationFlushLock": {
+      "guards": [
+        "lastLoggedEntry",
+        "nextEntryId",
+        "repeatLogEntryCount"
+      ],
+      "methods": [
+        "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+        "Antmicro.Renode.Logging.Logger.ActualLogger.StartLoggingThread()"
+      ],
+      "nested_locks": 0,
+      "sites": 2
+    },
+    "Antmicro.Renode.Logging.Logger.ActualLogger.innerLock": {
+      "guards": [
+        "aggregateLogs",
+        "aggregationFlushLock",
+        "cancellationToken",
+        "logAggregatorTimer",
+        "loggingThread",
+        "nextEntryId",
+        "stopThread"
+      ],
+      "methods": [
+        "Antmicro.Renode.Logging.Logger.ActualLogger.ObjectInnerLog(object, Antmicro.Renode.Logging.LogLevel, string, params object[])",
+        "Antmicro.Renode.Logging.Logger.ActualLogger.StartLoggingThread()",
+        "Antmicro.Renode.Logging.Logger.ActualLogger.StopLoggingThread()"
+      ],
+      "nested_locks": 1,
+      "sites": 3
+    },
+    "Antmicro.Renode.Logging.Logger.backendsChangeLock": {
+      "guards": [
+        "Backend"
+      ],
+      "methods": [
+        "Antmicro.Renode.Logging.Logger.AddBackend(Antmicro.Renode.Logging.ILoggerBackend, string, bool)",
+        "Antmicro.Renode.Logging.Logger.GetBackends()",
+        "Antmicro.Renode.Logging.Logger.RemoveBackend(Antmicro.Renode.Logging.ILoggerBackend)"
+      ],
+      "nested_locks": 0,
+      "sites": 3
+    },
+    "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.updateLock": {
+      "guards": [
+        "acknowledgeFailure",
+        "address",
+        "addressSent",
+        "byteTransferFinished",
+        "child",
+        "data",
+        "dataDirection",
+        "dataState",
+        "mode",
+        "peripheralEnable",
+        "rxDataNotEmpty",
+        "scheduledAction",
+        "start",
+        "startBit",
+        "stop",
+        "txDataEmpty"
+      ],
+      "methods": [
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.ExecuteScheduledAction()",
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.HandleDataRead()",
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.HandleDataWrite(byte)",
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.QueueUpdate(System.Action)",
+        "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateIdle()"
+      ],
+      "nested_locks": 0,
+      "sites": 7
+    },
+    "Antmicro.Renode.Peripherals.IRQControllers.NVIC.RegisterCollection": {
+      "guards": [
+        "isNextAccessSecure"
+      ],
+      "methods": [
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ReadDoubleWord(long, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)"
+      ],
+      "nested_locks": 0,
+      "sites": 2
+    },
+    "Antmicro.Renode.Peripherals.IRQControllers.NVIC.irqs": {
+      "guards": [
+        "NonSecureVal",
+        "SecureVal",
+        "activeIRQs",
+        "basepri",
+        "irqs",
+        "maskedInterruptPresent",
+        "pendingIRQs",
+        "priorities",
+        "priorityMask",
+        "targetInterruptSecurityState"
+      ],
+      "methods": [
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AcknowledgeIRQ()",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_NS.set",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_S.set",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ClearPending(int)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.CompleteIRQ(int)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.EnableOrDisableInterrupt(int, uint, bool, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.FindPendingInterrupt()",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandleEnableRead(int, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandlePriorityRead(long, bool, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandlePriorityWrite(long, bool, uint, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.ModifySecurityTarget(int, uint)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.OnGPIO(int, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetOrClearPendingInterrupt(int, uint, bool, bool)",
+        "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPendingIRQ(int)"
+      ],
+      "nested_locks": 0,
+      "sites": 14
+    },
+    "Antmicro.Renode.Peripherals.SPI.STM32SPI.receiveBuffer": {
+      "guards": [
+        "overrun",
+        "receiveBuffer",
+        "rxDmaEnable"
+      ],
+      "methods": [
+        "Antmicro.Renode.Peripherals.SPI.STM32SPI.HandleDataRead()",
+        "Antmicro.Renode.Peripherals.SPI.STM32SPI.HandleDataWrite(uint)",
+        "Antmicro.Renode.Peripherals.SPI.STM32SPI.Reset()"
+      ],
+      "nested_locks": 0,
+      "sites": 3
+    },
+    "Antmicro.Renode.Time.BaseClockSource.sync": {
+      "guards": [
+        "clockEntries",
+        "clockEntriesUpdateHandlers",
+        "elapsed",
+        "nearestLimitIn",
+        "reupdateNeeded",
+        "skipAdvancesHigherThanNearestLimit",
+        "toNotify",
+        "totalElapsed",
+        "unaccountedTimes",
+        "updateAlreadyInProgress"
+      ],
+      "methods": [
+        "Antmicro.Renode.Time.BaseClockSource.AddClockEntries(System.Collections.Generic.IEnumerable<Antmicro.Renode.Time.ClockEntry>)",
+        "Antmicro.Renode.Time.BaseClockSource.AddClockEntry(Antmicro.Renode.Time.ClockEntry)",
+        "Antmicro.Renode.Time.BaseClockSource.Advance(Antmicro.Renode.Time.TimeInterval, bool)",
+        "Antmicro.Renode.Time.BaseClockSource.AdvanceInner(Antmicro.Renode.Time.TimeInterval, bool)",
+        "Antmicro.Renode.Time.BaseClockSource.EjectClockEntries()",
+        "Antmicro.Renode.Time.BaseClockSource.ExchangeClockEntryWith(System.Action, System.Func<Antmicro.Renode.Time.ClockEntry, Antmicro.Renode.Time.ClockEntry>, System.Func<Antmicro.Renode.Time.ClockEntry>)",
+        "Antmicro.Renode.Time.BaseClockSource.ExecuteInLock(System.Action)",
+        "Antmicro.Renode.Time.BaseClockSource.GetAllClockEntries()",
+        "Antmicro.Renode.Time.BaseClockSource.GetClockEntry(System.Action)",
+        "Antmicro.Renode.Time.BaseClockSource.GetClockEntryInLockContext(System.Action, System.Action<Antmicro.Renode.Time.ClockEntry>)",
+        "Antmicro.Renode.Time.BaseClockSource.HasEntries.get",
+        "Antmicro.Renode.Time.BaseClockSource.NearestLimitIn.get",
+        "Antmicro.Renode.Time.BaseClockSource.TryRemoveClockEntry(System.Action)",
+        "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)"
+      ],
+      "nested_locks": 0,
+      "sites": 14
+    }
+  },
+  "unlocked_accesses_to_guarded_fields": {
+    "Backend": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.BackendSourceIdPair.BackendSourceIdPair(Antmicro.Renode.Logging.ILoggerBackend, int)",
+        "type": "BackendSourceIdPair"
+      }
+    ],
+    "NonSecureVal": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AttachCPU(Antmicro.Renode.Peripherals.CPU.CortexM)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_NS.get",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandleWfiStateChange(bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.OnGPIO(int, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.OnGPIO(int, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.Reset()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Get(bool)",
+        "type": "SecurityBanked"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Reset()",
+        "type": "SecurityBanked"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Reset(T)",
+        "type": "SecurityBanked"
+      }
+    ],
+    "SecureVal": [
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AttachCPU(Antmicro.Renode.Peripherals.CPU.CortexM)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_S.get",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.HandleWfiStateChange(bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.OnGPIO(int, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.Reset()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Get(bool)",
+        "type": "SecurityBanked"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Reset()",
+        "type": "SecurityBanked"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SecurityBanked<T>.Reset(T)",
+        "type": "SecurityBanked"
+      }
+    ],
+    "acknowledgeFailure": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "activeIRQs": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.Reset()",
+        "type": "NVIC"
+      }
+    ],
+    "address": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.Reset()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "addressSent": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "aggregateLogs": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.Flush()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.Init()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+        "type": "ActualLogger"
+      }
+    ],
+    "aggregationFlushLock": [
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.Init()",
+        "type": "ActualLogger"
+      }
+    ],
+    "basepri": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_NS.get",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.BASEPRI_S.get",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsCandidate(Antmicro.Renode.Peripherals.IRQControllers.NVIC.IRQState, int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsCandidate(Antmicro.Renode.Peripherals.IRQControllers.NVIC.IRQState, int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      }
+    ],
+    "byteTransferFinished": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataReceive()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataReceive()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataTransmission()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataTransmission()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "cancellationToken": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+        "type": "ActualLogger"
+      }
+    ],
+    "child": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.Reset()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "clockEntries": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.AddClockEntry(Antmicro.Renode.Time.ClockEntry)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.AddClockEntry(Antmicro.Renode.Time.ClockEntry)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.TryRemoveClockEntry(System.Action)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.UpdateUpdateHandler(int)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "clockEntriesUpdateHandlers": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.UpdateUpdateHandler(int)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.UpdateUpdateHandler(int)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "data": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.PerformRead()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.Reset()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "dataDirection": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "dataState": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.Reset()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataReceive()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "irqs": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetActive(int, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetEnabledExternalInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetEnabledInternalInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetPending(int, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)",
+        "type": "NVIC"
+      }
+    ],
+    "isNextAccessSecure": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      }
+    ],
+    "lastLoggedEntry": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      }
+    ],
+    "logAggregatorTimer": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      }
+    ],
+    "maskedInterruptPresent": [
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.MaskedInterruptPresent.get",
+        "type": "NVIC"
+      }
+    ],
+    "mode": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "nearestLimitIn": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "nextEntryId": [
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.Flush()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+        "type": "ActualLogger"
+      }
+    ],
+    "overrun": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.SetupRegisters()",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.SetupRegisters()",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.Update()",
+        "type": "STM32SPI"
+      }
+    ],
+    "pendingIRQs": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.SetPending(int)",
+        "type": "NVIC"
+      }
+    ],
+    "peripheralEnable": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "priorities": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.AdjustPriority(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsCandidate(Antmicro.Renode.Peripherals.IRQControllers.NVIC.IRQState, int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.Reset()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.Reset()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.WriteDoubleWord(long, uint, bool)",
+        "type": "NVIC"
+      }
+    ],
+    "priorityMask": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      }
+    ],
+    "receiveBuffer": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.IsRxBufferNotEmpty()",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.IsRxBufferNotEmpty()",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.STM32SPI(Antmicro.Renode.Core.IMachine, Antmicro.Renode.Peripherals.STM32Series, int)",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.SetupRegisters()",
+        "type": "STM32SPI"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.SetupRegisters()",
+        "type": "STM32SPI"
+      }
+    ],
+    "repeatLogEntryCount": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.FlushAggregatedLogs()",
+        "type": "ActualLogger"
+      }
+    ],
+    "reupdateNeeded": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "rxDataNotEmpty": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataReceive()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataReceive()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "rxDmaEnable": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.SPI.STM32SPI.SetupRegisters()",
+        "type": "STM32SPI"
+      }
+    ],
+    "skipAdvancesHigherThanNearestLimit": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "start": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "startBit": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "stateChangedHook": [
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Core.GPIO.AddStateChangedHook(System.Action<bool>)",
+        "type": "GPIO"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Core.GPIO.GPIO()",
+        "type": "GPIO"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Core.GPIO.RemoveAllStateChangedHooks()",
+        "type": "GPIO"
+      },
+      {
+        "during_construction": false,
+        "is_write": true,
+        "method": "Antmicro.Renode.Core.GPIO.RemoveStateChangedHook(System.Action<bool>)",
+        "type": "GPIO"
+      }
+    ],
+    "stop": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "stopThread": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Logging.Logger.ActualLogger.LoggingThreadBody()",
+        "type": "ActualLogger"
+      }
+    ],
+    "targetInterruptSecurityState": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.DefineRegisters()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetSecurityTarget(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.GetTargetInterruptSecurityState(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.InitInterrupts()",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.IsInterruptTargetNonSecure(int)",
+        "type": "NVIC"
+      },
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Peripherals.IRQControllers.NVIC.NVIC(Antmicro.Renode.Core.IMachine, ulong, byte, bool)",
+        "type": "NVIC"
+      }
+    ],
+    "targets": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Core.GPIO.GPIO()",
+        "type": "GPIO"
+      }
+    ],
+    "toNotify": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "totalElapsed": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.CurrentValue.get",
+        "type": "BaseClockSource"
+      }
+    ],
+    "txDataEmpty": [
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.DefineRegisters()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataTransmission()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateDataTransmission()",
+        "type": "STM32F1_I2C"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Peripherals.I2C.STM32F1_I2C.UpdateInterrupts()",
+        "type": "STM32F1_I2C"
+      }
+    ],
+    "unaccountedTimes": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      }
+    ],
+    "updateAlreadyInProgress": [
+      {
+        "during_construction": true,
+        "is_write": true,
+        "method": "Antmicro.Renode.Time.BaseClockSource.BaseClockSource(bool)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+        "type": "BaseClockSource"
+      },
+      {
+        "during_construction": false,
+        "is_write": false,
+        "method": "Antmicro.Renode.Time.BaseClockSource.Update(Antmicro.Renode.Time.TimeInterval, ref System.Collections.Generic.List<System.Action>)",
+        "type": "BaseClockSource"
+      }
+    ]
+  }
+}

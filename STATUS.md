@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-02T20:02:33+10:00 from `6103067` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-02T21:36:05+10:00 from `949c38f` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -41,9 +41,12 @@ Genuine stop points. A failed gate means stop, not retry.
 |---|---|---|
 | 1 — compiles | the crate builds | built |
 | 2 — trace replay | per-peripheral register behaviour | built |
+| 2.5 — interleaving | a critical section is not observed part-way through | built (#52) |
 | 3 — instruction lockstep | full machine state vs C# | not built (#23) |
 | 4 — boot equivalence | firmware reaches the prompt | **C# reference pinned** |
 | 5 — CLI suite | commands behave identically | not built (#25) |
+
+> **Threading is UNCERTIFIED.** Tier-2 replay is single-threaded, so a threading difference cannot appear in it by construction. The tier-2.5 harness can observe interleaving and is proven to fail when a lock is deleted (`scripts/check_sync_harness.py`) — but it has been pointed at no translated peripheral: 56 lock site(s) in the corpus, 0 in emitted Rust. Nothing here is evidence for or against D3.
 
 ## Tests
 

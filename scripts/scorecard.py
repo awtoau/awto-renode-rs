@@ -32,6 +32,7 @@ BASELINE = "docs/status/baseline.json"
 TESTS = "docs/status/tests.json"
 MUTANTS = "docs/status/mutants.json"
 BENCHES = "docs/status/benchmarks.json"
+SYNC_CENSUS = "docs/status/sync_census.json"
 
 # The health metric that detects rule-pipeline drift. See docs/rulesdb-design.md.
 MIN_INSTANCES_PER_RULE = 3.0
@@ -247,10 +248,33 @@ def build(root: Path) -> str:
     a(f"| 1 — compiles | the crate builds | {'built' if crate else 'no crate yet'} |")
     a(f"| 2 — trace replay | per-peripheral register behaviour | "
       f"{'built' if (root/'oracle').exists() else 'not built (#6)'} |")
+    sync = (root / "src" / "renode-sync").exists()
+    a(f"| 2.5 — interleaving | a critical section is not observed part-way "
+      f"through | {'built (#52)' if sync else 'not built (#52)'} |")
     a("| 3 — instruction lockstep | full machine state vs C# | not built (#23) |")
     a("| 4 — boot equivalence | firmware reaches the prompt | "
       f"{'**C# reference pinned**' if base else 'not built'} |")
     a("| 5 — CLI suite | commands behave identically | not built (#25) |")
+    a("")
+    # Tier 2 is single-threaded by construction, so a green tier-2 run says
+    # nothing about the emitted locks. Stating that here is the point: it is
+    # the one place a reader would otherwise assume the tests covered it.
+    #
+    # Both numbers are counted, not asserted: the sites in the corpus, and the
+    # sites that reached emitted Rust. If a lock is ever translated the second
+    # stops being zero on its own.
+    census = load_json(root, SYNC_CENSUS)
+    sites = (census or {}).get("sites")
+    emitted = sum(1 for p in (root / "src").rglob("*.rs")
+                  if "SYNC(measure)" in p.read_text(errors="ignore")
+                  and "renode-sync" not in p.parts)
+    a("> **Threading is UNCERTIFIED.** Tier-2 replay is single-threaded, so a "
+      "threading difference cannot appear in it by construction. The tier-2.5 "
+      "harness can observe interleaving and is proven to fail when a lock is "
+      "deleted (`scripts/check_sync_harness.py`) — but it has been pointed at "
+      "no translated peripheral: "
+      f"{sites if sites is not None else 'the'} lock site(s) in the corpus, "
+      f"{emitted} in emitted Rust. Nothing here is evidence for or against D3.")
     a("")
 
     # --- Tests --------------------------------------------------------------
