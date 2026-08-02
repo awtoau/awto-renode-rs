@@ -1,29 +1,36 @@
-"""Expressions: generic C# to Rust.
+"""Expressions: the dispatch entry, and the helpers a construct shares.
 
 LANGUAGE LAYER. Nothing here may name anything specific to the codebase being
 translated; `scripts/check_layering.py` fails the commit if it does. Corpus
 idioms live in `scripts/emitter/plugins/` and are consulted FIRST, so an idiom
-can override any mapping below without this module knowing it exists.
+can override any mapping without this module knowing it exists.
 
-Templates come from `rulesdb/rules/csharp_core.json`. This module decides which
-rule applies and how expressions nest; it never decides what the Rust says.
+Templates come from `rulesdb/rules/csharp_core.json`. Nothing here decides what
+the Rust says.
 
-Two things here are load-bearing:
+**One construct, one file.** This module used to hold every expression kind as
+a branch in one `if kind == ...` chain, which meant two agents adding two
+constructs edited one file and every new kind widened a shared function. Each
+kind is now its own module in this directory, found by the registry in
+`core.py`; what is left here is the dispatch entry and the handful of helpers
+more than one construct calls.
 
-  * A reference emits its RECEIVER. Dropping it turned `queue.Count` into
-    `self.count()` -- reading the wrong object -- and did so for 26% of all
-    references while both generated files stayed byte-identical and correct,
-    because the two types converted at the time reached their state
-    through `this`.
+The two rules that are load-bearing kept their reasoning with them, in the
+files they moved to:
 
-  * An implicit NUMERIC conversion becomes an explicit cast. C# widens
-    silently and Rust never does, so `16.0` emitted as `16` turned an f64
-    division into integer division that compiled and passed every test.
+  * A reference emits its RECEIVER (`reference.py`). Dropping it turned
+    `queue.Count` into `self.count()` -- reading the wrong object -- and did so
+    for 26% of all references while both generated files stayed byte-identical
+    and correct, because the two types converted at the time reached their
+    state through `this`.
+
+  * An implicit NUMERIC conversion becomes an explicit cast (`conversion.py`).
+    C# widens silently and Rust never does, so `16.0` emitted as `16` turned an
+    f64 division into integer division that compiled and passed every test.
 """
 
 from __future__ import annotations
 
-import json
 import re
 
 from emitter import core
@@ -40,6 +47,11 @@ class Expressions:
         anything mentioning a corpus construct comes from the PROJECT
         rules. The split is enforced by where each table is loaded from, so a
         a corpus idiom cannot leak into the language layer.
+
+        This function no longer knows any construct by name. It finds the
+        handlers for the kind, tries them in order, and counts the kind if none
+        of them claims it -- so a construct is added by adding a FILE, and
+        nothing that already works is touched.
         """
         row = self.con.execute(
             "SELECT kind, symbol, const_value, detail, type FROM operation WHERE id=?",
@@ -62,235 +74,18 @@ class Expressions:
         if claimed is not None:
             return claimed
 
-        # Registered handlers, then the built-in chain. A new expression kind
-        # is a new file; see core.py.
+        # Every language construct, in priority order. A handler returns None to
+        # decline, and the next one gets its turn; the priorities are assigned
+        # from the order the constructs had when they were one chain, because
+        # some pairs are order-sensitive and the more specific must go first.
         for fn in core.expr_handlers(kind):
             got = fn(self, oid)
             if got is not None:
                 return got
 
-        # Language layer: generic C# to Rust, valid for any corpus.
-        if kind == "Literal":
-            return self.literal(const, rtype)
-        if kind == "Binary":
-            table = self.language.get("operators", {}).get("binary", {})
-            tmpl = table.get(symbol or "")
-            if tmpl and len(kids) >= 2:
-                return "(" + tmpl.format(lhs=self.emit_expr(kids[0]),
-                                         rhs=self.emit_expr(kids[1])) + ")"
-            self.unhandled[f"Binary:{symbol}"] = self.unhandled.get(f"Binary:{symbol}", 0) + 1
-        if kind == "Unary":
-            table = self.language.get("operators", {}).get("unary", {})
-            tmpl = table.get(symbol or "")
-            if tmpl and kids:
-                return tmpl.format(operand=self.emit_expr(kids[0]))
-        linq = self.language.get("linq", {})
-        if (kind == "Invocation" and symbol
-                and linq.get("symbol_contains", "\0") in symbol):
-            # STATIC extension method: argument 0 is the receiver, and there is
-            # no receiver child at all. The generic rule below finds none and
-            # emits the self-call form, which turned `xs.Select(f)` into
-            # `self.select(f)` -- a LINQ call read as a state field.
-            meth = symbol.split("(")[0].split(".")[-1].split("<")[0]
-            vals = [self.emit_expr(a) for a in args]
-            if vals:
-                recv, rest = vals[0], vals[1:]
-                tmpl = (linq.get("no_predicate", {}).get(meth) if not rest
-                        else None) or linq.get("members", {}).get(meth)
-                if tmpl:
-                    # A chained LINQ call already yields an iterator; adding a
-                    # second `.iter()` does not compile.
-                    # Anywhere in the receiver, not just near its end: once a
-                    # chain is an iterator it stays one, and a predicate can be
-                    # arbitrarily long -- a fixed window missed `.filter(` by
-                    # one character.
-                    if any(p in recv for p in linq.get("iterator_producers", [])):
-                        tmpl = tmpl.replace("{recv}.iter()", "{recv}")
-                    # A closure body of one `return X;` is the expression X.
-                    rest = [re.sub(r"^\|([^|]*)\|\s*return\s+(.*?);?$",
-                                   r"|\1| \2", r) for r in rest]
-                    return tmpl.format(recv=recv, args=", ".join(rest))
-            self.unhandled[f"linq:{meth}"] = 1
-            return f"/* Linq{meth} */"
-
-        if kind == "Invocation" and symbol:
-            # Generic call. Project rules were tried above, so reaching here
-            # means no idiom claimed it.
-            inv = self.language.get("invocations", {})
-            method = snake(symbol.split("(")[0].split(".")[-1])
-            arg_txt = ", ".join(self.emit_expr(a) for a in args)
-            receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
-            key = self.stdlib_member(symbol)
-            if key and receiver is not None:
-                tmpl = self.language["stdlib"]["members"][key]
-                # A guarded form is a STATEMENT (type ()); using it where a
-                # value is wanted is E0317. Report rather than bolt on an
-                # `else` returning a fabricated default -- that would compile.
-                if tmpl.startswith("if let") and not getattr(
-                        self, "_stmt_position", False):
-                    self.unhandled["expr:DelegateInvokeInExpression"] = 1
-                    return "/* DelegateInvokeInExpression */"
-                return tmpl.format(recv=self.emit_expr(receiver), args=arg_txt)
-            rkind = None
-            if receiver is not None:
-                rkind = self.con.execute(
-                    "SELECT kind FROM operation WHERE id=?", (receiver,)).fetchone()[0]
-            if receiver is None or rkind == "InstanceReference":
-                return inv.get("self", "self.{method}({args})").format(
-                    method=method, args=arg_txt)
-            return inv.get("instance", "{receiver}.{method}({args})").format(
-                receiver=self.emit_expr(receiver), method=method, args=arg_txt)
-
-        if kind == "InterpolatedString":
-            rules = self.language.get("strings", {})
-            fmt, holes = "", []
-            for cid, ck, _s, cconst, _t in self.children(oid):
-                if ck == "InterpolatedStringText":
-                    lit = self.const_text(cid)
-                    fmt += lit.replace("{", "{{").replace("}", "}}")
-                else:
-                    fmt += rules.get("hole", "{}")
-                    holes.append(self.emit_expr(cid))
-            return rules.get("interpolated", 'format!("{fmt}"{args})').format(
-                fmt=fmt, args="".join(", " + h for h in holes))
-
-        if kind == "NameOf":
-            # Roslyn folds nameof to a constant, so the corpus already has it.
-            return self.language.get("strings", {}).get(
-                "nameof", '"{name}"').format(name=(const or "").strip('"'))
-
-        if kind == "DelegateCreation" and kids:
-            inner = kids[0]
-            if self.kind_of(inner) == "AnonymousFunction":
-                det = (self.con.execute(
-                    "SELECT detail FROM operation WHERE id=?", (inner,)
-                ).fetchone() or [None])[0]
-                names = []
-                if det:
-                    try:
-                        names = json.loads(det).get("params", "").split()
-                    except json.JSONDecodeError:
-                        names = []
-                body = []
-                for cid, ck, _s, _c, _t in self.children(inner):
-                    body.extend(self.emit_block(cid, 0) if ck == "Block"
-                                else self.emit_stmt(cid, 0))
-                txt = " ".join(l.strip() for l in body).rstrip(";")
-                return self.language.get("delegates_expr", {}).get(
-                    "closure", "|{params}| {body}").format(
-                    params=", ".join(n if n != "_" else "_" for n in names),
-                    body=txt)
-
-        if kind == "ConditionalAccessInstance":
-            # Inside a normalised `?.` guard this is the bound receiver.
-            b = getattr(self, "_ca_binding", None)
-            if b:
-                return b
-
-        if kind == "ConditionalAccess":
-            gap = self.language.get("statements", {}).get("ConditionalAccess", {})
-            self.gaps.append("conditional access `?.` needs nullability analysis")
-            return gap.get("emit", "/* GAP: ?. */")
-
-        if kind == "SimpleAssignment":
-            # Assignment in expression position; C# yields the assigned value.
-            return self.emit_assignment(oid).rstrip(";")
-
-        if kind == "FieldReference" and symbol and self._enum_names:
-            # `OversamplingMode.By16` is an enum MEMBER, not state. Without this
-            # it fell through to the field rule and emitted `st.by16`.
-            parts = symbol.split("(")[0].split(".")
-            if len(parts) >= 2 and parts[-2] in self._enum_names:
-                return self.project.get("enums", {}).get(
-                    "reference", "{type}::{member}").format(
-                    type=parts[-2], member=parts[-1])
-
-        if kind in ("PropertyReference", "FieldReference") and symbol:
-            return self.emit_reference(kind, symbol, kids)
-
-        if kind == "ArrayElementReference" and len(kids) >= 3:
-            # Two index children means a rectangular access -- told apart by
-            # arity rather than by consulting the declared type.
-            tmpl = self.language.get("references", {}).get(
-                "ArrayElementReference2D", {}).get(
-                "emit", "{array}.get({row} as usize, {col} as usize)")
-            return tmpl.format(array=self.emit_expr(kids[0]),
-                               row=self.emit_expr(kids[1]),
-                               col=self.emit_expr(kids[2]))
-
-        if kind == "ArrayElementReference" and len(kids) >= 2:
-            tmpl = self.language.get("references", {}).get(
-                "ArrayElementReference", {}).get("emit", "{array}[{index} as usize]")
-            return tmpl.format(array=self.emit_expr(kids[0]),
-                               index=self.emit_expr(kids[1]))
-
-        if kind == "Conversion" and kids:
-            inner = self.emit_expr(kids[0])
-            # Only NUMERIC conversions need spelling in Rust; see language rule.
-            try:
-                num = json.loads(detail or "{}").get("numeric", False)
-            except json.JSONDecodeError:
-                num = False
-            # An explicit cast to a generated enum needs from_u64: Rust has no
-            # numeric-to-enum cast. See enums.from_u64.
-            if (rtype or "").split(".")[-1] in self._enum_names:
-                return f"{(rtype or '').split('.')[-1]}::from_u64({inner})"
-            tgt = self.rust_type(rtype or "") if num else None
-            if num and tgt:
-                return self.language.get("conversions", {}).get(
-                    "numeric", "{expr} as {target}").format(expr=inner, target=tgt)
-            return inner
-
-        if kind == "Conditional" and len(kids) >= 3:
-            # `c ? a : b`. Rust's if-else IS an expression, so this needs no
-            # temporary -- the same rule the statement form uses.
-            tmpl = self.language.get("statements", {}).get("Conditional", {}).get(
-                "ternary", "if {cond} {{ {then} }} else {{ {else} }}")
-            return tmpl.replace("{else}", "{alt}").format(
-                cond=self.emit_expr(kids[0]), then=self.emit_expr(kids[1]),
-                alt=self.emit_expr(kids[2]))
-
-        if kind in ("Increment", "Decrement"):
-            self.gaps.append(
-                f"{kind.lower()} in expression position: prefix/postfix "
-                f"difference is observable there (see language rule `increment`)")
-            return f"/* GAP: {kind} in expression position */"
-
-        if kind == "Interpolation" and kids:
-            # The hole node wraps the expression; the format placeholder was
-            # already emitted by InterpolatedString.
-            return self.emit_expr(kids[0])
-
-        if kind in ("Parenthesized", "Argument"):
-            # Transparent: neither is written in Rust.
-            return self.emit_expr(kids[0]) if kids else "/* empty */"
-        if kind == "InstanceReference":
-            return "self"
-        if kind == "ObjectCreation" and symbol:
-            ty = symbol.split("(")[0].split(".")[-1]
-            return f"{ty}::new({', '.join(self.emit_expr(a) for a in args)})"
-        if kind == "ParameterReference" and symbol:
-            # A WithEnumFields callback slot is declared u64 in Rust but typed
-            # as the enum in C#; convert where it is used. Only for lambda
-            # slots -- see enums.typed_callback_param.
-            nm = snake(symbol.split()[-1])
-            ety = (rtype or "").split(".")[-1]
-            if nm in self._enum_slots and ety in self._enum_names:
-                return self.project.get("enums", {}).get(
-                    "typed_callback_param", {}).get(
-                    "emit", "{type}::from_u64({name})").format(type=ety, name=nm)
-            # The symbol is "byte value" -- type then name. Splitting on "."
-            # returned the whole thing and emitted `enqueue(byte value)`.
-            return snake(symbol.split()[-1])
-        if kind == "LocalReference":
-            if detail:
-                try:
-                    return snake(json.loads(detail).get("local", "local"))
-                except json.JSONDecodeError:
-                    pass
-            if symbol:
-                return snake(symbol.split(".")[-1])
-
+        # Nothing claimed it. Counting the kind is what makes an unsupported
+        # construct MEASURABLE rather than a plausible-looking comment nobody
+        # notices, so this is the one path allowed to produce filler.
         self.unhandled[f"expr:{kind}"] = self.unhandled.get(f"expr:{kind}", 0) + 1
         return f"/* {kind} */"
 
