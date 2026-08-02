@@ -47,6 +47,19 @@ def main() -> int:
                   file=sys.stderr)
             return 1
 
+    # 1b. Compile everything the converter emits, as a RATCHET. Fails only
+    #     when errors RISE. A hard zero would block every commit today; the
+    #     regression this catches actually happened -- a format-string rule
+    #     that was never called survived two commits, because nothing
+    #     compiled the 23 modules it broke.
+    ratchet = subprocess.run([py, "scripts/compile_check.py", "--ratchet"],
+                             cwd=root, capture_output=True, text=True)
+    if ratchet.returncode != 0:
+        print(ratchet.stdout[-1200:], file=sys.stderr)
+        print("pre-commit: generated code that used to compile no longer does",
+              file=sys.stderr)
+        return 1
+
     # 2. Regenerate the scorecard and stage it if it moved. Never fail the
     #    commit on this -- a stale scorecard is a nuisance, not a defect, and
     #    blocking a commit because `gh` was offline would be worse than useless.

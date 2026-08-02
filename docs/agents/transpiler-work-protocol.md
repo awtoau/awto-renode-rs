@@ -84,6 +84,24 @@ Four bugs so far compiled cleanly and were wrong:
 
 None failed to compile. Read the generated output and compare it to the C#.
 
+## Never edit by string match
+
+Five edits in one session silently did nothing. Four were Python
+`str.replace` against an anchor that had moved when `emit.py` was split into
+modules; the fifth was a lookup against a key that had become a list entry.
+
+Every one produced the same symptom, which is no symptom: the rule was in the
+data, the code path was absent, and a rule with no handler reads exactly like
+a rule that correctly declines. Two of them were reported as landed in commit
+messages before anyone noticed.
+
+**Use an editor that fails when its anchor does not match.** The remedy is a
+tool that cannot silently miss, not a resolution to be careful -- each of
+those five cost more to find than the fix cost to make.
+
+The same principle is now enforced where it can be: a normalisation named in
+data with no registered handler raises, rather than doing nothing.
+
 ## When you cannot do it generally
 
 **Withhold and report a gap.** That is a correct outcome, not a failure.

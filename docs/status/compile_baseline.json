@@ -1,0 +1,7 @@
+{
+  "errors": 27,
+  "modules_clean": 18,
+  "modules_total": 25,
+  "note": "A RATCHET, not a target. The gate fails when errors RISE above this, never when they merely stay put. A hard zero would block every commit today; a ratchet stops the regression that actually happened -- a format-string rule that was never called survived two commits because nothing compiled the 23 modules it broke.",
+  "lower_me": "When errors fall, lower this. That is the whole mechanism."
+}

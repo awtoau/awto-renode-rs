@@ -107,6 +107,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="rulesdb/patterns.db")
     ap.add_argument("--keep", action="store_true", help="leave the scratch crate")
+    ap.add_argument("--ratchet", action="store_true",
+                    help="fail if errors rose above docs/status/compile_baseline.json")
     args = ap.parse_args()
 
     root = repo_root()
@@ -179,6 +181,24 @@ def main() -> int:
 
     if not args.keep:
         shutil.rmtree(crate, ignore_errors=True)
+
+    if args.ratchet:
+        import json as _json
+        bf = root / "docs" / "status" / "compile_baseline.json"
+        base = _json.loads(bf.read_text()) if bf.exists() else {"errors": 10**9}
+        allowed = int(base.get("errors", 10**9))
+        if total > allowed:
+            log.error("")
+            log.error("RATCHET: %d errors, baseline allows %d.", total, allowed)
+            log.error("Something that used to compile no longer does. A rule")
+            log.error("that quietly stops being applied looks exactly like a")
+            log.error("rule that correctly declines -- this is the check that")
+            log.error("tells the two apart.")
+            return 1
+        if total < allowed:
+            log.info("")
+            log.info("RATCHET: %d errors, below the baseline of %d -- lower it "
+                     "in docs/status/compile_baseline.json.", total, allowed)
     return 0
 
 
