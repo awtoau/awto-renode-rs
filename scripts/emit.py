@@ -148,6 +148,7 @@ def render_mode(const: str | None) -> str:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emitter.core import snake  # noqa: E402
+from emitter.core import must_explain as _core_must_explain  # noqa: E402
 import importlib
 import pkgutil
 
@@ -1177,6 +1178,7 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
                 break
         return snake(method_name)
 
+    @_core_must_explain
     def emit_peripheral_method(self, type_name: str, method_name: str) -> list[str]:
         """A whole C# method as a free fn over (bank, st).
 

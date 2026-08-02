@@ -129,6 +129,45 @@ def run_normalisations(em, method_id: int, spec: dict) -> int:
         f"normalisations.max_passes_why")
 
 
+def must_explain(fn):
+    """Wrap an emitter so that producing NOTHING must be explained.
+
+    The invariant, which held only by convention until six paths broke it in
+    one session:
+
+        a code path that produces no output MUST record why -- a gap, an
+        `unhandled` entry, or an exception. Silence is never valid.
+
+    Two of those six were reported as landed in commit messages before anyone
+    noticed, and one survived two commits. Every case looked identical to a
+    rule that correctly declined, which is why review never caught them: there
+    is nothing to see.
+
+    This makes the silence loud at the moment it happens.
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(self, *a, **kw):
+        gaps_before = len(getattr(self, "gaps", ()))
+        unhandled_before = len(getattr(self, "unhandled", ()))
+        result = fn(self, *a, **kw)
+        empty = result is None or (isinstance(result, (list, tuple, str))
+                                   and len(result) == 0)
+        if empty:
+            explained = (len(getattr(self, "gaps", ())) > gaps_before
+                         or len(getattr(self, "unhandled", ())) > unhandled_before)
+            if not explained:
+                raise RuntimeError(
+                    f"{fn.__name__} produced nothing and explained nothing "
+                    f"(args={a[:2]}). A path that emits no output must record a "
+                    f"gap or an unhandled kind -- silence is indistinguishable "
+                    f"from a rule that correctly declines. See issue #53.")
+        return result
+
+    return wrapper
+
+
 def expr(*kinds: str, priority: int = LANGUAGE):
     """Register an EXPRESSION handler for one or more operation kinds.
 
