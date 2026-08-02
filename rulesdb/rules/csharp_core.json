@@ -34,10 +34,13 @@
   "deviations": [
     {
       "construct": "integer overflow",
-      "csharp": "wraps silently in an unchecked context",
+      "csharp": "wraps silently in an unchecked context; throws OverflowException in a checked one",
       "rust": "panics in debug, wraps in release",
-      "mapping": "arithmetic on register values emits wrapping_* explicitly",
-      "why": "Recorded rather than assumed. Renode's peripherals rely on C# wrapping for counters and timers; a debug panic there would be a behaviour change the oracle would catch late and confusingly."
+      "mapping": "NOT IMPLEMENTED. This entry previously claimed arithmetic emitted wrapping_* explicitly, and no such emission exists: the only occurrence of `wrapping_` under scripts/ or rulesdb/ was that sentence. Binary arithmetic emits a plain `{lhs} + {rhs}`.",
+      "status": "declared, unimplemented -- a documented mapping that does not exist is worse than an undocumented gap, because review reads the note and believes it. Corrected 2026-08-02 rather than deleted, so the deviation stays visible.",
+      "what_is_needed": "The ingest ALREADY records it: Walker.cs writes IsChecked on every Binary and CompoundAssignment, and nothing reads it. The cut holds 2,602 unchecked and 10 checked binaries; 918 are arithmetic. `lifted` -- operators over Nullable<T>, 11 in the cut -- is likewise ingested and unread.",
+      "why": "The divergence runs BOTH ways and neither direction is safe. Unchecked C# wraps where Rust debug panics; checked C# throws where Rust release wraps silently. Renode's peripherals rely on wrapping for counters and timers, so a debug panic there is a behaviour change the oracle would catch late and confusingly -- and the checked direction is a divergence no test would catch at all.",
+      "prior_art": "c2rust emits wrapping_* for translated integer arithmetic as a matter of course."
     },
     {
       "construct": "C# `bool` in bitwise position",

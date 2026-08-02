@@ -3,6 +3,17 @@
 //! Faithful first. The oracle certifies equivalence against C# Renode, never
 //! improvement, so a "better" translation is a failed one.
 
+// A self-call where the C# called its BASE has already shipped here once:
+// `base.Reset()` emitted as `reset()`, recursing forever. It compiled, and no
+// test saw it because the method was never reached.
+//
+// rustc can see that statically and does not, by default. Denying it turns
+// that class into a build failure -- the cheapest of the four bugs that
+// "compiled cleanly and were wrong" to have prevented, and the only one a lint
+// could have caught at all. Overload collapse (emit.py) can still produce it,
+// so this is a live guard, not a historical one.
+#![deny(unconditional_recursion)]
+
 pub mod uart;
 pub mod gpio_port;
 pub mod platform;
