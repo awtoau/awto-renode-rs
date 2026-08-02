@@ -84,6 +84,24 @@ class Expressions:
             tmpl = table.get(symbol or "")
             if tmpl and kids:
                 return tmpl.format(operand=self.emit_expr(kids[0]))
+        linq = self.language.get("linq", {})
+        if (kind == "Invocation" and symbol
+                and linq.get("symbol_contains", "\0") in symbol):
+            # STATIC extension method: argument 0 is the receiver, and there is
+            # no receiver child at all. The generic rule below finds none and
+            # emits the self-call form, which turned `xs.Select(f)` into
+            # `self.select(f)` -- a LINQ call read as a state field.
+            meth = symbol.split("(")[0].split(".")[-1].split("<")[0]
+            vals = [self.emit_expr(a) for a in args]
+            if vals:
+                recv, rest = vals[0], vals[1:]
+                tmpl = (linq.get("no_predicate", {}).get(meth) if not rest
+                        else None) or linq.get("members", {}).get(meth)
+                if tmpl:
+                    return tmpl.format(recv=recv, args=", ".join(rest))
+            self.unhandled[f"linq:{meth}"] = 1
+            return f"/* Linq{meth} */"
+
         if kind == "Invocation" and symbol:
             # Generic call. Project rules were tried above, so reaching here
             # means no idiom claimed it.

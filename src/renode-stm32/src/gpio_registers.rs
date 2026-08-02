@@ -14,7 +14,7 @@
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
-//!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections, st.order_by, st.select, st.where
+//!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq

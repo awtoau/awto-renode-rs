@@ -296,5 +296,32 @@
       "F": ""
     },
     "padded_hex": "0{width}{spec}"
+  },
+  "linq": {
+    "note": "LINQ operators are STATIC extension methods -- `Enumerable.Select(source, f)` -- so argument 0 is the receiver and there is no receiver child at all. The generic invocation rule saw none, emitted the self-call form, and produced `st.select(...)`: a LINQ call read as a state field. Identical failure to `this.Log`, which is also a static extension.",
+    "symbol_contains": "System.Linq.Enumerable.",
+    "receiver_arg": 0,
+    "members": {
+      "Select": "{recv}.iter().map({args})",
+      "Where": "{recv}.iter().filter({args})",
+      "Any": "{recv}.iter().any({args})",
+      "All": "{recv}.iter().all({args})",
+      "Count": "{recv}.iter().count()",
+      "First": "{recv}.iter().next().unwrap()",
+      "FirstOrDefault": "{recv}.iter().next()",
+      "Take": "{recv}.iter().take({args} as usize)",
+      "Skip": "{recv}.iter().skip({args} as usize)",
+      "ToArray": "{recv}.iter().cloned().collect::<Vec<_>>()",
+      "ToList": "{recv}.iter().cloned().collect::<Vec<_>>()",
+      "OrderBy": "{recv}.iter().collect::<Vec<_>>()",
+      "Sum": "{recv}.iter().sum()",
+      "Max": "{recv}.iter().max().unwrap()",
+      "Min": "{recv}.iter().min().unwrap()"
+    },
+    "no_predicate": {
+      "Any": "{recv}.iter().next().is_some()"
+    },
+    "cloned_note": "ToArray/ToList insert `.cloned()`: iterating a collection yields references, and collecting them into an owned Vec needs the copy. Mined from depyler DEPYLER-1001, which hit the same wall.",
+    "orderby_deviation": "OrderBy is NOT sorted here. C# orders by a key selector; doing that faithfully needs the key's type and an Ord bound the converter cannot yet establish, so this collects WITHOUT sorting and is wrong where order is observable. Recorded as a deviation rather than emitted as if correct -- it is the one entry in this table that is not faithful."
   }
 }
