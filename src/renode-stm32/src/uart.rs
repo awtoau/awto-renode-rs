@@ -50,9 +50,15 @@ pub const DEFAULT_FREQUENCY: u32 = 8_000_000;
 
 pub struct Stm32Uart {
     bank: Bank<State>,
-    f: Fields,
     /// Peripheral state, GENERATED from the C# instance members. Held here so
     /// the register callbacks can reach it.
+    ///
+    /// The field handles live INSIDE it, at `st.f`, because that is where the
+    /// generated callbacks look for them — `why_handles_in_state` in the rules.
+    /// Keeping a second `Fields` beside it left `st.f` default-initialised, so
+    /// every handle in it was `u16::MAX`: harmless while no generated callback
+    /// was reachable from this file, and an immediate out-of-bounds panic the
+    /// moment the register-level write callback on STATUS became one.
     st: State,
     receive_fifo: std::collections::VecDeque<u8>,
     frequency: u32,
@@ -69,8 +75,7 @@ impl Stm32Uart {
         define_registers(&mut bank, &mut f);
         Self {
             bank,
-            f,
-            st: State::default(),
+            st: State { f, ..Default::default() },
             receive_fifo: Default::default(),
             frequency,
             irq: false,
@@ -94,13 +99,13 @@ impl Stm32Uart {
     /// the idle-line timeout. There is no transmission-rate model.
     pub fn baud_rate(&self) -> u32 {
         // OversamplingMode.By8 ignores the oldest bit of dividerFraction.
-        let over8 = self.bank.value(self.f.oversampling_mode) != 0;
+        let over8 = self.bank.value(self.st.f.oversampling_mode) != 0;
         let fraction = if over8 {
-            self.bank.value(self.f.divider_fraction) & 0b111
+            self.bank.value(self.st.f.divider_fraction) & 0b111
         } else {
-            self.bank.value(self.f.divider_fraction)
+            self.bank.value(self.st.f.divider_fraction)
         };
-        let mantissa = self.bank.value(self.f.divider_mantissa);
+        let mantissa = self.bank.value(self.st.f.divider_mantissa);
         let divisor = 8.0 * (2 - over8 as u32) as f64 * (mantissa as f64 + fraction as f64 / 16.0);
         if divisor == 0.0 {
             0
@@ -111,17 +116,17 @@ impl Stm32Uart {
 
     /// C# `WriteChar`. Deviation 1: the idle-line timer is not scheduled.
     pub fn write_char(&mut self, value: u8) {
-        if !self.bank.flag(self.f.usart_enabled) && !self.bank.flag(self.f.receiver_enabled) {
+        if !self.bank.flag(self.st.f.usart_enabled) && !self.bank.flag(self.st.f.receiver_enabled) {
             return; // C# logs a warning and drops the character
         }
         self.receive_fifo.push_back(value);
-        self.bank.set_flag(self.f.read_fifo_not_empty, true);
+        self.bank.set_flag(self.st.f.read_fifo_not_empty, true);
         self.update();
     }
 
     /// The seam deviation 1 leaves behind: the time framework will call this.
     pub fn report_idle_line(&mut self) {
-        self.bank.set_flag(self.f.idle_line_detected, true);
+        self.bank.set_flag(self.st.f.idle_line_detected, true);
         self.update();
     }
 
@@ -135,10 +140,10 @@ impl Stm32Uart {
     /// TXE is assumed always true, hence the unconditional term.
     fn update(&mut self) {
         let b = &self.bank;
-        self.irq = (b.flag(self.f.idle_line_detected_interrupt_enabled) && b.flag(self.f.idle_line_detected))
-            || (b.flag(self.f.receiver_not_empty_interrupt_enabled) && b.flag(self.f.read_fifo_not_empty))
-            || b.flag(self.f.transmit_data_register_empty_interrupt_enabled)
-            || (b.flag(self.f.transmission_complete_interrupt_enabled) && b.flag(self.f.transmission_complete));
+        self.irq = (b.flag(self.st.f.idle_line_detected_interrupt_enabled) && b.flag(self.st.f.idle_line_detected))
+            || (b.flag(self.st.f.receiver_not_empty_interrupt_enabled) && b.flag(self.st.f.read_fifo_not_empty))
+            || b.flag(self.st.f.transmit_data_register_empty_interrupt_enabled)
+            || (b.flag(self.st.f.transmission_complete_interrupt_enabled) && b.flag(self.st.f.transmission_complete));
     }
 
     pub fn read(&mut self, offset: u64) -> u32 {
@@ -152,10 +157,10 @@ impl Stm32Uart {
             reg::DATA => {
                 // C#: "Cleared by a USART_SR read followed by a USART_DR read."
                 // The model assumes SR was already read in the ISR.
-                self.bank.set_flag(self.f.idle_line_detected, false);
+                self.bank.set_flag(self.st.f.idle_line_detected, false);
                 let value = self.receive_fifo.pop_front().unwrap_or(0);
                 let not_empty = !self.receive_fifo.is_empty();
-                self.bank.set_flag(self.f.read_fifo_not_empty, not_empty);
+                self.bank.set_flag(self.st.f.read_fifo_not_empty, not_empty);
                 self.update();
                 value as u32
             }
@@ -166,15 +171,15 @@ impl Stm32Uart {
     pub fn write(&mut self, offset: u64, value: u32) {
         match offset {
             reg::DATA => {
-                if !self.bank.flag(self.f.usart_enabled)
-                    && !self.bank.flag(self.f.transmitter_enabled)
+                if !self.bank.flag(self.st.f.usart_enabled)
+                    && !self.bank.flag(self.st.f.transmitter_enabled)
                 {
                     return; // C# logs and drops
                 }
                 if let Some(cb) = self.char_received.as_mut() {
                     cb(value as u8);
                 }
-                self.bank.set_flag(self.f.transmission_complete, true);
+                self.bank.set_flag(self.st.f.transmission_complete, true);
                 self.update();
             }
             reg::STATUS | reg::CONTROL1 => {

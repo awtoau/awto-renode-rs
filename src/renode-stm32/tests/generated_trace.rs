@@ -21,12 +21,31 @@
 //!
 //!     usart1 33,164 accesses      0 divergences   100.0%
 //!     exti       25 accesses      0 divergences   100.0%
+//!     syscfg      9 accesses      0 divergences   100.0%
 //!     dma1      183 accesses      7 divergences    92.8%
 //!     dma2   12,356 accesses    616 divergences    90.0%
 //!     adc1   16,800 accesses  1,192 divergences    89.6%
-//!     syscfg      9 accesses      2 divergences    66.7%
-//!     gpioPortA  62 accesses     14 divergences    17.6%
+//!     gpioPortA  62 accesses      3 divergences    82.4%
 //!     can1      228 accesses     99 divergences    13.9%
+//!
+//! SYSCFG AND GPIO MOVED, and for one reason each.
+//!
+//! SYSCFG went 66.7% -> 100%. Its four EXTICR registers and their sixteen 4-bit
+//! mux fields are built by a nested counted `for`, and the layout walker read
+//! the SITE and never the loop around it: one register, one field whose bit
+//! position was `4 * fieldNumber` and therefore not a constant, so the field
+//! was dropped and the register emitted empty. `define_registers` was `{}` and
+//! the file reported four gaps, none of them about registers. The loop bounds
+//! are literals, so the iterations are known at conversion time and the map
+//! unrolls to exactly what the C# builds.
+//!
+//! gpioPortA went 17.6% -> 82.4%. Five of its eleven registers are defined by
+//! `WithEnumFields`/`WithValueFields` bound BY CALLBACK rather than by `out`,
+//! and the rule table had only the `out` form -- so five registers matched no
+//! rule at all, and their already-generated callbacks sat in the file as dead
+//! code. The three divergences left are all first reads, of the platform reset
+//! values that the untranslated constructor and `Reset()` would have seeded;
+//! both are named gaps in the file's header.
 //!
 //! USART1 IS THE RESULT THAT MATTERS. 33,164 accesses, every read matching
 //! the C#, from a module the converter produced. The hand-written uart.rs
@@ -117,7 +136,7 @@ macro_rules! generated_replay {
     };
 }
 
-generated_replay!(syscfg_generated, renode_stm32::syscfg_registers, "syscfg", 2);
+generated_replay!(syscfg_generated, renode_stm32::syscfg_registers, "syscfg", 0);
 generated_replay!(exti_generated, renode_stm32::exti_registers, "exti", 0);
 generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1192);
 generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 7);
@@ -128,6 +147,6 @@ generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 99);
 // peripherals. Running the GENERATED modules on the same traces is the
 // closest thing to a direct comparison this project has: same input, same
 // oracle, one file written by a person and one by the converter.
-generated_replay!(gpio_a_generated, renode_stm32::gpio_registers, "gpioPortA", 14);
+generated_replay!(gpio_a_generated, renode_stm32::gpio_registers, "gpioPortA", 3);
 // ZERO, and it must stay zero. 33,164 accesses, every read matching.
 generated_replay!(usart1_generated, renode_stm32::uart_registers, "usart1", 0);

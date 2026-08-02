@@ -8,9 +8,7 @@
 //!
 //! GAPS the converter reports rather than guessing:
 //!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - AlternateFunctionHigh: located at 0x24 but no field emitted -- the register is NOT in the bank
 //!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - AlternateFunctionLow: located at 0x20 but no field emitted -- the register is NOT in the bank
 //!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
 //!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
@@ -19,12 +17,12 @@
 //!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
-//!   - Mode: located at 0x0 but no field emitted -- the register is NOT in the bank
+//!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode[..]
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
-//!   - OutputSpeed: located at 0x8 but no field emitted -- the register is NOT in the bank
-//!   - PullUpPullDown: located at 0xC but no field emitted -- the register is NOT in the bank
+//!   - OutputSpeed: callback for bit 0 needs peer method(s) not yet emitted: st.output_speed[..]
+//!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
@@ -170,33 +168,12 @@ pub fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value:
     bank.write(offset as u64, value as u64, st);
 }
 
-// Callbacks for computed fields. C# writes these as lambdas capturing
-// `this`; a closure cannot live inside the object it borrows, so each
-// becomes a free fn over (bank, state). See rulesdb/rules/.
-fn mode_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
-    return st.mode[idx as usize] as u64;
-}
-
-fn output_speed_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
-    return st.output_speed[idx as usize] as u64;
-}
-
-fn output_speed_0_writer(bank: &Bank<State>, st: &mut State, idx: usize, _old: u64, val: u64) -> () {
-    st.output_speed[idx as usize] = OutputSpeed::from_u64(val);
-    return;
-}
-
-fn pull_up_pull_down_0_provider(bank: &Bank<State>, st: &mut State, idx: usize, _current: u64) -> u64 {
-    return st.pull_up_pull_down[idx as usize] as u64;
-}
-
-fn pull_up_pull_down_0_writer(bank: &Bank<State>, st: &mut State, idx: usize, _old: u64, val: u64) -> () {
-    st.pull_up_pull_down[idx as usize] = PullUpPullDown::from_u64(val);
-    return;
-}
-
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
+    bank.define(reg::MODE, 0)
+        .with_values_cb(0, 2, 16, FieldMode::READ_WRITE, None, None)
+        .done();
+
     bank.define(reg::OUTPUT_TYPE, 0)
         .with_tagged_flag(0)
         .with_tagged_flag(1)
@@ -215,6 +192,14 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_tagged_flag(14)
         .with_tagged_flag(15)
         .with_reserved(16, 16)
+        .done();
+
+    bank.define(reg::OUTPUT_SPEED, 0)
+        .with_values_cb(0, 2, 16, FieldMode::READ_WRITE, None, None)
+        .done();
+
+    bank.define(reg::PULL_UP_PULL_DOWN, 0)
+        .with_values_cb(0, 2, 16, FieldMode::READ_WRITE, None, None)
         .done();
 
     bank.define(reg::INPUT_DATA, 0)
@@ -251,6 +236,14 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_tagged_flag(15)
         .with_tagged_flag(16)
         .with_reserved(17, 15)
+        .done();
+
+    bank.define(reg::ALTERNATE_FUNCTION_LOW, 0)
+        .with_values_cb(0, 4, 8, FieldMode::READ_WRITE, None, None)
+        .done();
+
+    bank.define(reg::ALTERNATE_FUNCTION_HIGH, 0)
+        .with_values_cb(0, 4, 8, FieldMode::READ_WRITE, None, None)
         .done();
 
     bank.define(reg::BIT_RESET, 0)

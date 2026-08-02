@@ -35,6 +35,10 @@ ROOT = repo_root()
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import emit  # noqa: E402
+# FieldMode rendering lives with the register DSL, not with the driver -- it is
+# a Renode type, so it moved into the plugin. Importing it from `emit` raised
+# AttributeError the moment it moved, which is how this call was found.
+from emitter.plugins.register_dsl import render_mode  # noqa: E402
 
 
 def audit(con: sqlite3.Connection, log: logging.Logger) -> dict:
@@ -42,6 +46,7 @@ def audit(con: sqlite3.Connection, log: logging.Logger) -> dict:
 
     combinators = sorted({
         m for r in em.rules for m in r["matches"].split("|")})
+    aliases = em.callback_aliases()
 
     # Every invocation in the corpus whose target is one of the DSL combinators.
     rows = con.execute(
@@ -68,33 +73,34 @@ def audit(con: sqlite3.Connection, log: logging.Logger) -> dict:
             v = b.get(param)
             return v is not None and v[0] != "DefaultValue"
 
-        flags = {
-            "field": em.out_field(oid, symbol) is not None,
-            "provider": present("valueProviderCallback"),
-            "writer": present("writeCallback"),
-        }
-        for rule in em.rules:
-            if name not in rule["matches"].split("|"):
-                continue
-            cond = rule.get("when")
-            if cond and not any(flags.get(tok.strip(), False)
-                                for tok in cond.split(" or ")):
-                continue
+        # The emitter's OWN flags and the emitter's OWN arm selection. The copy
+        # that used to be here knew three flags and read `when` as a
+        # disjunction, so the moment the rules grew `a and b` conditions and
+        # three more callback kinds this audit counted arms the converter does
+        # not take -- while its docstring promised the opposite.
+        flags = {"field": (em.out_field(oid, symbol)
+                           or em.assigned_field(oid)) is not None}
+        for param in em.bound_callbacks(b):
+            flags[aliases.get(param, param)] = True
+        rule = em.select_rule(name, flags)
+        if rule is not None:
             by_rule[rule["name"]] += 1
-            # The arm under investigation: an anonymous WithValueField/WithFlag,
-            # i.e. one that reaches the fallback while its combinator is NOT a
-            # tag combinator.
-            if not any(flags.values()) and name in (
-                    "WithValueField", "WithEnumField", "WithFlag"):
+            # The arm under investigation, read off the arm the converter
+            # ACTUALLY took rather than re-derived from the flags: a site whose
+            # chosen rule emits an anonymous STORED field. Re-deriving it as
+            # "no flag set" under-counted by four the moment `emit_call` began
+            # detecting changeCallback -- those sites still take this arm, they
+            # simply stopped looking flagless.
+            if "_anon" in (rule.get("emit") or ""):
                 anon_by_type[type_name] += 1
                 pos = (b.get("position") or (None, None, None))[2]
                 width = (b.get("width") or (None, None, None))[2]
-                mode = emit.render_mode((b.get("mode") or (None, None, None))[2])
-                # Callbacks the rule engine does not model. `emit_call` builds
-                # its condition flags from valueProviderCallback and
-                # writeCallback only, so a site carrying one of these reaches
-                # the anonymous arm and its BEHAVIOUR is dropped without a gap.
-                # Counted here so the silence is at least measured.
+                mode = render_mode((b.get("mode") or (None, None, None))[2])
+                # Callback kinds no rule template consumes. These are now
+                # DETECTED -- `emit_call` reads every callback the corpus binds
+                # and reports one it cannot place -- so a site carrying one no
+                # longer loses its behaviour in silence. Counted here to say
+                # how much behaviour that gap covers.
                 unmodelled = [c for c in ("changeCallback", "readCallback",
                                           "shadowReloadCallback")
                               if present(c)]
@@ -102,7 +108,6 @@ def audit(con: sqlite3.Connection, log: logging.Logger) -> dict:
                     "type": type_name, "combinator": name, "pos": pos,
                     "width": width, "mode": mode, "file": path, "span": span,
                     "unmodelled_callbacks": unmodelled})
-            break
 
     return {
         "by_rule": dict(sorted(by_rule.items())),
@@ -151,11 +156,14 @@ def main() -> int:
         log.info("  %4d  %-28s %-15s %s", n, t, c, m)
 
     # Not this fix's problem, but it is this fix's rule arm: the anonymous arm
-    # now owns these sites, and it drops their callback silently.
+    # owns these sites and no template consumes their callback, so the
+    # behaviour is still missing. It is no longer SILENT -- `emit_call` now
+    # inspects every callback the corpus binds and reports one it cannot place
+    # -- so this list is the size of that gap, not a count of unseen drops.
     withcb = [s for s in res["sites"] if s["unmodelled_callbacks"]]
     log.info("")
-    log.info("of those, %d carry a callback the rule engine does not model "
-             "(behaviour dropped, no gap reported):", len(withcb))
+    log.info("of those, %d carry a callback no rule template consumes "
+             "(behaviour missing; emit_call reports it as a gap):", len(withcb))
     for s in withcb:
         log.info("  %-28s %-15s pos=%s %s",
                  s["type"], s["combinator"], s["pos"],

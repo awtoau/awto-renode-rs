@@ -7,10 +7,9 @@
 //! Source: STM32_UART.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - Control1: 1 call(s) no rule matches: WithWriteCallback
+//!   - Control1: conditional access `?.` needs nullability analysis
 //!   - Data: conditional access `?.` needs nullability analysis
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - Status: 1 call(s) no rule matches: WithWriteCallback
 //!   - WriteChar: withheld, reaches state this peripheral does not have: st.machine
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
@@ -176,6 +175,11 @@ fn status_7_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: 
     return u64::from(true);
 }
 
+fn status_writer(bank: &Bank<State>, st: &mut State, _old: u64, __: u64) -> () {
+    update(bank, st);
+    return;
+}
+
 fn data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
     let mut value = 0;
     bank.set_flag(st.f.idle_line_detected, false);
@@ -198,6 +202,14 @@ fn data_0_writer(bank: &Bank<State>, st: &mut State, _idx: usize, _old: u64, val
     return;
 }
 
+fn control1_writer(bank: &Bank<State>, st: &mut State, _old: u64, __: u64) -> () {
+    if (!bank.flag(st.f.receiver_enabled) || !bank.flag(st.f.usart_enabled)) {
+        /* GAP: `?.` needs nullability analysis (D4) */;
+    }
+    update(bank, st);
+    return;
+}
+
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::STATUS, 192)
@@ -212,6 +224,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_tagged_flag(8)
         .with_tagged_flag(9)
         .with_reserved(10, 22)
+        .with_write_callback(Some(status_writer))
         .done();
 
     bank.define(reg::DATA, 0)
@@ -241,6 +254,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_reserved(14, 1)
         .with_value(15, 1, &mut f.oversampling_mode, FieldMode::READ_WRITE)
         .with_reserved(16, 16)
+        .with_write_callback(Some(control1_writer))
         .done();
 
     bank.define(reg::CONTROL2, 0)

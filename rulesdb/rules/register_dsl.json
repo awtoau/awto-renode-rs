@@ -5,29 +5,92 @@
     "pos": "position",
     "width": "width",
     "mode": "mode",
-    "field": "$out",
+    "field": "$out or $assigned",
     "provider": "$has:valueProviderCallback",
-    "writer": "$has:writeCallback"
+    "writer": "$has:writeCallback",
+    "change": "$has:changeCallback",
+    "read": "$has:readCallback",
+    "shadow_reload": "$has:shadowReloadCallback"
+  },
+  "combinator_providers": {
+    "note": "The DSL does not live in one class, and naming only PeripheralRegisterExtensions named one of four. `DoubleWordRegisterExtensions` carries the REGISTER-level callbacks; `PeripheralRegister` carries the same field combinators as INSTANCE methods, which is how a register held in a local is extended; `PeripheralRegister<T>` carries what the register-level extensions forward to. Each of the three was skipped in silence, and one peripheral's whole register map was empty because of it.",
+    "flag_combinators": [
+      "WithFlag",
+      "DefineFlagField"
+    ],
+    "flag_note": "Which combinators yield a one-bit handle, and therefore a `FlagId` rather than a `ValueId` in the generated Fields struct. Data, because it was the literal string `WithFlag` in the emitter: the instance form of the same combinator would have declared a ValueId for a one-bit field, which is a type error at the first site that emits both.",
+    "leaf_note": "`leaf_starts_with` says which of a provider's members are combinators. PeripheralRegister also declares UnderlyingValue, RecalculateFieldMask and fifty others; without it, widening the provider list turns every method call on a register into an unhandled combinator and buries the real ones.",
+    "providers": [
+      {
+        "symbol_contains": "Antmicro.Renode.Core.Structure.Registers.PeripheralRegisterExtensions.",
+        "leaf_starts_with": ["With"]
+      },
+      {
+        "symbol_contains": "Antmicro.Renode.Core.Structure.Registers.DoubleWordRegisterExtensions.",
+        "leaf_starts_with": ["With"]
+      },
+      {
+        "symbol_contains": "Antmicro.Renode.Core.Structure.Registers.PeripheralRegister.",
+        "leaf_starts_with": ["Define"]
+      },
+      {
+        "symbol_contains": "Antmicro.Renode.Core.Structure.Registers.PeripheralRegister<T>.",
+        "leaf_starts_with": ["Define"]
+      }
+    ]
+  },
+  "callback_params": {
+    "note": "Every callback the DSL accepts, not the two the emitter happened to read. The corpus records changeCallback, readCallback and shadowReloadCallback as fully bound DelegateCreation arguments exactly as it records writeCallback; reading only two of them meant a changeCallback on bit 0 vanished while a writeCallback on bit 30 of the same register reported a gap. Detection is by the DSL's own naming convention (`suffix`), so a callback kind added upstream is inspected without a data change; the alias map only says which template slot each one fills, and a bound callback with no slot is a GAP.",
+    "suffix": "Callback",
+    "aliases": {
+      "valueProviderCallback": "provider",
+      "writeCallback": "writer",
+      "changeCallback": "change",
+      "readCallback": "read",
+      "shadowReloadCallback": "shadow_reload"
+    },
+    "soft_resettable": {
+      "note": "`softResettable: false` marks a field that a SOFT reset must leave alone. renode-regs' Bank has one reset, so the distinction has nowhere to land. Reported rather than dropped: a field that survives a soft reset in C# and does not here is a behavioural difference no trace of a hard reset can see.",
+      "param": "softResettable",
+      "gap": "`softResettable: false` -- the bank models one reset, so a field excluded from the soft reset is not modelled"
+    },
+    "unmodelled": {
+      "note": "changeCallback, readCallback and shadowReloadCallback have no slot in any rule, ON PURPOSE. Adding one means adding a hook to renode-regs, and a hook nothing calls is dead configuration -- the exact thing the write-callback asserts in renode-regs exist to reject. Of the 18 changeCallback sites in the cut, the two inside generated peripherals are both withheld for unrelated reasons (STM32_ADC's EnableADC reaches untranslated state; STM32_SYSCFG's is loop-replicated), so a runtime hook added today could not fire. They are reported instead, which is what makes the count visible and the work orderable."
+    }
   },
   "rules": [
     {
+      "name": "WITH_FLAG_BOUND_COMPUTED",
+      "matches": "WithFlag|DefineFlagField",
+      "when": "field and provider or field and writer",
+      "emit": ".with_flag_cb({pos}, &mut f.{field}, {mode}, {provider_fn}, {writer_fn})",
+      "note": "`out` and the callbacks are independent in C#, and 22 call sites use both. The rule table had only `field` OR `provider or writer`, so the bound rule won and the callback fell off the end of the template with nothing reporting it -- the field kept its handle and silently lost its behaviour. `when` is read as a disjunction of conjunctions, which is why this can be stated at all.",
+      "negative": [
+        {
+          "must_not_match": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
+          "emit_must_not_contain": ["with_tag", "with_reserved", "with_tagged_flag"],
+          "why": "A one-bit combinator only. Routing a multi-bit field here would place a 1-bit field where the C# has N, and routing ANY bound-and-computed field to a reserved emitter would drop its writes -- Bank::write skips reserved fields, which is invisible to a trace."
+        }
+      ]
+    },
+    {
       "name": "WITH_FLAG_BOUND",
-      "matches": "WithFlag",
+      "matches": "WithFlag|DefineFlagField",
       "when": "field",
       "emit": ".with_flag({pos}, &mut f.{field}, {mode})"
     },
     {
       "name": "WITH_FLAG_COMPUTED",
-      "matches": "WithFlag",
+      "matches": "WithFlag|DefineFlagField",
       "when": "provider or writer",
       "emit": ".with_value_cb({pos}, 1, {mode}, {provider_fn}, {writer_fn})",
       "note": "A flag is a 1-bit value, so a computed flag routes through the same combinator rather than needing a parallel with_flag_cb."
     },
     {
       "name": "WITH_FLAG_ANONYMOUS",
-      "matches": "WithFlag",
+      "matches": "WithFlag|DefineFlagField",
       "emit": ".with_flag_anon({pos}, {mode})",
-      "note": "A `WithFlag` that binds no `out` and carries no callback is still a STORED field -- the C# overload calls DefineFlagField, which appends to `registerFields`. It is anonymous, not tagged. This used to emit `.with_tagged_flag({pos})`, which is reserved, so `Bank::write` skipped it and the bit became write-ignored and read-as-zero. It also discarded `mode`: the tagged form hardcodes READ_WRITE, so five STM32F4_RTC `Read | WriteZeroToClear` flags and one write-only flag all lost their mode as well.",
+      "note": "A `WithFlag` that binds no `out` and carries no callback is still a STORED field -- the C# overload calls DefineFlagField, which appends to `registerFields`. It is anonymous, not tagged. This used to emit `.with_tagged_flag({pos})`, which is reserved, so `Bank::write` skipped it and the bit became write-ignored and read-as-zero. It also discarded `mode`: the tagged form hardcodes READ_WRITE, so five STM32F4_RTC `Read | WriteZeroToClear` flags and one write-only flag all lost their mode as well. `DefineFlagField` is the INSTANCE form of the same method -- literally the one the note above names -- so a call whose result nothing binds is the same anonymous stored field and takes the same arm; routing it anywhere reserved would reintroduce the defect through the door the instance combinators opened.",
       "negative": [
         {
           "shape": "WithTag / WithTaggedFlag / WithTags / WithTaggedFlags",
@@ -50,23 +113,37 @@
       ]
     },
     {
+      "name": "WITH_VALUE_BOUND_COMPUTED",
+      "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
+      "when": "field and provider or field and writer",
+      "emit": ".with_value_out_cb({pos}, {width}, &mut f.{field}, {mode}, {provider_fn}, {writer_fn})",
+      "note": "The multi-bit counterpart of WITH_FLAG_BOUND_COMPUTED; see its note.",
+      "negative": [
+        {
+          "must_not_match": "WithValueFields|WithEnumFields|WithFlags",
+          "emit_must_not_contain": ["with_tag", "with_reserved", "with_tagged_flag"],
+          "why": "Singular only: the plural combinators define `count` consecutive fields, and emitting one would collapse a whole group to its first element. A bound-and-computed field must never reach a reserved emitter either -- Bank::write skips reserved fields, so the writes disappear and no trace can see it."
+        }
+      ]
+    },
+    {
       "name": "WITH_VALUE_BOUND",
-      "matches": "WithValueField|WithEnumField",
+      "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "when": "field",
       "emit": ".with_value({pos}, {width}, &mut f.{field}, {mode})"
     },
     {
       "name": "WITH_VALUE_COMPUTED",
-      "matches": "WithValueField|WithEnumField",
+      "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "when": "provider or writer",
       "emit": ".with_value_cb({pos}, {width}, {mode}, {provider_fn}, {writer_fn})",
       "note": "The callbacks become free fns emitted alongside; see peripheral_methods for why they cannot be closures."
     },
     {
       "name": "WITH_VALUE_ANONYMOUS",
-      "matches": "WithValueField|WithEnumField",
+      "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "emit": ".with_value_anon({pos}, {width}, {mode})",
-      "note": "The value-field counterpart of WITH_FLAG_ANONYMOUS, and the site the bug was found at: STM32F4_EXTI's `WithValueField(0, 32, name: \"EMR\")`, whose C# comment calls it a blank implementation kept for backwards compatibility. It is a read-write scratch register, and emitting `.with_tag(0, 32)` made it write-ignored and read-as-zero. The exti trace has no writes at all, so the oracle scored it 0 divergences throughout.",
+      "note": "The value-field counterpart of WITH_FLAG_ANONYMOUS, and the site the bug was found at: STM32F4_EXTI's `WithValueField(0, 32, name: \"EMR\")`, whose C# comment calls it a blank implementation kept for backwards compatibility. It is a read-write scratch register, and emitting `.with_tag(0, 32)` made it write-ignored and read-as-zero. The exti trace has no writes at all, so the oracle scored it 0 divergences throughout. `DefineValueField` / `DefineEnumField` are the INSTANCE forms the extension overloads forward to, so an unbound one is the same anonymous stored field and must not fall to a tag either.",
       "negative": [
         {
           "shape": "WithTag / WithTaggedFlag / WithTags / WithTaggedFlags",
@@ -89,12 +166,29 @@
     },
     {
       "name": "WITH_FIELDS_BOUND",
-      "matches": "WithValueFields|WithEnumFields",
+      "matches": "WithValueFields|WithEnumFields|WithFlags",
       "when": "field",
       "emit": ".with_fields_cb({pos}, {width}, {count}, &mut f.{field}, {mode}, None, None)",
       "bindings": {
         "count": "count"
       }
+    },
+    {
+      "name": "WITH_FIELDS_COMPUTED",
+      "matches": "WithValueFields|WithEnumFields|WithFlags",
+      "when": "provider or writer",
+      "emit": ".with_values_cb({pos}, {width}, {count}, {mode}, {provider_fn}, {writer_fn})",
+      "note": "The plural combinators bind a group of fields by `out IValueRegisterField[]` OR by callback -- `(idx, val) => mode[idx]`, with the group index as the first lambda parameter and no `out` anywhere. Only the `out` form had a rule, so the callback form matched nothing at all: five registers of one peripheral located, emitting nothing, and their already-generated callbacks left in the file as dead code. This is the plural counterpart of WITH_VALUE_COMPUTED and reads its callbacks the same way; the group index the C# lambda captures arrives as renode-regs' `group_index` parameter.",
+      "bindings": {
+        "count": "count"
+      },
+      "negative": [
+        {
+          "must_not_match": "WithValueField|WithEnumField|WithFlag|DefineValueField|DefineEnumField|DefineFlagField",
+          "emit_must_not_contain": ["with_tag", "with_reserved", "with_tagged_flag"],
+          "why": "A SINGULAR combinator routed here would be replicated `count` times over bits the C# never covers, and `count` is unbound for it -- silently plausible, structurally wrong. And a group carrying callbacks must never become reserved: Bank::write skips reserved fields, so every write to all `count` of them would vanish with the trace still green."
+        }
+      ]
     },
     {
       "name": "WITH_TAGGED_FLAG",
@@ -103,8 +197,8 @@
       "note": "A GENUINE tag: `WithTaggedFlag` calls PeripheralRegister.TaggedFlag, which appends to `tags`, a list the register's read and write paths never consult. Reserved is correct here and only here.",
       "negative": [
         {
-          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
-          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField, or the DefineFlagField/DefineValueField/DefineEnumField instance form of any of them -- no `out`, no assignment, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField|DefineFlagField|DefineValueField|DefineEnumField",
           "why": "anonymity is not tagging. `name:` is documented in the C# as 'Ignored parameter, for convenience. Treat it as a comment.' -- the field is still created by DefineFlagField and still stores. Keying this rule on the absence of an `out` is what dropped 171 fields' writes."
         }
       ]
@@ -115,8 +209,8 @@
       "emit": ".with_tag({pos}, {width})",
       "negative": [
         {
-          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
-          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField, or the DefineFlagField/DefineValueField/DefineEnumField instance form of any of them -- no `out`, no assignment, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField|DefineFlagField|DefineValueField|DefineEnumField",
           "why": "see WITH_TAGGED_FLAG. Note the C# `WithIgnoredBits` is implemented as an anonymous `WithValueField` precisely BECAUSE it must cover the bits without tagging them -- so even a tag-like intent stores, and the discriminator is the combinator, never the argument list."
         }
       ]
@@ -127,20 +221,59 @@
       "emit": ".with_reserved({pos}, {width})",
       "negative": [
         {
-          "shape": "an anonymous WithFlag/WithValueField/WithEnumField -- no `out`, no callbacks",
-          "must_not_match": "WithFlag|WithValueField|WithEnumField",
+          "shape": "an anonymous WithFlag/WithValueField/WithEnumField, or the DefineFlagField/DefineValueField/DefineEnumField instance form of any of them -- no `out`, no assignment, no callbacks",
+          "must_not_match": "WithFlag|WithValueField|WithEnumField|DefineFlagField|DefineValueField|DefineEnumField",
           "why": "the third combinator that pushes reserved, and the one the invented `.with_reserved(9, 23)` came in as. A field with no handle is not a reserved field."
         }
       ]
     },
     {
+      "name": "REGISTER_WRITE_CALLBACK",
+      "matches": "WithWriteCallback",
+      "when": "writer",
+      "emit": ".with_write_callback({writer_fn})",
+      "callback_signatures": {
+        "writeCallback": "registerWriteCallback"
+      },
+      "note": "A callback on the REGISTER, not on a field: C# CallWriteHandlers fires it after every field's own write handler, on every write, whether or not anything changed. It resolves to DoubleWordRegisterExtensions rather than PeripheralRegisterExtensions, which is the only reason it was invisible -- the combinator table named one extension class. 18 sites. Its arguments are the register's whole old value and the whole written value, so the signature has no field index and is named separately from the field-level writeCallback of the same parameter name.",
+      "deviation": "The `old` argument is composed from the stored slots of the register's non-reserved fields. C# reads it from the register's single backing ulong, which also carries tag and reserved bits; renode-regs stores per field, so bits belonging to no field read back as zero here. No corpus callback reads the argument -- every one of the 18 discards both -- so the difference is recorded rather than paid for.",
+      "cost_of_dropping_it": "In STM32_UART both dropped callbacks call Update(), which recomputes the IRQ line, and they sit on registers whose flags are WriteZeroToClear. An ISR clearing RXNE/TC therefore never recomputed the line and it stayed asserted. A trace cannot observe an IRQ, so 33,164 replayed accesses at 100% said nothing about it.",
+      "negative": [
+        {
+          "must_not_match": "WithReadCallback|WithChangeCallback|WithFlag|WithValueField|WithEnumField",
+          "why": "A write hook fires on every write. A READ callback fired there would run at the wrong time and a CHANGE callback would fire when nothing changed -- both plausible, both wrong, and neither observable in a trace. And this attaches to the REGISTER: a field-level combinator routed here would lose its bit position entirely."
+        }
+      ]
+    },
+    {
       "name": "REGISTER_CALLBACK",
-      "matches": "WithWriteCallback|WithReadCallback|WithChangeCallback",
+      "matches": "WithReadCallback|WithChangeCallback",
       "emit": null,
-      "gap": "register-level callback: dispatch, not layout",
-      "note": "Deliberately emits nothing. These carry behaviour, not register shape, and a plausible-looking guess would leave the oracle checking generated guesswork."
+      "gap": "register-level read/change callback: the bank has no hook to attach it to",
+      "negative": [
+        {
+          "must_not_match": "WithWriteCallback",
+          "why": "The write form IS emittable and has a hook. Folding it back in here would silently restore the defect this issue removed: STM32_UART's two Update() callbacks dropped, the IRQ line left asserted after an ISR cleared the flag, and a 33,164-access trace still at 100%."
+        }
+      ],
+      "note": "REACHABLE, and this rule previously was not: `combinator()` returned None for the whole of DoubleWordRegisterExtensions, so the gap text below had never appeared in any generated file. A rule whose code path cannot be reached reads exactly like a rule that correctly declines, which is why it survived. It now matches, and declines with a reason. Adding a read/change hook to renode-regs would be dead configuration today: neither kind occurs in a generated peripheral."
     }
   ],
+  "loop_replication": {
+    "note": "A register map written as a counted `for` loop. The layout walker read the SITE and never the loop around it, so four registers and sixteen fields were one register and one field whose position was an expression -- and because the expression is not a constant, the field was dropped and the register emitted empty.",
+    "why_unroll": "The loop is deterministic and its bounds are literals, so every register it defines is known at CONVERSION time; there is nothing to defer to run time. Unrolling keeps the emitted shape identical to a hand-written map -- one `bank.define(..)` per register, constant bit positions, constant handle indices -- so nothing downstream needs a second code path. A Rust `for` around a moved builder would express the same registers and would additionally have to name the loop variable, size the handle array at run time, and be read against a C# loop to be believed. The DEVIATION is textual only: same registers, same fields, same order, no run-time loop.",
+    "limits": "Only counted loops over a single variable with literal bounds and a unit step, and only arithmetic the evaluator folds. Anything else -- a bound read from a field, an index into a local array, a `foreach` -- yields no environment, and the site is REPORTED rather than emitted once and quietly wrong. STM32DMA's per-stream flag loop is in that second class: its offsets come from a local `int[]` literal, and it stays a reported gap.",
+    "conditions": {
+      "LessThan": "lt",
+      "LessThanOrEqual": "le"
+    },
+    "operators": {
+      "Add": "add",
+      "Subtract": "sub",
+      "Multiply": "mul",
+      "Divide": "div"
+    }
+  },
   "register_forms": [
     {
       "name": "DEFINE_EXTENSION",
@@ -231,6 +364,21 @@
         ]
       ],
       "ret": "()"
+    },
+    "registerWriteCallback": {
+      "note": "REGISTER-level, not field-level. `WithWriteCallback((old, new) => ..)` takes the register's two values and no field index, so it cannot share the field-level shape even though C# names the parameter `writeCallback` in both. The rule names which signature applies; the parameter name alone cannot tell them apart.",
+      "fixed": "bank: &Bank<{state}>, st: &mut {state}",
+      "slots": [
+        [
+          "old",
+          "u64"
+        ],
+        [
+          "new",
+          "u64"
+        ]
+      ],
+      "ret": "()"
     }
   },
   "peripheral_methods": {
@@ -303,7 +451,9 @@
   },
   "callback_naming": {
     "note": "Deterministic from the register name and bit position -- both content, never emission order, so output stays byte-identical at -j1 and -j31.",
-    "template": "{reg}_{pos}_{kind}"
+    "template": "{reg}_{pos}_{kind}",
+    "register_template": "{reg}_{kind}",
+    "register_note": "A register-level callback has no bit position, and formatting None into the name gave `status_None_writer` -- a name that reads like a bug and is not derived from anything."
   },
   "logging": {
     "note": "Renode's `this.Log(LogLevel.X, format, args...)`. A STATIC extension on IEmulationElement, so argument 0 is the peripheral and argument 1 the level -- binding from the front would log at level `self`. Kept out of `expressions` because it needs the level argument decoded, which a flat template cannot express.",

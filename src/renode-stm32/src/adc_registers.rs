@@ -7,6 +7,7 @@
 //! Source: STM32_ADC.DefineRegisters
 //!
 //! GAPS the converter reports rather than guessing:
+//!   - Control2: WithFlag bit 0: `changeCallback` is bound in the C# and no rule consumes it -- that behaviour is missing
 //!   - Control2: callback for bit 30 needs peer method(s) not yet emitted: start_conversion
 //!   - EnableADC: withheld, reaches state this peripheral does not have: st.channels, st.current_channel
 //!   - FeedSample: withheld, reaches state this peripheral does not have: st.channels

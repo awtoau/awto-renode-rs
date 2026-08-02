@@ -83,7 +83,7 @@ pub mod stream {
         let mut stream_offset = (st.id * 24);
 
         bank.define(reg::STREAM_CONFIGURATION + (stream_offset) as u64, 0)
-            .with_flag(0, &mut f.is_enabled, FieldMode::READ_WRITE)
+            .with_flag_cb(0, &mut f.is_enabled, FieldMode::READ_WRITE, None, None)
             .with_tagged_flag(1)
             .with_tagged_flag(2)
             .with_tagged_flag(3)
