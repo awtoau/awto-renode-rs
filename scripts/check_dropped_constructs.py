@@ -110,8 +110,18 @@ def field_mode_bits(con: sqlite3.Connection) -> dict[int, str]:
 
 
 def emitter_mode_bits() -> set[int]:
-    """The bits `render_mode()` can express. Read from emit.py, not copied."""
-    from emit import FIELD_MODE
+    """The bits `render_mode()` can express, imported from the emitter.
+
+    It imported `emit.FIELD_MODE`; the table MOVED to the register-DSL plugin
+    when the DSL families landed, and the import broke. Breaking loudly is the
+    point: a check that kept its own copy of the six bits would have gone on
+    passing while the emitter's table changed underneath it, measuring the copy
+    rather than the emitter. Two scripts were caught doing exactly that today.
+
+    It is still a hardcoded table -- six of the twelve members the C# enum
+    declares -- which is one of the things this check reports.
+    """
+    from emitter.plugins.register_dsl import FIELD_MODE
     return set(FIELD_MODE)
 
 
