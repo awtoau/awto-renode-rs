@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-02T19:32:09+10:00 from `fe3033e` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-02T20:02:33+10:00 from `6103067` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -129,7 +129,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 
 ## Issues
 
-59 total.
+60 total.
 
 | phase | open | closed |
 |---|---:|---:|
@@ -141,5 +141,5 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | phase-5 | 7 | 0 |
 | phase-6 | 2 | 0 |
 | phase-7 | 3 | 0 |
-| unphased | 25 | 0 |
+| unphased | 21 | 5 |
 
