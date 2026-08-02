@@ -49,13 +49,19 @@ ASSERTIONS = [
         AND NOT EXISTS (SELECT 1 FROM operation o WHERE o.method_id=m.member_id)""", 0),
     ("members whose declaring type was dropped",
      "SELECT COUNT(*) FROM member WHERE type_id NOT IN (SELECT id FROM type)", 0),
-    ("operations orphaned from any method",
-     "SELECT COUNT(*) FROM operation WHERE method_id NOT IN (SELECT member_id FROM method)", 0),
+    # Was "orphaned from any METHOD", which stopped being the invariant when
+    # field and property initialisers began to be walked -- an initialiser is
+    # code and it belongs to a field. The real invariant, and the one this was
+    # always reaching for, is that every operation has an owning MEMBER.
+    ("operations orphaned from any member",
+     "SELECT COUNT(*) FROM operation WHERE method_id NOT IN (SELECT id FROM member)", 0),
     ("operations with a dangling parent",
      """SELECT COUNT(*) FROM operation
         WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM operation)""", 0),
+    # Same correction: `= new Foo()` in a field initialiser is a call site whose
+    # caller is a field.
     ("call sites with no caller",
-     "SELECT COUNT(*) FROM call_site WHERE caller_id NOT IN (SELECT member_id FROM method)", 0),
+     "SELECT COUNT(*) FROM call_site WHERE caller_id NOT IN (SELECT id FROM member)", 0),
     ("types with neither a resolved base nor an extern base name",
      """SELECT 0""", 0),  # placeholder: both-null is legal (no base at all)
 ]
@@ -104,6 +110,17 @@ def main() -> int:
     db = root / "tmp" / "breadth-check.db"
     for suffix in ("", "-wal", "-shm"):
         Path(str(db) + suffix).unlink(missing_ok=True)
+
+    # Build first. `--no-build` runs whatever is in bin/, so an uncompiled
+    # Walker.cs change yields a health check that passes while checking the OLD
+    # walker -- which is how a field-initialiser fix was measured as producing
+    # zero rows and reverted, when rebuilding it produces 30,139.
+    b = subprocess.run(["dotnet", "build", "-v", "q"],
+                       cwd=root / "frontend" / "RenodeIngest", env=env,
+                       capture_output=True, text=True)
+    if b.returncode != 0:
+        log.error("FAIL: ingest build failed\n%s", (b.stdout + b.stderr)[-2000:])
+        return 1
 
     log.info("breadth ingest over the whole tree at -j%d", args.threads)
     r = subprocess.run(

@@ -106,7 +106,11 @@ public static class Walker
                 if (rec is null) continue;
                 result.Members.Add(rec);
 
-                if (rec.Method is null) continue;
+                if (rec.Method is null)
+                {
+                    WalkInitializer(member, rec.Key, tree, model, result, ref nextOpId);
+                    continue;
+                }
                 // Partial methods keep their body on the implementation part.
                 var bodyOwner = member is IMethodSymbol pm && pm.PartialImplementationPart is { } impl
                                 ? impl : member;
@@ -122,6 +126,61 @@ public static class Walker
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// A field's, property's or event's INITIALISER, walked as its own operation
+    /// tree and attached to the member.
+    ///
+    /// Operations were walked only for members that had a METHOD, so every
+    /// initialiser written at the declaration was absent from the corpus --
+    /// nothing thrown, no count to notice. `private bool x = true;` was
+    /// therefore indistinguishable from `private bool x;`, which inverts the
+    /// initial value, and an array's DECLARED length
+    /// (`new IValueRegisterField[19]`) existed nowhere, so a length could only
+    /// be inferred from the highest index later code happened to bind.
+    ///
+    /// Not a Roslyn limitation, and not subtle:
+    /// `GetOperation(EqualsValueClauseSyntax)` returns the
+    /// `IFieldInitializerOperation` / `IPropertyInitializerOperation` directly,
+    /// and always has. Measured, not assumed -- 1,414 of 1,414 initialisers in
+    /// the tree bind through it.
+    ///
+    /// A member whose declaration HAS an `= ...` clause and binds to nothing is
+    /// counted in <see cref="FileResult.InitialisersUnbound"/> and fails the
+    /// run, rather than being skipped. An initialiser that silently walks to
+    /// nothing looks exactly like a member that has none.
+    ///
+    /// Two exclusions, both because the value is already on the member row and
+    /// re-recording it would be a second source of truth:
+    ///   * enum members -- the discriminant is `member.const_value`;
+    ///   * const fields -- likewise, and Roslyn has already folded them.
+    /// </summary>
+    private static void WalkInitializer(ISymbol member, string key, SyntaxTree tree,
+                                        SemanticModel model, FileResult result,
+                                        ref int nextId)
+    {
+        if (member is IFieldSymbol { HasConstantValue: true }) return;
+        foreach (var reference in member.DeclaringSyntaxReferences)
+        {
+            if (reference.SyntaxTree != tree) continue;
+            var equals = reference.GetSyntax() switch
+            {
+                VariableDeclaratorSyntax v => v.Initializer,
+                PropertyDeclarationSyntax p => p.Initializer,
+                _ => null,
+            };
+            if (equals is null) continue;
+
+            var op = model.GetOperation(equals);
+            if (op is null)
+            {
+                result.InitialisersUnbound++;
+                continue;
+            }
+            WalkOperations(op, key, result, ref nextId, model);
+            result.InitialisersWalked++;
+        }
     }
 
     /// Does this property or event have a compiler-generated backing field?
@@ -211,7 +270,8 @@ public static class Walker
                     method.Parameters.Add(new ParamRec(
                         p.Ordinal, p.Name, p.Type.ToDisplayString(),
                         p.RefKind == RefKind.Out, p.RefKind == RefKind.Ref,
-                        p.IsParams, p.HasExplicitDefaultValue));
+                        p.IsParams, p.HasExplicitDefaultValue,
+                        DefaultValueOf(p)));
                 }
                 return new MemberRec
                 {
@@ -226,6 +286,39 @@ public static class Walker
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// A parameter's DEFAULT VALUE, as an invariant-culture string.
+    ///
+    /// `has_default` was recorded as a bare flag, so the corpus could say a
+    /// parameter was optional but never what omitting it MEANS. That blocks
+    /// every optional-argument call site (2,698 in the tree) and blocks folding
+    /// a constructor into `Default`, because both need the value, not the flag.
+    /// `IParameterSymbol.ExplicitDefaultValue` has always had it.
+    ///
+    /// ENCODING, and why it needs no sentinel: null is returned both when there
+    /// is no default and when the default IS null (`= null`, or `= default` for
+    /// a reference or non-primitive struct type). `has_default` separates those
+    /// two -- (has_default = 1, default_value = NULL) means the default is
+    /// null. A "null" string sentinel would instead collide with the string
+    /// literal `"null"`.
+    ///
+    /// Values are formatted invariantly so the corpus is byte-identical on a
+    /// machine with a different locale; `ToString()` on a double is
+    /// locale-sensitive and would otherwise write `1,5`.
+    /// </summary>
+    private static string? DefaultValueOf(IParameterSymbol p)
+    {
+        // ExplicitDefaultValue THROWS when there is no explicit default -- it is
+        // not a null-returning property.
+        if (!p.HasExplicitDefaultValue) return null;
+        return p.ExplicitDefaultValue switch
+        {
+            null => null,
+            IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+            var v => v.ToString(),
+        };
     }
 
     /// <summary>
@@ -278,6 +371,30 @@ public static class Walker
                     // IsChecked drives whether arithmetic must emit wrapping_*.
                     Add("checked", b2.IsChecked);
                     Add("lifted", b2.IsLifted);
+                    break;
+                case IUnaryOperation u2:
+                    // The SAME two facts Binary carries, and IUnaryOperation has
+                    // always exposed them. Without `checked`, unary minus cannot
+                    // be routed to the runtime the way Subtract was: every Unary
+                    // row's detail was empty, so the emitter would have had to
+                    // ASSUME an unchecked context -- a guess dressed as a
+                    // mapping. `-int.MinValue` is the case that separates them.
+                    Add("checked", u2.IsChecked);
+                    Add("lifted", u2.IsLifted);
+                    break;
+                case ICatchClauseOperation cc:
+                    // `catch (E e) when (cond)` -- an exception FILTER. It was
+                    // to be recorded so a FUTURE corpus would fail loudly; the
+                    // current one already holds five of 268 clauses, a count
+                    // that was never re-taken after the corpus stopped being a
+                    // hand-picked subset. A filter is not a guard at the top of
+                    // the handler: it runs BEFORE unwinding and may DECLINE,
+                    // leaving the exception to propagate with the stack intact,
+                    // so translating one as an `if` inside the body is wrong.
+                    // The exception type is recorded with it because a catch
+                    // clause's type is not on `op.Type`.
+                    Add("filter", cc.Filter is not null);
+                    Add("extype", cc.ExceptionType?.ToDisplayString());
                     break;
                 case IConversionOperation cv2:
                     Add("implicit", cv2.Conversion.IsImplicit);
