@@ -17,6 +17,22 @@ from emitter import core
 PRIORITY = core.LANGUAGE + 4
 
 
+def _closure_arity(arg: str) -> int | None:
+    """How many parameters an emitted closure takes, or None if not one.
+
+    Reads the emitted Rust rather than the C# delegate, because the emitted
+    closure is what has to fit the Rust method: if the two ever disagree, the
+    one that decides whether the output compiles is this one.
+    """
+    if not arg.startswith("|"):
+        return None
+    end = arg.find("|", 1)
+    if end < 0:
+        return None
+    params = arg[1:end].strip()
+    return len([p for p in params.split(",") if p.strip()])
+
+
 @core.expr("Invocation", priority=PRIORITY)
 def linq_invocation(em, oid):
     """Declines any call the LINQ marker does not appear in.
@@ -39,8 +55,26 @@ def linq_invocation(em, oid):
     vals = [em.emit_expr(a) for a in args]
     if vals:
         recv, rest = vals[0], vals[1:]
-        tmpl = (linq.get("no_predicate", {}).get(meth) if not rest
-                else None) or linq.get("members", {}).get(meth)
+        # Keyed by NAME AND ARITY, receiver included. Keying on the name
+        # alone gave every overload the first overload's template: the
+        # indexed `Select(source, (item, index) => ..)` took the one-argument
+        # selector's `.map(f)`, and `Min(source, keySelector)` took `.min()`
+        # and dropped the selector -- a wrong answer that compiles, which is
+        # this project's recurring defect. An unlisted overload now falls
+        # through to the reported gap below.
+        key = f"{meth}/{len(vals)}"
+        tmpl = linq.get("members", {}).get(key)
+        # ... and by the CLOSURE's parameter count where the data declares
+        # one, because argument count does not separate LINQ's indexed
+        # overloads: `Select(source, x => ..)` and `Select(source, (x, i) =>
+        # ..)` are both two-argument calls. `.map()` takes a one-parameter
+        # closure and `.map(|x, i| ..)` does not compile.
+        want = linq.get("lambda_arity", {}).get(key)
+        if tmpl and want is not None:
+            got = _closure_arity(rest[0] if rest else "")
+            if got is not None and got != want:
+                em.unhandled[f"linq:{key} lambda/{got}"] = 1
+                return f"/* Linq{meth} */"
         if tmpl:
             # A chained LINQ call already yields an iterator; adding a
             # second `.iter()` does not compile.
@@ -54,5 +88,9 @@ def linq_invocation(em, oid):
             rest = [re.sub(r"^\|([^|]*)\|\s*return\s+(.*?);?$",
                            r"|\1| \2", r) for r in rest]
             return tmpl.format(recv=recv, args=", ".join(rest))
-    em.unhandled[f"linq:{meth}"] = 1
+    # Counted WITH the arity: `linq:Select/3` says an overload is missing,
+    # which is different work from `linq:Union/2` saying an operator is.
+    # Reporting both as `linq:Select` would hide the overload behind an
+    # operator that already looks supported.
+    em.unhandled[f"linq:{meth}/{len(vals)}"] = 1
     return f"/* Linq{meth} */"

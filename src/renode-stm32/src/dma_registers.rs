@@ -88,7 +88,7 @@ pub mod stream {
     }
 
     pub fn define_registers(bank: &mut Bank<super::State>, f: &mut Fields, st: &State) {
-        let mut stream_offset = (st.id * 24);
+        let mut stream_offset = csharp_rt::unchecked_mul(st.id, 24);
 
         bank.define(reg::STREAM_CONFIGURATION + (stream_offset) as u64, 0)
             .with_flag_cb(0, &mut f.is_enabled, FieldMode::READ_WRITE, None, None)

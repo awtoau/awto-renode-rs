@@ -148,7 +148,7 @@ pub fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) ->
 
 pub fn baud_rate(bank: &Bank<State>, st: &mut State) -> u32 {
     let mut fraction = if (bank.value(st.f.oversampling_mode) == OversamplingMode::By16 as u64) { bank.value(st.f.divider_fraction) } else { (bank.value(st.f.divider_fraction) & 7) };
-    let mut divisor = (((8 * (2 - bank.value(st.f.oversampling_mode))) as f64) * ((bank.value(st.f.divider_mantissa) as f64) + ((fraction as f64) / 16.0)));
+    let mut divisor = ((csharp_rt::unchecked_mul(8, csharp_rt::unchecked_sub(2, bank.value(st.f.oversampling_mode))) as f64) * ((bank.value(st.f.divider_mantissa) as f64) + ((fraction as f64) / 16.0)));
     return if (divisor == (0 as f64)) { 0 } else { (((st.frequency as f64) / divisor) as u32) };
 }
 

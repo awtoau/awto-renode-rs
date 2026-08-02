@@ -29,6 +29,28 @@
       "BitwiseNegation": "!{operand}",
       "Minus": "-{operand}",
       "Plus": "{operand}"
+    },
+    "unary_checked_gap": "`-x` on an integral type has the same overflow divergence `a - b` has: C# unchecked wraps `-int.MinValue` to itself, Rust's `-` panics in debug. It is NOT routed to the runtime because the ingest records no `checked` flag for IUnaryOperation -- every Unary row in the cut has an empty `detail`, where every Binary row carries `{\"checked\":..,\"lifted\":..}`. Routing on an assumed context would be a guess dressed as a mapping, so the plain operator stays and this names the missing fact. 18 `Minus` on int and 1 on long in the cut. The fix is one property in the walker, in the layer that owns extraction.",
+    "runtime_note": "The arithmetic and shift operators do NOT mean in Rust what they mean in C#, and the difference cannot be seen at the call site -- so under the fourth-layer decision they emit a CALL into `csharp-rt` rather than an operator. `operators.binary` above is still the source of truth for WHICH operator each kind is (compound assignment derives `+=` from `+` there); this table only redirects the ones whose semantics need a tested function. Comparison, bitwise and logical operators are renames and stay operators.",
+    "integral_types": ["byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "nint", "nuint"],
+    "integral_types_why": "The redirect applies to INTEGERS only, and the guard is the node's resolved type. `Add` in this corpus also arrives on `string` (25 sites -- concatenation), `double`, `float`, `decimal`, an enum, and two user types with operator overloads; routing any of those through an integer helper would not compile. Naming the integral set here rather than inferring it keeps the guard reviewable, and it is a different fact from `stdlib.primitives`, which maps every primitive to a Rust spelling without saying which are integers.",
+    "runtime": {
+      "unchecked": {
+        "Add": "csharp_rt::unchecked_add({lhs}, {rhs})",
+        "Subtract": "csharp_rt::unchecked_sub({lhs}, {rhs})",
+        "Multiply": "csharp_rt::unchecked_mul({lhs}, {rhs})"
+      },
+      "checked": {
+        "Add": "csharp_rt::checked_add({lhs}, {rhs})",
+        "Subtract": "csharp_rt::checked_sub({lhs}, {rhs})",
+        "Multiply": "csharp_rt::checked_mul({lhs}, {rhs})"
+      },
+      "shift": {
+        "LeftShift": "csharp_rt::shl({lhs}, ({rhs}) as u32)",
+        "RightShift": "csharp_rt::shr({lhs}, ({rhs}) as u32)"
+      },
+      "shift_count_cast_why": "The count is cast to u32 at the site rather than made generic in the runtime. C# states the count as `int`; a negative one is masked, and `as u32` is the two's-complement reinterpretation whose low bits are the same bits C# takes -- so `x << -1` is `x << 31` in both languages with no special case. Making the helper generic over the count type instead would need a numeric-conversion trait in `csharp-rt` that exists only to spare one cast.",
+      "not_redirected": "Divide and Remainder stay operators. C# throws DivideByZeroException on a zero divisor and OverflowException on `int.MinValue / -1`; Rust PANICS on both, unconditionally and in every profile. The error mode already agrees closely enough that a helper would add a call and change nothing -- and the fourth-layer test asks whether the semantic can be checked at the call site, not whether a helper is possible."
     }
   },
   "deviations": [
@@ -36,11 +58,21 @@
       "construct": "integer overflow",
       "csharp": "wraps silently in an unchecked context; throws OverflowException in a checked one",
       "rust": "panics in debug, wraps in release",
-      "mapping": "NOT IMPLEMENTED. This entry previously claimed arithmetic emitted wrapping_* explicitly, and no such emission exists: the only occurrence of `wrapping_` under scripts/ or rulesdb/ was that sentence. Binary arithmetic emits a plain `{lhs} + {rhs}`.",
-      "status": "declared, unimplemented -- a documented mapping that does not exist is worse than an undocumented gap, because review reads the note and believes it. Corrected 2026-08-02 rather than deleted, so the deviation stays visible.",
-      "what_is_needed": "The ingest ALREADY records it: Walker.cs writes IsChecked on every Binary and CompoundAssignment, and nothing reads it. The cut holds 2,602 unchecked and 10 checked binaries; 918 are arithmetic. `lifted` -- operators over Nullable<T>, 11 in the cut -- is likewise ingested and unread.",
+      "mapping": "IMPLEMENTED as a RUNTIME CALL, not a template. `operators.runtime` redirects Add/Subtract/Multiply on an integral type to `csharp_rt::unchecked_*` or `csharp_rt::checked_*`, chosen by the `checked` flag the ingest already records. The definition and its tests are in `src/csharp-rt/src/arith.rs`.",
+      "status": "landed 2026-08-03. The previous two states of this entry are the argument for the fourth layer: it first claimed arithmetic emitted `wrapping_*` when the only occurrence of `wrapping_` anywhere under scripts/ or rulesdb/ was that sentence, and was then corrected to say so. A semantic spelled out at every site has nowhere to put a test, so nothing noticed for as long as the claim stood. `csharp_rt::unchecked_add` has one definition and seven tests.",
+      "why_not_a_template": "`{lhs}.wrapping_add({rhs})` would have been a possible template, and it is the wrong shape for three reasons. It does not typecheck on a reference receiver where `+` does; it cannot express the checked direction at all, because C# throws and there is no operator that throws; and it puts the decision about what `checked` becomes at 900 sites instead of one, which is where it has to be when D4 settles.",
       "why": "The divergence runs BOTH ways and neither direction is safe. Unchecked C# wraps where Rust debug panics; checked C# throws where Rust release wraps silently. Renode's peripherals rely on wrapping for counters and timers, so a debug panic there is a behaviour change the oracle would catch late and confusingly -- and the checked direction is a divergence no test would catch at all.",
+      "scope": "Binary Add/Subtract/Multiply and the matching compound assignments, on an integral non-lifted operand. NOT unary minus -- see operators.unary_checked_gap, which names the ingest fact that is missing. NOT lifted (Nullable<T>) operators, 11 in the cut: those need the D4 nullability form before an arithmetic mapping means anything.",
       "prior_art": "c2rust emits wrapping_* for translated integer arithmetic as a matter of course."
+    },
+    {
+      "construct": "shift count",
+      "csharp": "the count is MASKED to the operand width -- ECMA-334 §12.11 takes the low five bits for int/uint and the low six for long/ulong, so `1 << 32` is 1 and `1 << -1` is `1 << 31`",
+      "rust": "`<<` panics in debug when the count is at least the operand width, and is a deny-by-default lint for a constant one",
+      "mapping": "`csharp_rt::shl` / `csharp_rt::shr`, via operators.runtime.shift.",
+      "status": "landed 2026-08-03, and found by this audit rather than reported -- the shift entries in operators.binary read as an exact rename and are not one. 255 shifts in the cut, every one of them mapped to an operator that means something different for an out-of-range count.",
+      "why": "This is the failure class the project keeps paying for: an operator that agrees with C# on every input anyone tested and disagrees on the one a firmware bug produces. A register-derived shift count is exactly the value most likely to be out of range, and a debug panic is the good outcome -- a release build wraps to a different answer with no message.",
+      "why_a_runtime_function": "`{lhs}.wrapping_shl({rhs} as u32)` is again a possible template and again the wrong shape: it states an IMPLEMENTATION of the masking rule at every site, so the citation for why the mask is right cannot travel with it, and nothing can test it."
     },
     {
       "construct": "C# `bool` in bitwise position",
@@ -190,17 +222,20 @@
       "List.Count": "{recv}.len()",
       "List.Add": "{recv}.push({args})",
       "Array.Length": "{recv}.len()",
-      "Array.Clear": "{recv}.fill(Default::default())",
-      "Dictionary.Add": "{recv}.insert({args})",
+      "Dictionary.Add": "csharp_rt::dict_add(&mut {recv}, {args})",
       "HashSet.Contains": "{recv}.contains(&{args})",
-      "String.Append": "{recv}.push_str({args})",
-      "String.ToString": "{recv}.to_string()",
+      "Nullable.Value": "{recv}.unwrap()",
+      "Nullable.HasValue": "{recv}.is_some()",
+      "StringBuilder.Append": "{recv}.push_str({args})",
+      "StringBuilder.ToString": "{recv}.clone()",
       "CancellationToken.IsCancellationRequested": "{recv}.get()",
       "CancellationTokenSource.Cancel": "{recv}.set(true)",
       "Action.Invoke": "if let Some(f) = {recv}.as_mut() {{ f({args}) }}",
       "Func.Invoke": "if let Some(f) = {recv}.as_mut() {{ f({args}) }}"
     },
-    "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path.",
+    "unwrap_note": "Dequeue/Peek panic on an empty collection in C# too (InvalidOperationException), so `.unwrap()` is the faithful mapping, not a shortcut. Recorded because an unwrap otherwise looks like an unhandled error path. It is nonetheless the SAME error-mode case `linq.First` was moved to the runtime for, and it stays a template only because the panic message is the only difference until D4 settles what an exception becomes. When it does, these move together.",
+    "key_is_the_csharp_type_note": "A member key is `<C# declaring type>.<member>`, and the lookup builds it from the resolved symbol. Two entries were keyed on the RUST type instead -- `String.Append` and `String.ToString`, for members whose symbol is `System.Text.StringBuilder.Append` -- so neither could ever match any symbol. A rule that cannot fire is worse than a missing one: it counts as coverage, it is never exercised, and nothing tests it. Corrected to `StringBuilder.*` 2026-08-03. `ToString` additionally becomes `clone()` rather than `to_string()`, because StringBuilder maps to String and `String::to_string` is a needless copy of an owned value that clippy rejects.",
+    "array_clear_gap": "`Array.Clear` was mapped to `{recv}.fill(Default::default())` and is REMOVED, not replaced. Two things were wrong at once. It is a STATIC method -- `System.Array.Clear(array, index, length)` -- so there is no receiver child and the member lookup could not have bound `{recv}` correctly in the first place, the same shape as the LINQ extension methods. And the only form in the cut is the THREE-argument one, which clears a RANGE; the template dropped both the index and the length and cleared the whole array. Clearing more than asked is invisible in a trace whose reads happen to land outside the range. Restoring it needs the static-receiver handling LINQ has, plus a range helper in the runtime, and neither is worth inventing for 3 sites -- so this is a gap with its reason, which is the discipline.",
     "primitives": {
       "byte": "u8",
       "sbyte": "i8",
@@ -233,6 +268,7 @@
     "iteration_order_note": "Dictionary maps to BTreeMap, not HashMap. C# Dictionary enumeration order is unspecified but in practice stable for a given insertion sequence, and translated code DOES iterate dictionaries. Rust's HashMap randomises per process via SipHash, so the same program would produce a different order on every run -- a behavioural difference the trace oracle would see as nondeterminism rather than as a bug, which is the worst way to find it. BTreeMap is deterministic. Recorded as a DEVIATION: ordering is by key rather than by insertion, so it is not identical to C#, only stable. From Bun's PORTING.md, which bans HashMap for the same reason.",
     "nullable_form": "Option<{inner}>",
     "nullable_note": "`T?` on a VALUE type is System.Nullable<T>, which has an exact Rust spelling and needs no inference: the C# type system already states the value may be absent. This is the half of nullability that is free. It is NOT the reference-type case -- `string?` on an unannotated corpus says nothing, and that is the deferred D4 analysis.",
+    "nullable_members_note": "The TYPE was mapped and its MEMBERS were not, so `x.Value` fell through to the generic property rule and emitted `x.value()` -- a getter call on Option<T>, which does not exist. 18 sites in the cut, plus 8 of `HasValue`. Adding the two members costs nothing and is not a D4 question: the value-type half of nullability is already decided, and `Value`/`HasValue` are exactly `unwrap`/`is_some` on the type it was decided to be. `Nullable<T>.Value` throws InvalidOperationException when empty and `.unwrap()` panics, which is the same error-mode narrowing recorded in unwrap_note and moves with it when D4 settles.",
     "multidim_form": "csharp_rt::Array2D<{inner}>",
     "multidim_note": "C# `T[,]` is RECTANGULAR -- one allocation, two indices, every row the same length -- and arrives from Roslyn as `T[*,*]`. Vec<Vec<T>> is the obvious mapping and is wrong three ways: raggedness becomes representable when C# forbids it, `new T[3,4]` yields 12 usable slots where a Vec<Vec<T>> starts EMPTY and panics on first index unless every construction site remembers to fill it, and `a.Length` is rows*cols rather than the row count. csharp-rt::Array2D carries its stride, makes raggedness unrepresentable, and forces initialisation in the constructor. Runtime support is the standard answer here -- IL2CPP ships libil2cpp for exactly this class of thing.",
     "runtime_crate_note": "`csharp-rt` holds types C# has and Rust does not. A type earns a place there only when the approximation is OBSERVABLY different: Queue<T> does not qualify because VecDeque matches it, T[,] does. Nothing in the crate knows what is being translated.",
@@ -328,7 +364,10 @@
   "compound_assignment": {
     "note": "`x += y`. The operator arrives as the same OperatorKind the binary table uses, so the mapping is derived from that table rather than duplicated -- retyping it would let the two drift, and a compound assignment silently using the wrong operator is invisible in review.",
     "template": "{target} {op}= {value};",
-    "checked_note": "C# compound assignment on integers wraps in an unchecked context, exactly as the binary form does; the overflow deviation recorded for `Add` applies here unchanged."
+    "checked_note": "C# compound assignment on integers wraps in an unchecked context, exactly as the binary form does; the overflow deviation recorded for `Add` applies here unchanged. So it takes the SAME redirect: `operators.runtime` is consulted with the target as the left operand, and the same guards apply. The decision is read from one function shared with the binary rule, not copied -- two copies of `is this integral and unchecked` would drift, and a compound assignment quietly keeping the panicking operator is invisible in review.",
+    "runtime_template": "{target} = {expr};",
+    "runtime_target_kinds": ["LocalReference", "ParameterReference", "FieldReference"],
+    "runtime_target_kinds_why": "The target is emitted TWICE -- once read, once written -- so the redirect applies only where re-evaluating it is free and cannot be observed. A local, a parameter and a field are places; a property is a GETTER CALL, and C# evaluates it once, so duplicating it would turn one call into two. No integral compound assignment in the cut has any other target kind, and an indexer target would be the same hazard, so this is a guard against a shape that has not appeared rather than a description of one that has. Anything else keeps the operator and the pre-existing behaviour, unchanged."
   },
   "switch": {
     "note": "C# `switch` becomes Rust `match`. C# requires an explicit `break` per section and Rust arms do not fall through, so the trailing Branch is DROPPED rather than translated -- it encodes a rule of C# syntax, not behaviour. A Branch that is NOT that break (a `goto case`) is real control flow and is reported as a gap instead, because silently dropping it would change behaviour.",
@@ -385,28 +424,41 @@
     "note": "LINQ operators are STATIC extension methods -- `Enumerable.Select(source, f)` -- so argument 0 is the receiver and there is no receiver child at all. The generic invocation rule saw none, emitted the self-call form, and produced `st.select(...)`: a LINQ call read as a state field. Identical failure to `this.Log`, which is also a static extension.",
     "symbol_contains": "System.Linq.Enumerable.",
     "receiver_arg": 0,
+    "arity_note": "Keyed by `Name/argc`, where argc COUNTS THE RECEIVER -- so `Select/2` is `Select(source, selector)` and `Select/3` is the indexed overload `Select(source, (item, index) => ...)`. Keying on the name alone was an over-match with no negative to catch it: every overload of a name took the first overload's template. It emitted `.map(|x, i| ..)` for the five indexed `Select` sites in the cut, which is a two-parameter closure passed to a one-parameter method, and it emitted `.min()` for a `Min` with a KEY SELECTOR, silently discarding the selector and comparing the elements instead -- the same defect as OrderBy, in a rule nobody had flagged. An unlisted overload is now a reported gap. This also deletes `no_predicate`: `Any/1` and `Any/2` are two entries in one table rather than a table and an exception to it.",
     "members": {
-      "Select": "{recv}.iter().map({args})",
-      "Where": "{recv}.iter().filter({args})",
-      "Any": "{recv}.iter().any({args})",
-      "All": "{recv}.iter().all({args})",
-      "Count": "{recv}.iter().count()",
-      "First": "{recv}.iter().next().unwrap()",
-      "FirstOrDefault": "{recv}.iter().next()",
-      "Take": "{recv}.iter().take({args} as usize)",
-      "Skip": "{recv}.iter().skip({args} as usize)",
-      "ToArray": "{recv}.iter().cloned().collect::<Vec<_>>()",
-      "ToList": "{recv}.iter().cloned().collect::<Vec<_>>()",
-      "OrderBy": "{recv}",
-      "Sum": "{recv}.iter().sum()",
-      "Max": "{recv}.iter().max().unwrap()",
-      "Min": "{recv}.iter().min().unwrap()"
+      "Select/2": "{recv}.iter().map({args})",
+      "Where/2": "{recv}.iter().filter({args})",
+      "Any/1": "{recv}.iter().next().is_some()",
+      "Any/2": "{recv}.iter().any({args})",
+      "All/2": "{recv}.iter().all({args})",
+      "Count/1": "{recv}.iter().count()",
+      "First/1": "csharp_rt::first({recv}.iter())",
+      "FirstOrDefault/1": "{recv}.iter().next()",
+      "Take/2": "{recv}.iter().take({args} as usize)",
+      "Skip/2": "{recv}.iter().skip({args} as usize)",
+      "ToArray/1": "{recv}.iter().cloned().collect::<Vec<_>>()",
+      "ToList/1": "{recv}.iter().cloned().collect::<Vec<_>>()",
+      "OrderBy/2": "csharp_rt::order_by({recv}.iter(), {args})",
+      "OrderByDescending/2": "csharp_rt::order_by_descending({recv}.iter(), {args})",
+      "Sum/1": "{recv}.iter().sum()",
+      "Max/1": "{recv}.iter().max().unwrap()",
+      "Min/1": "{recv}.iter().min().unwrap()"
     },
-    "no_predicate": {
-      "Any": "{recv}.iter().next().is_some()"
+    "lambda_arity": {
+      "note": "How many parameters the CLOSURE in each template takes. Argument count alone does not separate LINQ's indexed overloads: `Select(source, x => ..)` and `Select(source, (x, i) => ..)` are both two-argument calls, and both keyed `Select/2`, so the arity key catches `Min(source, keySelector)` and misses this one. The difference is in the DELEGATE, so that is what is checked -- an argument that is a closure must have exactly this many parameters or the rule declines and reports a gap. `.map()` takes a one-parameter closure; C#'s indexed `Select` passes a two-parameter one, and `.map(|x, i| ..)` does not compile. Five such sites in the cut.",
+      "Select/2": 1,
+      "Where/2": 1,
+      "Any/2": 1,
+      "All/2": 1,
+      "OrderBy/2": 1,
+      "OrderByDescending/2": 1,
+      "why_not_a_type_match": "The alternative is to reject on the parameter TYPES in the C# symbol text -- `Func<TSource, int, TResult>`. That guards the overloads that exist today and not the next one, because it names the shape being excluded rather than the shape being required. Counting closure parameters states the requirement the Rust template actually has.",
+      "index_overload_gap": "The indexed overloads are a real gap, not merely unmapped: C# `Select((x, i) => ..)` is `.enumerate().map(|(i, x)| ..)` in Rust, which reassociates the arguments and is a different template rather than a variant of this one. Recorded here so the next person adds it deliberately instead of widening `Select/2` until it matches again."
     },
+    "runtime_members_why": "`OrderBy` and `First` are the two LINQ operators that are not renames, and both were wrong here before the runtime existed. OrderBy needs to BUFFER the sequence -- a sort is not a lazy operation, so something has to hold it -- and the previous mapping was `{recv}`, the receiver unchanged: a sort that does not sort, which compiles and replays any trace that does not observe ordering. First has an ERROR MODE: C# throws InvalidOperationException where `.next().unwrap()` panics saying `called Option::unwrap() on a None value`, and under D4 those are not the same thing. Everything else in this table stays a template, because everything else IS a rename. See docs/decisions/runtime-is-the-fourth-layer.md.",
+    "unwrap_still_here_why": "`Max/1` and `Min/1` keep `.unwrap()` and are NOT routed to the runtime. Same error mode as First, so the argument applies -- but neither has a single instance in the cut, and a runtime function with no emitting instance is a type with no caller. They are named here so the next person sees a decision rather than an oversight; when one appears, it takes a `csharp_rt::` call and the reason is already written.",
     "cloned_note": "ToArray/ToList insert `.cloned()`: iterating a collection yields references, and collecting them into an owned Vec needs the copy. Mined from depyler DEPYLER-1001, which hit the same wall.",
-    "orderby_deviation": "OrderBy is a NO-OP pass-through, and that is a recorded DEVIATION, not a mapping. C# orders by a key selector; doing that faithfully needs the key's type and an Ord bound the converter cannot yet establish. Emitting `.collect::<Vec<_>>()` was worse than doing nothing -- it terminated the iterator, so a following Select called `.map()` on a Vec and did not compile. A pass-through at least chains correctly and is honest about doing nothing. WRONG wherever order is observable; the key selector is discarded, which is why this is listed as the one unfaithful entry.",
+    "orderby_history": "This entry used to read: *OrderBy is a NO-OP pass-through, and that is a recorded DEVIATION, not a mapping... A pass-through at least chains correctly and is honest about doing nothing.* It was not honest about doing nothing -- it produced a sort that does not sort, in code labelled a translation, and no trace could see it. The stated blocker was real and was the wrong conclusion: the key's type and its Ord bound are exactly what a GENERIC FUNCTION states for you, and `csharp_rt::order_by` states them in one place. Kept as history because the reasoning is the argument for the fourth layer: a template has to solve the type problem at every site, so a template author concludes it cannot be solved.",
     "chaining_note": "The receiver gets `.iter()` only when it is a COLLECTION. A chained LINQ call already yields an iterator, and `xs.iter().filter(..).iter()` does not compile. Detected by whether the emitted receiver already ends in an iterator-producing call, which is textual but exact for what this emitter produces -- the alternative is tracking expression types, which the corpus does not yet give us for chained generics.",
     "iterator_producers": [
       ".iter()",
@@ -415,7 +467,8 @@
       ".take(",
       ".skip(",
       ".cloned()",
-      ".rev()"
+      ".rev()",
+      "csharp_rt::order_by"
     ]
   }
 }

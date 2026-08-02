@@ -9,12 +9,40 @@
 //! A type earns its place here only when the approximation is *observably*
 //! different. `Queue<T>` does not: `VecDeque` matches it. `T[,]` does, and the
 //! reason is below.
+//!
+//! ## The rule for what belongs here
+//!
+//! `docs/decisions/runtime-is-the-fourth-layer.md`: a mapping belongs in the
+//! runtime when the semantic **cannot be checked at the call site**. Three
+//! tells, any one sufficient — it needs state or a data structure, it has an
+//! error mode, or the template spells the operation out rather than naming it.
+//! Everything else stays a template in `rulesdb/rules/csharp_core.json`;
+//! `ConditionalOr` → `||` is a rename and must not move here.
+//!
+//! What that admitted, and why each one is not a template:
+//!
+//! * [`Array2D`] — C# `T[,]`. Needs a data structure (a stride).
+//! * [`arith`] — C#'s unchecked/checked integer arithmetic and its masked
+//!   shift counts. Error mode (`OverflowException`), and the shift mask is an
+//!   implementation rather than a rename.
+//! * [`linq`] — `OrderBy` (needs to buffer the sequence) and `First` (error
+//!   mode). The rest of LINQ is a rename and stayed in the rules.
+//! * [`collections`] — `Dictionary.Add`, which throws on a duplicate key
+//!   where `insert` overwrites. Error mode. The rest of the BCL collections
+//!   are renames and stayed in the rules.
 
 #![forbid(unsafe_code)]
 
+pub mod arith;
+pub mod collections;
 mod gc;
+pub mod linq;
 
+pub use arith::{checked_add, checked_mul, checked_neg, checked_sub, shl, shr,
+                unchecked_add, unchecked_mul, unchecked_neg, unchecked_sub, CsInt};
+pub use collections::dict_add;
 pub use gc::{Collected, Gc, GcRaw, Heap, Trace, Tracer};
+pub use linq::{first, order_by, order_by_descending};
 
 use std::fmt;
 
