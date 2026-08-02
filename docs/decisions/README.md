@@ -33,6 +33,6 @@ flattening and argued for as though it were a fresh decision, when PLAN.md line
 
 | # | decision | state |
 |---|---|---|
-| [#56](inheritance-layout.md) | inheritance: merge, embed, or a trait | **open — evidence gathered, choice is the maintainer's** |
+| [#56](inheritance-layout.md) | inheritance: dispatch trait + collision guard | **taken 2026-08-02** — merge-vs-embed deliberately deferred until the cut is closed |
 | — | [prove behaviour generation on UART before widening](target-one-peripheral-end-to-end.md) | taken 2026-08-02 |
 | — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |

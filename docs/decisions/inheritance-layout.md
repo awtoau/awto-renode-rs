@@ -1,8 +1,61 @@
 # Inheritance: merge, embed, or a trait
 
-Issue #56. **Open.** This document produces the evidence and a recommendation;
-the choice is the maintainer's, and PLAN.md line 437 is deliberately left
-unreconciled until it is made.
+Issue #56. **Decided 2026-08-02, and deliberately only half of it.**
+
+## The decision
+
+**Take option 2's dispatch trait, plus option 4's collision guard. Do NOT
+decide merge-versus-embed yet.**
+
+The two halves are split because their evidence is not of the same quality, and
+treating them as one question is what produced this issue in the first place.
+
+**Dispatch — taken.** It compiles, it changes no emitted body, and it is
+orthogonal to the layout question: the trait is wanted under merging *and*
+under embedding. Its cost is honestly one-time and non-additive — `fn` becomes
+`pub fn` on 39 committed lines — and that is accepted as a deliberate
+regeneration rather than described as additive.
+
+**Collision guard — taken.** A base/derived field-name collision becomes a
+named gap instead of an E0124. Two of the cut's own peripherals already collide
+(`STM32_Timer.initialLimit`, `CortexM.Clustered`/`Clusters`) and are hidden only
+by the truncated corpus, so the zero this document reports is fragile and should
+not be load-bearing while unguarded.
+
+**Merge versus embed — DEFERRED, and this is the substantive half of the
+decision.** §Recommendation point 4 states that every cut number in this
+document is a **lower bound**: 69% of chains are truncated and 79% of
+base-access sites reach a base the corpus cannot see. Choosing a layout on
+numbers known to be understated is precisely the move that produced this issue.
+The guard makes waiting safe. Re-run the comparison once `CorpusCut.cs` is
+closed under `BaseType`, and decide then.
+
+Embedding is *not* rejected — it is unjudged. What this document does establish
+is that one argument for it fails: under D2 the bank is `Bank<DerivedState>`, so
+a base body is monomorphised per derived type regardless, and embedding
+therefore buys collision-safety and base identity but **not** deduplication.
+
+**Accepted knowingly, from §(c):** under the strict resolver, one untranslatable
+base member shrinks the trait contract for every peripheral at once. `reset`
+leaves the trait entirely today because three of four peripherals cannot supply
+it. That is the correct behaviour — the alternative silently ran the base's body
+— but it is a real cost, recorded here rather than discovered later.
+
+**PLAN.md line 437 stays unreconciled**, because the half that would reconcile
+it is the half that is deferred.
+
+### What would overturn it
+
+- A closed cut showing collisions that the guard turns into gaps at a rate that
+  makes merging unworkable — the case for embedding, on real numbers.
+- The interface closure being fixed in the ingest, which would replace the
+  base-class-derived trait with the interface dispatch actually goes through
+  (`IDoubleWordPeripheral`) and make §(a)'s approximation unnecessary.
+
+---
+
+This document produces the evidence and the recommendation the decision above
+was taken from. PLAN.md line 437 is deliberately left unreconciled.
 
 Every number below comes from a file under `docs/status/`, produced by a
 committed script. None of them is retyped from a previous document, and the
