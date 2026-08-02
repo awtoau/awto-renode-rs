@@ -9,7 +9,7 @@ failure column; it is the part that gets forgotten.
 |---|---|---|---|
 | [#38](nullability.md) | `?.` and nullable refs | Assume non-null; demote to `Option<T>` only where the corpus assigns/compares null or uses `?.`/`??`. **4.0%** of members, not 100%. | Null evidence is sparse — 12 of 17 `?.` receivers have `?.` as their *only* evidence. Lose one and the type goes non-nullable and diverges **with no compile error**. |
 | [#39](exceptions.md) | exceptions | Typed unwinding **panic**, not `Result`. **Reopens D4.** | `panic = "abort"` in a profile silently turns every `catch` into a process abort, and no current test would see it. |
-| [#41](inheritance.md) | inheritance | Keep flattened fields + free fns; **add** a dispatch trait. **Contradicts PLAN.md line 437, which is unreconciled.** | Blocked: `type_implements` records only directly-declared interfaces, so the supertrait closure cannot be computed. |
+| [#41](inheritance.md) | inheritance | Keep flattened fields + free fns; **add** a dispatch trait. **Contradicts PLAN.md line 437, which is unreconciled.** Measured and re-opened as a decision in [#56](../decisions/inheritance-layout.md), which adds merge-versus-embed. | Blocked: `type_implements` records only directly-declared interfaces, so the supertrait closure cannot be computed. |
 | [#43](prior-art.md) | does a C#→Rust transpiler exist? | **No.** Nor Java→Rust nor Go→Rust. All published translate-to-Rust work is C→Rust. | A search-derived negative is only valid if a control query returned non-zero in the same run — see the arXiv HTTP 301 incident in that doc. |
 
 ## Things that were measured, not argued
