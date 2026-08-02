@@ -19,6 +19,7 @@
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 17
 //!   - stream: StreamConfiguration: callback for bit 0 needs peer method(s) not yet emitted: handle_enable
 //!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
+//!   - stream: state field `parent`: reference-typed, so the object-graph rule maps it to `Gc<STM32DMA>`; blocked: `STM32DMA` has no emitted Rust type yet, so there is nothing to point at
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

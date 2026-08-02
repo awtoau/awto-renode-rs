@@ -1043,6 +1043,19 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
                             f"the field; the trait is issue #41). {short} "
                             f"declares {total} members, the corpus calls {used}")
                     continue
+                # A field whose declared type is a CLASS is an object
+                # reference, and the object-graph rule maps every one of them
+                # the same way (issue #57). It answers with either the mapping
+                # or the one thing blocking it; anything else declines and
+                # falls through to the unmapped-type report below.
+                from emitter.lang.object_graph import reference_field
+                og_type, og_gap = reference_field(self, n, dt or "")
+                if og_type is not None:
+                    out.append((snake(n), og_type))
+                    continue
+                if og_gap is not None:
+                    gaps.append(og_gap)
+                    continue
                 gaps.append(f"state field `{n}`: no Rust mapping for `{dt}`")
                 continue
             if n in locked:
