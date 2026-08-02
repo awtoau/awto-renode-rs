@@ -57,6 +57,15 @@ pub type ValueProvider<S> = fn(&Bank<S>, &mut S, usize, u64) -> u64;
 /// C# `writeCallback`, receiving the old and new values.
 pub type WriteCallback<S> = fn(&Bank<S>, &mut S, usize, u64, u64);
 
+/// C# `WithWriteCallback` — a callback on the REGISTER rather than on a field.
+///
+/// A different thing from `WriteCallback` despite C# giving both parameters the
+/// same name: this one has no field to belong to, so it takes no field index,
+/// and it fires once per write to the register rather than once per field.
+/// `CallWriteHandlers` runs it after every field's own handler, unconditionally
+/// — not only when something changed, which is what `changeCallback` is for.
+pub type RegisterWriteCallback<S> = fn(&Bank<S>, &mut S, u64, u64);
+
 /// How a field responds to reads and writes. Mirrors C# `FieldMode`, which is a
 /// `[Flags]` enum, so the combinations matter as much as the members.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
@@ -146,9 +155,33 @@ pub struct Register<S> {
     /// Renode logs them — matching that behaviour is part of the trace oracle.
     unhandled_mask: u64,
     width_bits: u32,
+    /// C# `WithWriteCallback`. Register-level, fired once per write.
+    on_write: Option<RegisterWriteCallback<S>>,
 }
 
 impl<S> Register<S> {
+    /// The register's backing value, WITHOUT consulting any value provider.
+    ///
+    /// C# keeps one `UnderlyingValue` per register and hands it to the
+    /// register-level handlers as `baseValue`; providers run only on the read
+    /// path, so this composes stored slots and nothing else.
+    ///
+    /// DEVIATION, recorded on the REGISTER_WRITE_CALLBACK rule: bits belonging
+    /// to no field read back as zero here, where C# would carry whatever the
+    /// single backing ulong held. Every one of the 18 corpus callbacks
+    /// discards both arguments, so the difference is documented rather than
+    /// paid for with machinery nothing uses.
+    fn raw_value(&self, bank: &Bank<S>) -> u64 {
+        let mut v = 0u64;
+        for f in &self.fields {
+            if f.reserved {
+                continue;
+            }
+            v |= (bank.slots[f.slot as usize].get() & mask(f.width)) << f.offset;
+        }
+        v
+    }
+
     fn value(&self, bank: &Bank<S>, state: &mut S) -> u64 {
         let mut v = 0u64;
         for f in &self.fields {
@@ -209,6 +242,7 @@ impl<S> Bank<S> {
             fields: Vec::new(),
             next_bit: 0,
             width_bits: 32,
+            on_write: None,
         }
     }
 
@@ -245,6 +279,10 @@ impl<S> Bank<S> {
     /// Renode's "unhandled write" warning.
     pub fn write(&self, offset: u64, value: u64, state: &mut S) -> Option<u64> {
         let reg = self.registers.get(&offset)?;
+        // Captured BEFORE any field updates: C# takes `baseValue` first and
+        // passes it to every handler, so a register-level callback sees the
+        // register as it was, not as the field loop left it.
+        let base = reg.on_write.map(|_| reg.raw_value(self));
         for f in &reg.fields {
             if f.reserved {
                 continue;
@@ -280,6 +318,11 @@ impl<S> Bank<S> {
                 cb(self, state, f.group_index, old, incoming);
             }
         }
+        // C# order: every field's write handler, THEN the register's. It fires
+        // on any write, changed or not — `CallWriteHandlers` is unconditional.
+        if let (Some(cb), Some(old)) = (reg.on_write, base) {
+            cb(self, state, old, value & mask(reg.width_bits));
+        }
         Some(value & reg.unhandled_mask)
     }
 
@@ -301,6 +344,7 @@ pub struct RegisterBuilder<'a, S> {
     fields: Vec<FieldDef<S>>,
     next_bit: u32,
     width_bits: u32,
+    on_write: Option<RegisterWriteCallback<S>>,
 }
 
 impl<'a, S> RegisterBuilder<'a, S> {
@@ -384,6 +428,40 @@ impl<'a, S> RegisterBuilder<'a, S> {
         self
     }
 
+    /// `WithFlag(pos, out field, mode, writeCallback:)` — bound AND computed.
+    ///
+    /// The C# `out` parameter and the callbacks are independent: a field can
+    /// hand back a handle and carry behaviour, and 22 call sites in the cut do
+    /// both. There was no combinator for that, so the bound rule matched, the
+    /// callback fell off the end and nothing said so.
+    pub fn with_flag_cb(
+        mut self,
+        pos: u32,
+        out: &mut FlagId,
+        mode: FieldMode,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> Self {
+        *out = FlagId(self.push_cb(pos, 1, mode, false, 0, provider, on_write));
+        self
+    }
+
+    /// `WithValueField(pos, width, out field, mode, writeCallback:)` — the
+    /// multi-bit form of `with_flag_cb`. Named for the C# `out` parameter that
+    /// distinguishes it from `with_value_cb`, which binds nothing.
+    pub fn with_value_out_cb(
+        mut self,
+        pos: u32,
+        width: u32,
+        out: &mut ValueId,
+        mode: FieldMode,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> Self {
+        *out = ValueId(self.push_cb(pos, width, mode, false, 0, provider, on_write));
+        self
+    }
+
     /// `WithValueFields(pos, width, count, ...)` -- `count` consecutive fields
     /// of equal width. Returns the first handle; the rest are consecutive
     /// indices, which is exactly why field handles are indices and not pointers.
@@ -454,6 +532,36 @@ impl<'a, S> RegisterBuilder<'a, S> {
         self
     }
 
+    /// `WithValueFields`/`WithEnumFields` bound by CALLBACK and not by `out` —
+    /// `(idx, val) => mode[idx]`, where the C# lambda closes over the group
+    /// index and the peripheral keeps no field handle at all.
+    ///
+    /// Distinct from `with_fields_cb` only in binding nothing, which is why it
+    /// exists: passing a scratch `ValueId` instead would invent a handle the
+    /// C# does not have, and that is the same error class as the invented
+    /// `.with_reserved(9, 23)`.
+    pub fn with_values_cb(
+        mut self,
+        pos: u32,
+        width: u32,
+        count: u32,
+        mode: FieldMode,
+        provider: Option<ValueProvider<S>>,
+        on_write: Option<WriteCallback<S>>,
+    ) -> Self {
+        for i in 0..count {
+            self.push_cb(pos + i * width, width, mode, false, i as usize, provider, on_write);
+        }
+        self
+    }
+
+    /// C# `WithWriteCallback` — attaches to the REGISTER, so it takes no bit
+    /// position and fires once per write rather than once per field.
+    pub fn with_write_callback(mut self, cb: Option<RegisterWriteCallback<S>>) -> Self {
+        self.on_write = cb;
+        self
+    }
+
     /// Finish the register and install it in the bank.
     pub fn done(self) {
         let mut covered = 0u64;
@@ -466,6 +574,7 @@ impl<'a, S> RegisterBuilder<'a, S> {
             reset: self.reset,
             unhandled_mask: full & !covered,
             width_bits: self.width_bits,
+            on_write: self.on_write,
         };
         self.bank.registers.insert(self.offset, reg);
     }
@@ -634,6 +743,81 @@ mod tests {
         bank.define(0, 0)
             .with_value_cb(0, 8, FieldMode::default(), None, Some(on_write))
             .done();
+    }
+
+    /// C# `WithWriteCallback` fires ONCE per write to the register, after every
+    /// field's own handler, and whether or not anything changed —
+    /// `CallWriteHandlers` is unconditional. Dropping it is what left an
+    /// interrupt line asserted after an ISR cleared the flag behind it.
+    #[test]
+    fn register_write_callback_fires_once_per_write_after_the_fields() {
+        struct Log { seen: Vec<&'static str>, old: u64, new: u64 }
+        fn field_cb(_b: &Bank<Log>, st: &mut Log, _i: usize, _o: u64, _n: u64) {
+            st.seen.push("field");
+        }
+        fn reg_cb(_b: &Bank<Log>, st: &mut Log, old: u64, new: u64) {
+            st.seen.push("register");
+            st.old = old;
+            st.new = new;
+        }
+        let mut bank: Bank<Log> = Bank::new();
+        bank.define(0, 0)
+            .with_value_cb(0, 4, FieldMode::READ_WRITE, None, Some(field_cb))
+            .with_value_cb(4, 4, FieldMode::READ_WRITE, None, Some(field_cb))
+            .with_write_callback(Some(reg_cb))
+            .done();
+
+        let mut st = Log { seen: vec![], old: 0xFF, new: 0xFF };
+        bank.write(0, 0x21, &mut st);
+        assert_eq!(st.seen, vec!["field", "field", "register"]);
+        assert_eq!((st.old, st.new), (0, 0x21), "the register's values, not a field's");
+
+        // Fires again with nothing changed: this is NOT changeCallback.
+        st.seen.clear();
+        bank.write(0, 0x21, &mut st);
+        assert_eq!(st.seen, vec!["field", "field", "register"]);
+        assert_eq!(st.old, 0x21, "old is the value BEFORE this write");
+    }
+
+    /// The plural combinators bound by CALLBACK rather than by `out`. Five
+    /// registers of one peripheral use this and matched no rule at all, so the
+    /// registers were located and emitted with no fields in them.
+    #[test]
+    fn computed_field_group_binds_no_handle_and_still_stores() {
+        struct Pins { seen: Vec<usize> }
+        fn on_write(_b: &Bank<Pins>, st: &mut Pins, idx: usize, _o: u64, _n: u64) {
+            st.seen.push(idx);
+        }
+        let mut bank: Bank<Pins> = Bank::new();
+        bank.define(0, 0)
+            .with_values_cb(0, 2, 16, FieldMode::READ_WRITE, None, Some(on_write))
+            .done();
+        let mut st = Pins { seen: vec![] };
+        bank.write(0, 0b11 << 4, &mut st);
+        assert_eq!(bank.read(0, &mut st), Some(0b11 << 4), "stores without a handle");
+        assert_eq!(st.seen.len(), 16, "every field in the group sees its own index");
+    }
+
+    /// `out` and a callback are independent in C#, and the combinator table had
+    /// no shape for both: the handle was bound and the behaviour silently lost.
+    #[test]
+    fn a_bound_field_can_also_carry_a_callback() {
+        struct S { writes: u32 }
+        fn on_write(_b: &Bank<S>, st: &mut S, _i: usize, _o: u64, _n: u64) {
+            st.writes += 1;
+        }
+        let mut bank: Bank<S> = Bank::new();
+        let mut flag = FlagId::default();
+        let mut val = ValueId::default();
+        bank.define(0, 0)
+            .with_flag_cb(0, &mut flag, FieldMode::READ_WRITE, None, Some(on_write))
+            .with_value_out_cb(4, 4, &mut val, FieldMode::READ_WRITE, None, Some(on_write))
+            .done();
+        let mut st = S { writes: 0 };
+        bank.write(0, 0x31, &mut st);
+        assert!(bank.flag(flag), "the handle still binds");
+        assert_eq!(bank.value(val), 3);
+        assert_eq!(st.writes, 2, "and the callbacks still fire");
     }
 
     #[test]

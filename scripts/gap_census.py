@@ -78,6 +78,15 @@ CATEGORIES: list[tuple[str, str]] = [
     (r"gap marker", "withheld: gap marker in body"),
     (r"computed field", "computed field dispatch"),
     (r"register-level callback", "register-level callback"),
+    # Above "other" for a reason. These are the gaps that used to be SILENCE:
+    # a callback kind the emitter never inspected, a field position that is not
+    # a constant, a reset distinction the bank cannot express. Left uncategorised
+    # they would arrive in "other", which is where a gap goes to stop being
+    # counted -- and being uncounted is how they lasted this long.
+    (r"is bound in the C# and no rule consumes it", "callback with no rule"),
+    (r"is not a compile-time constant", "non-constant field placement"),
+    (r"softResettable", "soft reset not modelled"),
+    (r"trip count is not a compile-time constant", "unreplicable loop"),
 ]
 
 

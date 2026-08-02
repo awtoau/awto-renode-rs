@@ -39,6 +39,33 @@ def to_const(name: str) -> str:
     return snake(name).upper()
 
 
+# FieldMode enum values as the C# defines them, for rendering. Corpus layer:
+# FieldMode is a type in Renode's register DSL, not a C# language construct, so
+# it moved here with `emit_call` rather than staying beside the driver.
+FIELD_MODE = {
+    1: "FieldMode::READ",
+    2: "FieldMode::WRITE",
+    4: "FieldMode::SET",
+    8: "FieldMode::TOGGLE",
+    16: "FieldMode::WRITE_ONE_TO_CLEAR",
+    32: "FieldMode::WRITE_ZERO_TO_CLEAR",
+}
+
+
+def render_mode(const: str | None) -> str:
+    """C# FieldMode is a [Flags] enum; render the combination."""
+    if const is None:
+        return "FieldMode::READ_WRITE"  # the C# default
+    try:
+        v = int(const)
+    except ValueError:
+        return "FieldMode::READ_WRITE"
+    if v == 3:
+        return "FieldMode::READ_WRITE"
+    parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
+    return " | ".join(parts) if parts else "FieldMode::default()"
+
+
 class RegisterDsl:
     """Mixin: finding registers, and emitting the bank they describe."""
 
@@ -72,19 +99,323 @@ class RegisterDsl:
             kids = self.children(node)
             if len(kids) >= 2:
                 arr = kids[0][2]
-                idx = self.emit_expr(kids[1][0])
+                idx = self.index_expr(kids[1][0])
                 if arr:
                     base = snake(arr.split(".")[-1].split("(")[0])
                     return f"{base}[{idx}]"
         # Symbol is a fully-qualified field reference; the leaf is the name.
         return snake(sym.split(".")[-1].split("(")[0]) if sym else None
 
+    def index_expr(self, oid: int) -> str:
+        """An array index into a field-handle array.
+
+        Folded to a literal when a loop environment is in force -- the handles
+        live in a fixed-size array whose size the emitter derives from the
+        highest index it sees, and `exti_mappings[pin_number]` names a variable
+        that does not exist in the generated function."""
+        v = self.const_eval(oid, self._loop_env) if self._loop_env else None
+        return str(v) if v is not None else self.emit_expr(oid)
+
+    def assigned_field(self, oid: int) -> str | None:
+        """Handle bound by ASSIGNING the combinator's result, not by `out`.
+
+        The extension combinators hand a field back through `out`; the INSTANCE
+        combinators return it, so `extiMappings[pin] = reg.DefineValueField(..)`
+        binds exactly what `WithValueField(.., out f, ..)` binds. Reading only
+        `out` saw no handle at all for the instance form -- which then looked
+        like a tag field, and the register stopped storing.
+
+        Only a direct assignment of THIS call's result counts. A call nested in
+        a larger expression is not a binding, so the walk up stops at anything
+        that is not a transparent wrapper."""
+        node = oid
+        transparent = {"Conversion", "Parenthesized"}
+        for _ in range(4):
+            row = self.con.execute(
+                "SELECT parent_id FROM operation WHERE id=?", (node,)).fetchone()
+            if not row or row[0] is None:
+                return None
+            pid = row[0]
+            pkind, = self.con.execute(
+                "SELECT kind FROM operation WHERE id=?", (pid,)).fetchone()
+            if pkind in transparent:
+                node = pid
+                continue
+            if pkind not in ("SimpleAssignment", "Assignment"):
+                return None
+            kids = self.children(pid)
+            if len(kids) != 2 or kids[1][0] != node:
+                return None          # this call is the TARGET, not the value
+            tid, tkind, tsym, _c, _t = kids[0]
+            if tkind == "ArrayElementReference":
+                arr = self.children(tid)
+                if len(arr) >= 2 and arr[0][2]:
+                    base = snake(arr[0][2].split(".")[-1].split("(")[0])
+                    return f"{base}[{self.index_expr(arr[1][0])}]"
+                return None
+            return snake(tsym.split(".")[-1].split("(")[0]) if tsym else None
+        return None
+
     def combinator(self, symbol: str) -> str | None:
-        """Bare combinator name, e.g. `WithFlag`, from a full symbol."""
-        if "PeripheralRegisterExtensions." not in symbol:
+        """Bare combinator name, e.g. `WithFlag`, from a full symbol.
+
+        The DECLARING TYPES are data (`combinator_providers`), because the DSL
+        does not live in one class. Hardcoding `PeripheralRegisterExtensions`
+        here named one of four:
+
+          * `DoubleWordRegisterExtensions` carries the REGISTER-level callbacks
+            (`WithWriteCallback`), 18 call sites, every one skipped in silence;
+          * `PeripheralRegister` carries the same combinators as INSTANCE
+            methods (`reg.DefineValueField(..)`), which is how a register held
+            in a local is extended;
+          * `PeripheralRegister<T>` carries `DefineWriteCallback` and friends,
+            what the register-level extensions forward to.
+
+        Returning None for those made them indistinguishable from a call that
+        is not part of the DSL at all, and one peripheral's whole register map
+        was empty as a result.
+
+        `leaf_starts_with` is not decoration. `PeripheralRegister` also declares
+        `UnderlyingValue`, `RecalculateFieldMask` and fifty other members; the
+        prefix says which of a provider's members are combinators, so widening
+        the provider list does not turn every method call on a register into an
+        unhandled combinator."""
+        best: tuple[int, str] | None = None
+        for prov in self.project.get("combinator_providers", {}).get("providers", []):
+            marker = prov["symbol_contains"]
+            if marker not in symbol:
+                continue
+            leaf = symbol.split(marker, 1)[1].split("<")[0].split("(")[0]
+            starts = prov.get("leaf_starts_with")
+            if starts and not leaf.startswith(tuple(starts)):
+                continue
+            # Longest marker wins: `...Registers.PeripheralRegister.` is a
+            # prefix of nothing else here, but `PeripheralRegisterExtensions`
+            # and `PeripheralRegister` differ by one character and an ordering
+            # accident must not decide which one matched.
+            if best is None or len(marker) > best[0]:
+                best = (len(marker), leaf)
+        return best[1] if best else None
+
+    def callback_aliases(self) -> dict[str, str]:
+        """C# callback parameter name -> the `{<alias>_fn}` slot rules bind."""
+        return self.project.get("callback_params", {}).get("aliases", {})
+
+    def bound_callbacks(self, b: dict) -> list[str]:
+        """Callback parameters this CALL SITE actually binds.
+
+        Read from the binding rather than from a list in code. `emit_call`
+        inspected exactly `valueProviderCallback` and `writeCallback`, so
+        `changeCallback` (18 peripheral sites), `readCallback` (3) and
+        `shadowReloadCallback` were dropped with no gap -- while a
+        `writeCallback` on the neighbouring bit reported one. Same corpus, same
+        DelegateCreation, opposite treatment, and nothing in the data said so.
+
+        The suffix is the DSL's own convention and the corpus spells it, so
+        detection needs no table; the table (`callback_params.aliases`) only
+        says which template slot each one fills."""
+        suffix = self.project.get("callback_params", {}).get("suffix", "Callback")
+        return sorted(p for p, v in b.items()
+                      if p.endswith(suffix) and v[0] != "DefaultValue")
+
+    def select_rule(self, name: str, flags: dict[str, bool]) -> dict | None:
+        """First rule matching this combinator whose condition holds.
+
+        `when` is a disjunction of conjunctions -- `a and b`, `a or b`. The
+        original grammar was `or` only, which cannot say "bound by `out` AND
+        carrying a change callback", and that shape is 18 sites."""
+        for rule in self.rules:
+            if name not in rule["matches"].split("|"):
+                continue
+            cond = rule.get("when")
+            if cond and not any(
+                    all(flags.get(tok.strip(), False) for tok in conj.split(" and "))
+                    for conj in cond.split(" or ")):
+                continue
+            return rule
+        return None
+
+    def emit_call(self, oid: int, symbol: str) -> str | None:
+        """Apply the first matching RULE. This method knows nothing about any
+        individual combinator -- adding support for a new one is a data change
+        to rulesdb/rules/, never a code change here.
+
+        ORDER MATTERS, and it changed. Callbacks used to be emitted BEFORE the
+        rule was chosen, so a callback whose rule then declined was emitted into
+        the file and called by nothing: five dead `fn`s in one peripheral,
+        visible only as `never used` warnings among 123 that nothing gates on.
+        The rule is chosen first, and only the callbacks its template consumes
+        are emitted -- so a bound callback with nowhere to go is a GAP, which is
+        what it always was."""
+        name = self.combinator(symbol)
+        if name is None:
             return None
-        after = symbol.split("PeripheralRegisterExtensions.", 1)[1]
-        return after.split("<")[0].split("(")[0]
+        b = self.bind(oid, symbol)
+
+        def const(param: str):
+            v = b.get(param)
+            if v is not None and v[2] is not None:
+                return v[2]
+            # Inside a replicated loop the argument is arithmetic over the loop
+            # variable rather than a literal, so Roslyn records no constant.
+            # It IS one per iteration, and folding it here is what makes the
+            # iterations distinguishable.
+            node = self.arg_node(oid, param) if self._loop_env else None
+            folded = self.const_eval(node, self._loop_env) if node else None
+            return None if folded is None else str(folded)
+
+        env = {
+            "pos": const("position"),
+            "width": const("width"),
+            "count": const("count"),
+            "mode": render_mode(const("mode")),
+            # `out f` first, then `x = reg.DefineField(..)`: the two forms of
+            # the same binding, and a combinator uses one or the other.
+            "field": self.out_field(oid, symbol) or self.assigned_field(oid),
+        }
+        aliases = self.callback_aliases()
+        bound = self.bound_callbacks(b)
+        flags = {"field": env["field"] is not None}
+        for param in bound:
+            flags[aliases.get(param, param)] = True
+
+        rule = self.select_rule(name, flags)
+        if rule is None:
+            self.unhandled[name] = self.unhandled.get(name, 0) + 1
+            return None
+        if rule.get("gap"):
+            self.gaps.append(f"{name}: {rule['gap']}")
+        template = rule.get("emit")
+
+        # A layout constant that is not a constant. `position` may be an
+        # expression over a loop variable, and formatting None into the
+        # template emitted `.with_value(None, 4, ..)` -- which does not compile,
+        # but only after the file had been published as a translation.
+        for slot, param in (("pos", "position"), ("width", "width"),
+                            ("count", "count")):
+            if template and f"{{{slot}}}" in template and env[slot] is None:
+                self.gaps.append(
+                    f"{name}: `{param}` is not a compile-time constant, so the "
+                    f"field's placement is unknown -- withheld")
+                return None
+
+        # `softResettable: false` marks a field a soft reset must not clear.
+        # The bank has one reset, so the distinction has nowhere to go; saying
+        # so is the difference between a known limit and a silent one.
+        srr = self.project.get("callback_params", {}).get("soft_resettable", {})
+        if srr.get("param") and template:
+            v = b.get(srr["param"])
+            if v and v[0] != "DefaultValue" and str(v[2]) in ("0", "False", "false"):
+                self.gaps.append(f"{name}: {srr.get('gap', 'softResettable is not modelled')}")
+
+        env.update(self.emit_callbacks(oid, name, env, rule, bound, template))
+        if template is None:
+            return None
+        try:
+            return template.format(**env)
+        except KeyError as missing:
+            self.unhandled[f"{rule['name']}:missing {missing}"] = 1
+            return None
+
+    def emit_callbacks(self, oid: int, name: str, env: dict, rule: dict,
+                       bound: list[str], template: str | None) -> dict[str, str]:
+        """Each bound callback as a free fn, or a gap saying why not.
+
+        Returns the `{<alias>_fn}` slots. Every slot the template names starts
+        at `None`, so a withheld callback leaves a register whose LAYOUT is
+        still right and whose behaviour is visibly absent -- see the
+        `unemitted_dependency` rule."""
+        aliases = self.callback_aliases()
+        naming = self.project.get("callback_naming", {})
+        slots: dict[str, str] = {
+            f"{a}_fn": "None" for a in aliases.values()}
+        seen_unh = dict(self.unhandled)
+        for param in bound:
+            alias = aliases.get(param)
+            key = f"{alias}_fn" if alias else None
+            if not template or key is None or f"{{{key}}}" not in template:
+                # Bound in the C#, consumed by nothing. This is the asymmetry
+                # the callback-kind gap exists to remove: a writeCallback on
+                # bit 30 reported, a changeCallback on bit 0 did not, and the
+                # only difference was which two names the emitter read.
+                self.gaps.append(
+                    f"{name}{'' if env['pos'] is None else ' bit ' + str(env['pos'])}: "
+                    f"`{param}` is bound in the C# and no rule consumes it -- "
+                    f"that behaviour is missing")
+                continue
+            lam = self.find_lambda(oid, param)
+            if lam is None:
+                self.gaps.append(
+                    f"{name}: `{param}` is bound to something that is not a "
+                    f"lambda, which the converter cannot lift into a free fn")
+                continue
+            tmpl = (naming.get("register_template", "{reg}_{kind}")
+                    if env["pos"] is None
+                    else naming.get("template", "{reg}_{pos}_{kind}"))
+            fname = tmpl.format(reg=snake(self._current_reg or "reg"),
+                                pos=env["pos"], kind=alias)
+            # The callback's SHAPE may differ from the field-level one: a
+            # register-level write callback takes (old, new) and no field
+            # index, so the rule names which signature applies.
+            sig = rule.get("callback_signatures", {}).get(param, param)
+            # OCCURRENCES, not distinct keys. `unhandled` is a counter, and
+            # comparing its LENGTH means only the FIRST site of a given kind is
+            # ever caught -- every later one leaves the count of keys unchanged
+            # and passes. See the same fix in emit_peripheral_method.
+            before_unh = sum(self.unhandled.values())
+            body = self.emit_lambda(lam, fname, sig)
+            if not body:
+                continue
+            # Callbacks had no unhandled check at all, so an unemittable
+            # construct inside one reached the file as a `/* Kind */` marker.
+            # Methods have withheld on this since the beginning; lambdas were
+            # simply missed.
+            if sum(self.unhandled.values()) > before_unh:
+                self.gaps.append(
+                    f"callback for bit {env['pos']}: withheld, cannot emit "
+                    f"{', '.join(sorted(k for k, v in self.unhandled.items() if v > seen_unh.get(k, 0)))}")
+                continue
+            # Does the body call a peer method we cannot emit yet? If so the
+            # file would not compile, and a stub would look finished. Withhold
+            # the callback and name the gap instead.
+            text = "\n".join(body)
+            missing = sorted({
+                m for m in re.findall(r"\b([a-z_][a-z0-9_]*)\(bank, st", text)
+                if m not in self._emitted_fns})
+            missing += sorted({
+                f"st.{m}" for m in re.findall(r"\bst\.([a-z_][a-z0-9_]*)", text)
+                if m != "f" and m not in self._state_names})
+            # A callback that INDEXES a state collection nothing sizes. The
+            # C# constructor allocates `mode = new Mode[NumberOfPins]`; the
+            # constructor is not translated, so the generated `Vec` is empty
+            # and `st.mode[idx]` panics on the first read. Compiles, passes
+            # review, and takes the whole peripheral down at run time -- the
+            # same class as the `/* GAP */` left in a loop increment.
+            missing += sorted({
+                f"st.{m}[..]" for m in re.findall(
+                    r"\bst\.([a-z_][a-z0-9_]*)\s*\[", text)
+                if m != "f" and self.state_is_unsized(m)})
+            if missing:
+                self.gaps.append(
+                    "callback for bit {} needs peer method(s) not yet emitted: {}"
+                    .format(env["pos"], ", ".join(missing)))
+                continue
+            self._callbacks.append("\n".join(body))
+            slots[key] = f"Some({fname})"
+        return slots
+
+    def state_is_unsized(self, field: str) -> bool:
+        """Is this State field a collection that no emitted code ever sizes?
+
+        `#[derive(Default)]` gives a `Vec` length zero. The C# constructor is
+        what gives it a length, and constructors are not translated, so any
+        indexed read of one is an out-of-bounds panic waiting for the first
+        access. Sized ones exist -- the sub-block loop calls `resize_with` --
+        so this asks rather than assumes."""
+        ty = dict(getattr(self, "_state_types", {})).get(field)
+        if not ty or not ty.startswith("Vec<"):
+            return False
+        return field not in getattr(self, "_sized_state", set())
 
     def enum_offset(self, oid: int) -> tuple[str | None, int | None, str | None]:
         """Register offset from a `Define` call's first argument.
@@ -146,9 +477,191 @@ class RegisterDsl:
                 return (name, int(const)), other
         return None, None
 
-    def find_registers(self, method_id: int) -> list[tuple[str | None, int, str, int, str | None]]:
-        """(name, offset, reset, chain span start, runtime term) per register."""
-        found: list[tuple[str | None, int, str, int, str | None]] = []
+    # ---- constant-bounds loop replication -------------------------------
+    #
+    # A register map written as a LOOP, which the layout walker could only see
+    # one iteration of. The `for` is deterministic and its bounds are literals,
+    # so the iterations are known at conversion time and the registers they
+    # define are constants -- there is nothing to defer to run time. See the
+    # `loop_replication` rule for why this unrolls rather than emitting a Rust
+    # loop.
+
+    def const_eval(self, oid: int, env: dict[str, int]) -> int | None:
+        """Fold an expression to an integer under a loop environment.
+
+        Deliberately small: literals, constants, the arithmetic C# uses to
+        place a field, and the locals the loop binds. Anything else returns
+        None, and None means the caller reports a gap rather than guessing --
+        which is the whole point of doing this instead of emitting `{pos}` as
+        the string `None`."""
+        row = self.con.execute(
+            "SELECT kind, symbol, const_value FROM operation WHERE id=?",
+            (oid,)).fetchone()
+        if not row:
+            return None
+        kind, sym, const = row
+        if const is not None and kind in ("Literal", "FieldReference", "Conversion"):
+            try:
+                return int(const)
+            except (TypeError, ValueError):
+                return None
+        if kind in ("Conversion", "Parenthesized", "VariableInitializer",
+                    "Argument"):
+            kids = self.children(oid)
+            return self.const_eval(kids[0][0], env) if kids else None
+        if kind == "LocalReference":
+            return env.get((sym or "").split()[-1])
+        if kind == "Binary":
+            kids = self.children(oid)
+            if len(kids) != 2:
+                return None
+            a = self.const_eval(kids[0][0], env)
+            b = self.const_eval(kids[1][0], env)
+            if a is None or b is None:
+                return None
+            op = self.project.get("loop_replication", {}).get(
+                "operators", {}).get(sym or "")
+            if op == "add":
+                return a + b
+            if op == "sub":
+                return a - b
+            if op == "mul":
+                return a * b
+            if op == "div" and b:
+                return a // b
+            return None
+        return None
+
+    def loop_bounds(self, oid: int) -> tuple[str, range] | None:
+        """`for(var i = C0; i < C1; ++i)` -> the variable and its values.
+
+        Only the counted form, and only with CONSTANT bounds. A loop whose trip
+        count is not known here is not replicated, and the register it defines
+        is reported rather than emitted once and quietly wrong."""
+        kids = self.children(oid)
+        if len(kids) < 3:
+            return None
+        init, cond = kids[0], kids[1]
+        if init[1] != "VariableDeclarationGroup" or cond[1] != "Binary":
+            return None
+        names = self.declared_in(init[0])
+        if len(names) != 1:
+            return None
+        var = names[0]
+        # The initialiser: `var i = 0`.
+        start = None
+        stack = [init[0]]
+        while stack and start is None:
+            for cid, ckind, _s, _c, _t in self.children(stack.pop()):
+                if ckind == "VariableInitializer":
+                    start = self.const_eval(cid, {})
+                    break
+                stack.append(cid)
+        if start is None:
+            return None
+        ops = self.project.get("loop_replication", {}).get("conditions", {})
+        rel = ops.get(cond[2] or "")
+        if rel is None:
+            return None
+        ckids = self.children(cond[0])
+        if len(ckids) != 2:
+            return None
+        limit = self.const_eval(ckids[1][0], {})
+        if limit is None:
+            return None
+        # `i++` and `++i` step by one; anything else is not this shape.
+        inc = kids[3] if len(kids) > 3 else None
+        if inc is not None:
+            found = self.con.execute(
+                "SELECT count(*) FROM operation WHERE kind='Increment' AND "
+                "span_start >= (SELECT span_start FROM operation WHERE id=?) "
+                "AND span_start < (SELECT span_start + span_len FROM operation "
+                "WHERE id=?)", (inc[0], inc[0])).fetchone()[0]
+            if not found:
+                return None
+        stop = limit + 1 if rel == "le" else limit
+        return var, range(start, stop)
+
+    def loop_envs(self, oid: int) -> list[dict[str, int]] | None:
+        """Every iteration of every counted loop enclosing this operation.
+
+        Returns `[{}]` when nothing encloses it -- one environment binding
+        nothing, so the ordinary non-loop path is the degenerate case of this
+        one rather than a parallel code path.
+
+        None means an enclosing loop exists whose trip count is not constant.
+        That is the honest answer: the site IS replicated and we cannot say how
+        many times, so nothing may be emitted for it."""
+        loops: list[tuple[str, range]] = []
+        node = oid
+        while True:
+            row = self.con.execute(
+                "SELECT parent_id FROM operation WHERE id=?", (node,)).fetchone()
+            if not row or row[0] is None:
+                break
+            node = row[0]
+            kind, = self.con.execute(
+                "SELECT kind FROM operation WHERE id=?", (node,)).fetchone()
+            if kind != "Loop":
+                continue
+            b = self.loop_bounds(node)
+            if b is None:
+                return None
+            loops.append(b)
+        envs: list[dict[str, int]] = [{}]
+        for var, rng in reversed(loops):          # outermost first
+            envs = [dict(e, **{var: i}) for e in envs for i in rng]
+        return envs
+
+    def local_consts(self, oid: int, env: dict[str, int]) -> dict[str, int]:
+        """Locals declared between the enclosing loops and this operation.
+
+        `var pinNumber = regNumber * 4 + fieldNumber;` is part of the index
+        arithmetic, not a separate concern: without it the field's array slot
+        cannot be resolved and the whole replication is useless."""
+        out = dict(env)
+        method_id, = self.con.execute(
+            "SELECT method_id FROM operation WHERE id=?", (oid,)).fetchone()
+        span = self.con.execute(
+            "SELECT span_start FROM operation WHERE id=?", (oid,)).fetchone()[0]
+        for did, in self.con.execute(
+                "SELECT id FROM operation WHERE method_id=? AND "
+                "kind='VariableDeclarationGroup' AND span_start < ? "
+                "ORDER BY span_start", (method_id, span)):
+            names = self.declared_in(did)
+            # A loop's OWN initialiser is a declaration too, and folding it
+            # rebound the loop variable to its starting value -- every
+            # iteration then evaluated as iteration zero, so four registers
+            # came out at one address with four fields all at bit 0. The
+            # environment wins over any declaration of the same name.
+            if len(names) != 1 or names[0] in env:
+                continue
+            stack, init = [did], None
+            while stack and init is None:
+                for cid, ckind, _s, _c, _t in self.children(stack.pop()):
+                    if ckind == "VariableInitializer":
+                        init = cid
+                        break
+                    stack.append(cid)
+            if init is None:
+                continue
+            v = self.const_eval(init, out)
+            if v is not None:
+                out[names[0]] = v
+        return out
+
+    def find_registers(self, method_id: int) -> list[tuple]:
+        """(name, offset, reset, chain key, runtime term, env) per register.
+
+        One entry per LOOP ITERATION, not per source site. A register map built
+        by a counted loop is four registers in the C# and was one here, because
+        the walker read the site and never the loop around it.
+
+        The chain key is a span start for a fluent chain and a local's NAME when
+        the form hands back a register held in a local -- the two ways the C#
+        says "these combinator calls belong to that register"."""
+        found: list[tuple] = []
+        self._form_gaps: list[str] = []
         for oid, symbol, span in self.con.execute(
                 "SELECT id, symbol, span_start FROM operation WHERE method_id=? "
                 "AND kind='Invocation' AND symbol IS NOT NULL ORDER BY span_start",
@@ -157,27 +670,113 @@ class RegisterDsl:
                 if form["symbol_contains"] not in symbol:
                     continue
                 b = self.bind(oid, symbol)
-                term: str | None = None
-                if form["offset_from"] == "$first_argument_enum":
-                    name, offset, term = self.enum_offset(oid)
+                if form["chain_from"] == "$self":
+                    chain_key: int | str = span
                 else:
-                    name, offset = self.arg_enum(oid, form["offset_from"])
-                if offset is None:
+                    chain_key = self.chain_key(oid, form["chain_from"])
+                    if chain_key is None:
+                        break
+                envs = self.loop_envs(oid)
+                if envs is None:
+                    self._form_gaps.append(
+                        "layout: a register is defined inside a loop whose trip "
+                        "count is not a compile-time constant, so its registers "
+                        "cannot be placed -- none of them are in the bank")
                     break
                 reset = "0"
                 if form.get("reset_from"):
                     v = b.get(form["reset_from"])
                     if v and v[2] is not None:
                         reset = v[2]
-                if form["chain_from"] == "$self":
-                    chain_span = span
-                else:
-                    chain_span = self.arg_span(oid, form["chain_from"])
-                    if chain_span is None:
+                for env in envs:
+                    name, offset, term = self.register_offset(oid, form, env)
+                    if offset is None:
                         break
-                found.append((name, offset, reset, chain_span, term))
+                    found.append((name, offset, reset, chain_key, term, env))
                 break
         return found
+
+    def register_offset(self, oid: int, form: dict,
+                        env: dict[str, int]) -> tuple[str | None, int | None, str | None]:
+        """This iteration's offset, and its name in the C# offset enum."""
+        if env:
+            # Inside a loop the offset is arithmetic over the loop variable, so
+            # it FOLDS -- `(long)Registers.Exti1 + 4 * regNumber` is 0x8, 0xC,
+            # 0x10, 0x14 and each is a member of the same enum. Only taken when
+            # a loop binds something: outside one the existing path also yields
+            # the RUNTIME term that a computed offset needs, and const-folding
+            # cannot express that.
+            arg = self.offset_arg(oid, form)
+            base, _b, _t = self._raw_offset(oid, form)
+            value = self.const_eval(arg, self.local_consts(oid, env)) if arg else None
+            if value is not None:
+                return self.offset_name(base, value) or base, value, None
+        return self._raw_offset(oid, form)
+
+    def _raw_offset(self, oid: int, form: dict) -> tuple[str | None, int | None, str | None]:
+        if form["offset_from"] == "$first_argument_enum":
+            return self.enum_offset(oid)
+        name, offset = self.arg_enum(oid, form["offset_from"])
+        return name, offset, None
+
+    def offset_arg(self, oid: int, form: dict) -> int | None:
+        """The node holding the offset expression, whichever form named it."""
+        if form["offset_from"] == "$first_argument_enum":
+            args = [c for c in self.children(oid) if c[1] == "Argument"]
+            return args[0][0] if args else None
+        for aid, kind, sym, _c, _t in self.children(oid):
+            if kind == "Argument" and sym and sym.split()[-1] == form["offset_from"]:
+                return aid
+        return None
+
+    def offset_name(self, base: str | None, value: int) -> str | None:
+        """The offset enum member with this discriminant.
+
+        Looked up in the enum that declares `base`, never across all of them:
+        a peripheral may declare several enums and two of them may share a
+        value, and picking by value alone would name the register after
+        whichever enum sorted first."""
+        if not base:
+            return None
+        for _ename, members in self.nested_enums(self._current_type or ""):
+            names = {m for m, _v in members}
+            if base not in names:
+                continue
+            for mname, mval in members:
+                try:
+                    if int(mval) == value:
+                        return mname
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    def chain_key(self, oid: int, param: str) -> int | str | None:
+        """How a form says which combinator calls belong to its register.
+
+        Two shapes, and only one was read. `Define(this).WithFlag(..)` is a
+        fluent chain, and every call in it shares the root's span start. But
+        `map.Add(key, reg)` hands over a register held in a LOCAL, extended by
+        `reg.DefineValueField(..)` in statements of its own -- different span,
+        same register. Reading only the span meant those calls belonged to
+        nothing, so the register was located and emitted empty."""
+        node = self.arg_node(oid, param)
+        if node is None:
+            return None
+        kind, sym = self.con.execute(
+            "SELECT kind, symbol FROM operation WHERE id=?", (node,)).fetchone()
+        if kind == "LocalReference" and sym:
+            return f"local:{sym.split()[-1]}"
+        return self.con.execute(
+            "SELECT span_start FROM operation WHERE id=?", (node,)).fetchone()[0]
+
+    def arg_node(self, oid: int, param: str) -> int | None:
+        """The expression node of a named argument."""
+        for aid, kind, sym, _c, _t in self.children(oid):
+            if kind != "Argument" or not sym or sym.split()[-1] != param:
+                continue
+            kids = self.children(aid)
+            return kids[0][0] if kids else None
+        return None
 
     def arg_enum(self, oid: int, param: str) -> tuple[str | None, int | None]:
         """Enum member passed as a NAMED parameter, e.g. the dictionary key."""
@@ -223,24 +822,32 @@ class RegisterDsl:
 
         self._state_names = {n for n, _ in self.state_fields(type_name)[0]}
         self._current_type = type_name
-        chains: dict[int, list[tuple[int, int, str]]] = {}
+        chains: dict[int | str, list[tuple[int, int, str]]] = {}
         for oid, symbol, start, end in self.con.execute(
                 "SELECT id, symbol, span_start, span_start + span_len FROM operation "
                 "WHERE method_id=? AND kind='Invocation' AND symbol IS NOT NULL",
                 (method_id,)):
             chains.setdefault(start, []).append((end, oid, symbol))
+            # The same call, keyed a SECOND way: by the local it is invoked on.
+            # A register handed to `map.Add(key, reg)` is extended by
+            # `reg.DefineValueField(..)` in statements of its own, which share
+            # no span with the form that located it.
+            recv = self.con.execute(
+                "SELECT kind, symbol FROM operation WHERE parent_id=? "
+                "ORDER BY ordinal LIMIT 1", (oid,)).fetchone()
+            if recv and recv[0] == "LocalReference" and recv[1]:
+                chains.setdefault(
+                    f"local:{recv[1].split()[-1]}", []).append((end, oid, symbol))
 
         stmts: list[str] = []
         fields: list[str] = []
         gaps: list[str] = []
 
         found = self.find_registers(method_id)
-        pre, pre_gaps = self.register_preamble(
-            method_id, [r[4] for r in found if r[4]], {r[3] for r in found})
-        stmts.extend(pre)
-        gaps.extend(pre_gaps)
+        gaps.extend(getattr(self, "_form_gaps", []))
+        emitted_spans: set[int | str] = set()
 
-        for name, offset, reset, chain_span, term in sorted(
+        for name, offset, reset, chain_span, term, env in sorted(
                 found, key=lambda r: r[1]):
             body: list[str] = []
             self.gaps = []
@@ -267,17 +874,41 @@ class RegisterDsl:
                     if leaf.startswith(("With", "Define")) and leaf not in skipped:
                         skipped.append(leaf)
                     continue
-                line = self.emit_call(oid, symbol)
-                gaps.extend(f"{name}: {g}" for g in self.gaps)
-                self.gaps = []
-                if line is None:
+                # A combinator inside a loop is emitted ONCE PER ITERATION, and
+                # only for the iterations consistent with the register's own.
+                # SYSCFG's inner loop defines four fields into each of the four
+                # registers the outer loop defines; keeping one environment per
+                # register and none per field would place all sixteen at the
+                # same bit.
+                call_envs = self.loop_envs(oid)
+                if call_envs is None:
+                    gaps.append(
+                        f"{name or hex(offset)}: a field is defined inside a "
+                        f"loop whose trip count is not a compile-time constant "
+                        f"-- the field is not in the register")
                     continue
-                f = self.out_field(oid, symbol)
-                if f and f not in fields:
-                    fields.append(f)
-                    if self.combinator(symbol) == "WithFlag":
-                        self._flag_fields.add(f)
-                body.append(line)
+                call_envs = [e for e in call_envs
+                             if all(e.get(k) == v for k, v in env.items())] or [{}]
+                for call_env in call_envs:
+                    self._loop_env = self.local_consts(oid, call_env) if call_env else {}
+                    line = self.emit_call(oid, symbol)
+                    gaps.extend(f"{name}: {g}" for g in self.gaps)
+                    self.gaps = []
+                    if line is None:
+                        continue
+                    f = self.out_field(oid, symbol) or self.assigned_field(oid)
+                    if f and f not in fields:
+                        fields.append(f)
+                        # Which combinators yield a FLAG handle is data. It was
+                        # the literal name `WithFlag`, so the instance form of
+                        # the same combinator would have declared a ValueId for
+                        # a one-bit field -- a type error the moment either one
+                        # emitted.
+                        if self.combinator(symbol) in self.project.get(
+                                "combinator_providers", {}).get("flag_combinators", []):
+                            self._flag_fields.add(f)
+                    body.append(line)
+                self._loop_env = {}
             if skipped:
                 gaps.append(
                     f"{name or hex(offset)}: {len(skipped)} call(s) no rule "
@@ -294,6 +925,7 @@ class RegisterDsl:
                         f"{name or hex(offset)}: located at 0x{offset:X} but no "
                         f"field emitted -- the register is NOT in the bank")
                 continue
+            emitted_spans.add(chain_span)
             const_name = to_const(name or f"REG_{offset:X}")
             where = f"reg::{const_name}"
             if term is not None:
@@ -302,7 +934,13 @@ class RegisterDsl:
             stmts.extend(f"        {l}" for l in body)
             stmts.append("        .done();")
             stmts.append("")
-        return stmts, fields, gaps
+        # AFTER the registers, not before: what the preamble reports depends on
+        # which chains actually emitted, and a loop-replicated chain is only
+        # known to have emitted once its iterations have been walked.
+        pre, pre_gaps = self.register_preamble(
+            method_id, [r[4] for r in found if r[4]], emitted_spans)
+        gaps.extend(pre_gaps)
+        return pre + stmts, fields, gaps
 
     def register_preamble(self, method_id: int, terms: list[str],
                           chain_spans: set[int]) -> tuple[list[str], list[str]]:
@@ -419,13 +1057,27 @@ class RegisterDsl:
         a fluent chain shares its root's span start, so a combinator outside that
         set belongs to a chain nothing emitted."""
         rows = self.con.execute(
-            "SELECT symbol, span_start FROM operation WHERE kind='Invocation' "
+            "SELECT id, symbol, span_start FROM operation WHERE kind='Invocation' "
             "AND symbol IS NOT NULL AND span_start >= (SELECT span_start FROM "
             "operation WHERE id=?) AND span_start < (SELECT span_start + span_len "
             "FROM operation WHERE id=?) AND method_id=(SELECT method_id FROM "
-            "operation WHERE id=?)", (oid, oid, oid))
-        return any(self.combinator(s) is not None and start not in emitted_spans
-                   for s, start in rows)
+            "operation WHERE id=?)", (oid, oid, oid)).fetchall()
+        for cid, s, start in rows:
+            if self.combinator(s) is None:
+                continue
+            # BOTH keys, because a chain is identified by either. Checking only
+            # the span reported a statement as dropped whose calls had all been
+            # emitted through the receiver-local key -- a gap describing work
+            # that had just been done.
+            recv = self.con.execute(
+                "SELECT kind, symbol FROM operation WHERE parent_id=? "
+                "ORDER BY ordinal LIMIT 1", (cid,)).fetchone()
+            keys = {start}
+            if recv and recv[0] == "LocalReference" and recv[1]:
+                keys.add(f"local:{recv[1].split()[-1]}")
+            if not (keys & emitted_spans):
+                return True
+        return False
 
     def register_offsets(self, type_name: str, method_name: str) -> list[tuple[str, int]]:
         """Offsets via the same discovery path as the layout.
@@ -441,6 +1093,6 @@ class RegisterDsl:
             WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
         if not row:
             return []
-        seen = {name: off for name, off, _r, _s, _t in self.find_registers(row[0])
+        seen = {name: off for name, off, *_rest in self.find_registers(row[0])
                 if name}
         return sorted(seen.items(), key=lambda kv: kv[1])

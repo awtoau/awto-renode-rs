@@ -49,17 +49,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# FieldMode enum values as the C# defines them, for rendering.
-FIELD_MODE = {
-    1: "FieldMode::READ",
-    2: "FieldMode::WRITE",
-    4: "FieldMode::SET",
-    8: "FieldMode::TOGGLE",
-    16: "FieldMode::WRITE_ONE_TO_CLEAR",
-    32: "FieldMode::WRITE_ZERO_TO_CLEAR",
-}
-
-
 def repo_root() -> Path:
     return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
                                capture_output=True, text=True, check=True).stdout.strip())
@@ -136,20 +125,6 @@ def load_register_forms(rules_dir: Path) -> list[dict]:
     return forms
 
 
-def render_mode(const: str | None) -> str:
-    """C# FieldMode is a [Flags] enum; render the combination."""
-    if const is None:
-        return "FieldMode::READ_WRITE"  # the C# default
-    try:
-        v = int(const)
-    except ValueError:
-        return "FieldMode::READ_WRITE"
-    if v == 3:
-        return "FieldMode::READ_WRITE"
-    parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
-    return " | ".join(parts) if parts else "FieldMode::default()"
-
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emitter.core import snake  # noqa: E402
 from emitter.core import must_explain as _core_must_explain  # noqa: E402
@@ -204,6 +179,9 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         self.normalised: dict[str, set[int]] = {}
         self._enum_slots: set[str] = set()
         self._current_reg: str | None = None
+        # Loop variables bound while emitting a replicated register. Empty
+        # outside one, which is what makes the non-loop path the same path.
+        self._loop_env: dict[str, int] = {}
         rd = rules_dir or repo_root() / "rulesdb" / "rules"
         self.forms = load_register_forms(rd)
         self.assignments = load_assignments(rd)
@@ -269,106 +247,6 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 continue
             out[pname] = (ikind, isym, iconst)
         return out
-
-    def emit_call(self, oid: int, symbol: str) -> str | None:
-        """Apply the first matching RULE. This method knows nothing about any
-        individual combinator -- adding support for a new one is a data change
-        to rulesdb/rules/, never a code change here."""
-        name = self.combinator(symbol)
-        if name is None:
-            return None
-        b = self.bind(oid, symbol)
-
-        def const(param: str):
-            v = b.get(param)
-            return v[2] if v else None
-
-        def present(param: str) -> bool:
-            v = b.get(param)
-            return v is not None and v[0] != "DefaultValue"
-
-        env = {
-            "pos": const("position"),
-            "width": const("width"),
-            "count": const("count"),
-            "mode": render_mode(const("mode")),
-            "field": self.out_field(oid, symbol),
-        }
-        flags = {
-            "field": env["field"] is not None,
-            "provider": present("valueProviderCallback"),
-            "writer": present("writeCallback"),
-        }
-        # A computed field's callbacks become free fns emitted beside the
-        # layout. Named from register + bit position so the name is content-
-        # derived and never depends on emission order.
-        naming = self.project.get("callback_naming", {}).get(
-            "template", "{reg}_{pos}_{kind}")
-        seen_unh = dict(self.unhandled)
-        for param, kind, key in (("valueProviderCallback", "provider", "provider_fn"),
-                                 ("writeCallback", "writer", "writer_fn")):
-            env[key] = "None"
-            if not flags[kind]:
-                continue
-            lam = self.find_lambda(oid, param)
-            if lam is None:
-                continue
-            fname = naming.format(reg=snake(self._current_reg or "reg"),
-                                  pos=env["pos"], kind=kind)
-            # OCCURRENCES, not distinct keys. `unhandled` is a counter, and
-            # comparing its LENGTH means only the FIRST site of a given kind is
-            # ever caught -- every later one leaves the count of keys unchanged
-            # and passes. See the same fix in emit_peripheral_method.
-            before_unh = sum(self.unhandled.values())
-            body = self.emit_lambda(lam, fname, param)
-            if not body:
-                continue
-            # Callbacks had no unhandled check at all, so an unemittable
-            # construct inside one reached the file as a `/* Kind */` marker.
-            # Methods have withheld on this since the beginning; lambdas were
-            # simply missed.
-            if sum(self.unhandled.values()) > before_unh:
-                self.gaps.append(
-                    f"callback for bit {env['pos']}: withheld, cannot emit "
-                    f"{', '.join(sorted(k for k, v in self.unhandled.items() if v > seen_unh.get(k, 0)))}")
-                continue
-            # Does the body call a peer method we cannot emit yet? If so the
-            # file would not compile, and a stub would look finished. Withhold
-            # the callback and name the gap instead.
-            text = "\n".join(body)
-            missing = sorted({
-                m for m in re.findall(r"\b([a-z_][a-z0-9_]*)\(bank, st", text)
-                if m not in self._emitted_fns})
-            missing += sorted({
-                f"st.{m}" for m in re.findall(r"\bst\.([a-z_][a-z0-9_]*)", text)
-                if m != "f" and m not in self._state_names})
-            if missing:
-                self.gaps.append(
-                    "callback for bit {} needs peer method(s) not yet emitted: {}"
-                    .format(env["pos"], ", ".join(missing)))
-                continue
-            self._callbacks.append("\n".join(body))
-            env[key] = f"Some({fname})"
-
-        for rule in self.rules:
-            if name not in rule["matches"].split("|"):
-                continue
-            cond = rule.get("when")
-            if cond and not any(flags.get(tok.strip(), False) for tok in cond.split(" or ")):
-                continue
-            if rule.get("gap"):
-                self.gaps.append(f"{name}: {rule['gap']}")
-            template = rule.get("emit")
-            if template is None:
-                return None
-            try:
-                return template.format(**env)
-            except KeyError as missing:
-                self.unhandled[f"{rule['name']}:missing {missing}"] = 1
-                return None
-
-        self.unhandled[name] = self.unhandled.get(name, 0) + 1
-        return None
 
     @_core_must_explain
     def emit_lambda(self, oid: int, name: str, param: str) -> list[str]:
@@ -635,6 +513,14 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         methods: list[str] = []
         self._emitted_fns = set()
         self._state_names = {n for n, _ in state}
+        # The TYPE of each state field, and which of them anything actually
+        # sizes. `#[derive(Default)]` gives a Vec length zero and the C#
+        # constructor that would size it is not translated, so an indexed read
+        # from a DSL callback panics on first access. The sub-block loop is the
+        # one path that does size a Vec (`resize_with`), so it is named rather
+        # than assumed.
+        self._state_types = dict(state)
+        self._sized_state = set(getattr(self, "_sub_fields", {}))
         self._current_type = type_name
         self._enum_names = self.enum_names(type_name)
         self.gaps = []
