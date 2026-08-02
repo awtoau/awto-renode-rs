@@ -157,6 +157,7 @@ import importlib
 import pkgutil
 
 from emitter.lang.expressions import Expressions  # noqa: E402
+from emitter.lang.interface_trait import InterfaceTrait  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
 from emitter.lang.types import Types  # noqa: E402
 from emitter.plugins.register_dsl import RegisterDsl, to_const  # noqa: E402
@@ -180,7 +181,8 @@ def _load_registered() -> None:
 _load_registered()
 
 
-class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
+class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
+              InterfaceTrait, Types):
     # Keys read from the project layer as DATA rather than as rules, so they are
     # not offered to a handler looking for a rule of that name.
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")
@@ -920,59 +922,11 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
             (type_name,)).fetchall()
         return {(s or "").split("(")[0].split(".")[-1] for (s,) in rows}
 
-    def emit_interface_trait(self, iface: str) -> tuple[list[str], list[str]]:
-        """A C# interface as a Rust trait: every member the converter can TYPE.
-
-        Returns (lines, omitted). Omitted members are LISTED, not silently
-        dropped -- a trait named `IMachine` that is not IMachine must at least
-        say so. See interface_traits in the rules for why membership is
-        translatability-driven rather than usage-driven."""
-        spec = self.project.get("interface_traits", {})
-        row = self.con.execute("SELECT id FROM type WHERE name=?", (iface,)).fetchone()
-        if not row:
-            return [], [f"{iface}: not in the corpus cut"]
-        members = self.con.execute(
-            "SELECT mb.name, mb.kind, mb.declared_type, m.return_type, mb.id "
-            "FROM member mb LEFT JOIN method m ON m.member_id = mb.id "
-            "WHERE mb.type_id=? AND mb.kind IN ('method','property') "
-            "ORDER BY mb.name", (row[0],)).fetchall()
-
-        out: list[str] = [spec.get("decl", "pub trait {name} {{").format(name=iface)]
-        omitted: list[str] = []
-        seen: set[str] = set()
-        for name, kind, dt, rt, mid in members:
-            cs = rt if kind == "method" else dt
-            ret = "()" if (cs or "void") == "void" else (self.rust_type(cs or "") or "")
-            if not ret:
-                omitted.append(f"{name}: `{(cs or '').split('.')[-1]}`")
-                continue
-            extra = ""
-            bad = False
-            for pname, ptype in self.con.execute(
-                    "SELECT name, type FROM parameter WHERE method_id=? ORDER BY ordinal",
-                    (mid,)):
-                prt = self.rust_type(ptype or "")
-                if prt is None:
-                    omitted.append(f"{name}: parameter `{pname}: "
-                                   f"{(ptype or '').split('.')[-1]}`")
-                    bad = True
-                    break
-                extra += f", {snake(pname)}: {prt}"
-            if bad:
-                continue
-            # Property accessors arrive as `get_IsSet` AND as `IsSet`; both
-            # would emit, giving `get__is_set` beside `is_set` -- a duplicate
-            # method and an ugly name. fn_name strips the prefix, and the seen
-            # set keeps the first.
-            fname = self.fn_name(name)
-            if fname in seen:
-                continue
-            seen.add(fname)
-            out.append(spec.get("method",
-                                "    fn {name}(&mut self{extra}) -> {ret};")
-                       .format(name=fname, extra=extra, ret=ret))
-        out.append("}")
-        return out, omitted
+    # `emit_interface_trait` used to live here: a trait of every member the
+    # converter could TYPE, with the rest listed. It had no caller in the repo,
+    # and its membership was a function of the converter's maturity. Replaced
+    # by emitter/lang/interface_trait.py, which emits a COMPLETE trait or none
+    # -- one construct, one file, per the work protocol.
 
     def state_fields(self, type_name: str) -> tuple[list[tuple[str, str]], list[str]]:
         """The peripheral's State, from its non-handle instance fields."""
@@ -1234,12 +1188,17 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements, Types):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--type", required=True)
-    ap.add_argument("--method", required=True)
+    ap.add_argument("--type")
+    ap.add_argument("--method")
     ap.add_argument("--db", default="rulesdb/patterns.db")
     ap.add_argument("--file", metavar="MODULE",
                     help="emit a complete Rust module to stdout")
+    ap.add_argument("--interfaces", action="store_true",
+                    help="emit every C# interface that can be a COMPLETE Rust "
+                         "trait, to stdout")
     args = ap.parse_args()
+    if not args.interfaces and not (args.type and args.method):
+        ap.error("--type and --method are required unless --interfaces is given")
 
     root = repo_root()
     logdir = root / "tmp" / "logs"
@@ -1254,6 +1213,17 @@ def main() -> int:
 
     con = sqlite3.connect(root / args.db)
     em = Emitter(con, log)
+    if args.interfaces:
+        text, report = em.emit_interface_traits()
+        con.close()
+        sys.stdout.write(text)
+        done = sum(1 for r in report if r["complete"])
+        # stderr, not the logger: the logger also writes to stdout, and stdout
+        # here is the generated file that check_generated.py compares byte for
+        # byte.
+        print(f"{done} of {len(report)} interface(s) emitted complete; "
+              f"{len(report) - done} withheld", file=sys.stderr)
+        return 0
     if args.file:
         text = em.emit_file(args.type, args.method, args.file)
         con.close()

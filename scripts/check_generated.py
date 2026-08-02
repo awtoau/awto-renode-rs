@@ -69,6 +69,11 @@ GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/can_registers.rs",
      ["scripts/emit.py", "--type", "STMCAN", "--method",
       "AddressIsWithinFilterRegistersArea", "--file", "can_registers"]),
+    # Not keyed on a type: the corpus decides which interfaces appear, and one
+    # that cannot be expressed completely is withheld and named in the header.
+    # A hand edit here would be a trait asserting membership the C# does not.
+    ("src/renode-stm32/src/interfaces.rs",
+     ["scripts/emit.py", "--interfaces"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is

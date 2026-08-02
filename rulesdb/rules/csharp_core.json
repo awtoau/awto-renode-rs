@@ -153,7 +153,23 @@
       "List": "Vec",
       "Dictionary": "std::collections::BTreeMap",
       "HashSet": "std::collections::HashSet",
-      "StringBuilder": "String"
+      "StringBuilder": "String",
+      "IEnumerable": "Vec",
+      "IList": "Vec",
+      "IReadOnlyList": "Vec",
+      "IDictionary": "std::collections::BTreeMap",
+      "IReadOnlyDictionary": "std::collections::BTreeMap",
+      "DateTime": "std::time::SystemTime"
+    },
+    "interface_types_note": "The BCL COLLECTION INTERFACES, added because an interface's own signatures are stated in terms of them: 93 uses of IEnumerable, 21 of IReadOnlyDictionary, 11 of IList in this corpus, all above the >=3 threshold. Each maps to the same Rust type its concrete sibling does, so a signature and its implementation agree.",
+    "ienumerable_deviation": "IEnumerable<T> to Vec<T> is a DEVIATION and not an equivalence: C# enumeration is lazy and Vec is materialised. It is bounded rather than free-floating -- C# already forbids mutating a collection while enumerating it (InvalidOperationException), so eager evaluation can only be observed for an infinite sequence or one whose enumeration has side effects. Neither appears in a signature translated so far; if one does, it needs Box<dyn Iterator> and that is a different rule, not a tweak to this one.",
+    "datetime_deviation": "System.DateTime to std::time::SystemTime maps the TYPE only. DateTime is a calendar instant with Year/Month/Day and arithmetic; SystemTime is an opaque point in time with none of that. So a signature mentioning DateTime translates, and any MEMBER ACCESS on one still reports a gap rather than guessing -- which is the intended split. A calendar type in csharp-rt is the answer if member access is ever needed; it is not needed to state a signature, and inventing it before then would be a type with no caller.",
+    "no_rust_form": {
+      "note": "BCL types deliberately left UNMAPPED, with the reason. Absence here is a decision, not an oversight, and each one is reported as a blocker by name rather than approximated.",
+      "System.Type": "Reflection. PLAN.md puts reflection in the bucket that stays hand-written; a Rust TypeId is not a System.Type and code that switches on one does not translate.",
+      "System.IDisposable": "Rust expresses disposal as Drop, which is not a callable trait object -- there is no `dyn IDisposable` that means what C# means. A signature taking one needs the concrete type instead.",
+      "System.Collections.Generic.IEnumerator": "An explicit enumerator is a state machine, not a collection; Rust's Iterator is a trait rather than a type, so this needs a generic parameter and a bound rather than a type substitution.",
+      "System.Collections.Generic.ICollection": "Two uses in this corpus, below the >=3 threshold. It stays a patch until a third appears."
     },
     "members": {
       "Queue.Count": "{recv}.len()",
@@ -188,8 +204,11 @@
       "char": "char",
       "string": "String",
       "float": "f32",
-      "double": "f64"
+      "double": "f64",
+      "nint": "isize",
+      "nuint": "usize"
     },
+    "native_int_note": "nint/nuint are C#'s native-sized integers and isize/usize are exactly that, so this is an equivalence rather than an approximation. Listed because they read like an alias for long and are not: on a 32-bit host they are 32 bits, and a translation that used i64 would silently widen a pointer-sized value.",
     "generic_form": "{outer}<{inner}>",
     "delegates": {
       "note": "A C# delegate-typed member is a callback slot. C# allows multicast (many subscribers); the corpora seen so far attach exactly one, so a single Option<Box<dyn FnMut>> is faithful HERE and is recorded as a narrowing rather than a silent equivalence. Arity is not enumerated: Func<A,B,R> and Action<A,B> differ only in whether the LAST type argument is a return type, which is a rule about the two generic families, not a table of every shape.",
@@ -208,6 +227,35 @@
     "multidim_note": "C# `T[,]` is RECTANGULAR -- one allocation, two indices, every row the same length -- and arrives from Roslyn as `T[*,*]`. Vec<Vec<T>> is the obvious mapping and is wrong three ways: raggedness becomes representable when C# forbids it, `new T[3,4]` yields 12 usable slots where a Vec<Vec<T>> starts EMPTY and panics on first index unless every construction site remembers to fill it, and `a.Length` is rows*cols rather than the row count. csharp-rt::Array2D carries its stride, makes raggedness unrepresentable, and forces initialisation in the constructor. Runtime support is the standard answer here -- IL2CPP ships libil2cpp for exactly this class of thing.",
     "runtime_crate_note": "`csharp-rt` holds types C# has and Rust does not. A type earns a place there only when the approximation is OBSERVABLY different: Queue<T> does not qualify because VecDeque matches it, T[,] does. Nothing in the crate knows what is being translated.",
     "invoke_note": "`d.Invoke(x)` on a delegate field. The field is Option<Box<dyn FnMut>>, so a bare call does not typecheck -- rustc says `no method named invoke`. C# invoking a null delegate throws; this SKIPS instead, which is the same shape as `d?.Invoke(x)` and differs for a bare `d.Invoke(x)` on null. Recorded as a deviation: the alternative is an unwrap that panics, and every site in this corpus is the null-conditional form. The guarded form is a STATEMENT: `if let ... {}` has type () and rustc reports E0317 where a value is wanted. Expression-position invocation needs a different shape and is left unhandled rather than given an `else` arm returning a fabricated default -- which would compile and be wrong."
+  },
+  "interface_traits": {
+    "note": "A C# interface becomes a Rust trait containing EVERY member it declares and every interface it inherits, or it is not emitted at all. Generic to the two languages: nothing here knows what the interface describes.",
+    "decision": "Supersedes the earlier translatability-driven subset. A trait whose membership is a function of the converter's current maturity cannot be depended on -- it changes shape as mappings land, and a name like the one it carries then means something different from one week to the next. Complete-or-withheld makes the missing work a MEASUREMENT instead: every blocked member is reported with a reason, and the reasons are different kinds of work.",
+    "decl": "pub trait {name}{params}{bounds} {{",
+    "method": "    fn {name}(&mut self{extra}) -> {ret};",
+    "param": ", {name}: {type}",
+    "setter_name": "set_{name}",
+    "event": "    fn {name}(&mut self, handler: {handler});",
+    "event_name": "subscribe_{name}",
+    "object_ref": "std::rc::Rc<std::cell::RefCell<dyn {name}>>",
+    "by_ref": "&mut {inner}",
+    "receiver_note": "Every method takes &mut self, including a property getter. C# interface members are all callable on a mutable instance and a getter may have side effects, so &self would be a claim about purity that the source does not make. Narrowing a getter to &self needs the purity fixpoint, which is a separate analysis.",
+    "accessor_note": "A property arrives from the corpus three times over -- once as the property and once per accessor method. The accessors are the emitted form because they carry the parameter list; the property row is dropped only when an accessor for it exists, so a property with neither is reported rather than lost. The getter keeps the property's name and the setter takes a prefix, which stops the pair collapsing onto one name and silently dropping the setter.",
+    "out_param_note": "C# `out` and `ref` both become &mut. `out` additionally promises the callee assigns before returning, which Rust cannot state; the direction is preserved and the promise is not, which is a narrowing rather than a change of behaviour.",
+    "nullability_note": "A reference-typed parameter is NOT wrapped in Option. The corpus is not nullable-annotated, so every reference is potentially null and blanket Option would be noise -- the deferred D4 analysis recorded under deviations, applied consistently here rather than decided separately for signatures.",
+    "object_ref_note": "An interface-typed parameter or return becomes the shared, interior-mutable handle the object-graph rule uses for a field of that type. The alternative, a plain borrow, would make lifetimes part of every signature and the graph is cyclic, so no lifetime can be stated.",
+    "event_deviation": "A C# event becomes ONE subscribe method. C# offers add and remove over a multicast delegate; a boxed closure has no identity, so remove has no form, and the single-subscriber narrowing is the one already recorded in stdlib.delegates. Emitted files state this in their header.",
+    "bcl_namespaces": ["System."],
+    "blocker_reasons": {
+      "note": "The reason names the converter reports. They are separate because each is a different piece of work, and merging them would hide which.",
+      "type_not_in_corpus": "The named type was never ingested. No converter change can fix it -- its shape is unknown -- so this counts the cost of the ingest boundary, not of the transpiler.",
+      "type_without_definition": "The type IS in the corpus but no Rust definition is emitted for it. The mapping is settled; the target does not exist yet, so emitting the signature would not compile.",
+      "interface_withheld": "It names an interface that is itself withheld. Transitive, and resolved to a fixpoint so a mutually-referring pair is judged together rather than each blamed for the other.",
+      "generic_method": "The member declares its own type parameters. Holding an interface as `dyn` requires object safety, and a generic method forbids it. `where Self: Sized` restores object safety by making the method uncallable through `dyn`, which is a member that is not there.",
+      "overload": "Two members share a name. Rust traits have one method per name; renaming needs a rule the call sites use too, and inventing names here would break every caller.",
+      "bcl_unmapped": "A BCL type with no mapping. Either deliberate -- see stdlib.no_rust_form -- or below the >=3 threshold.",
+      "property_without_accessor": "A property the corpus records with no accessor method, so there is no parameter list to emit from."
+    }
   },
   "coercions": {
     "note": "Rust does not implicitly widen. A computed FLAG's lambda returns bool while the DSL's value callback returns u64, so the bool must be converted at the return. C# has the same conversion, it is just implicit there, so this is a spelling difference and not a deviation. A computed ENUM field is the same case: C# returns the enum and the DSL widens it to the register's value, so Rust spells the discriminant conversion.",
