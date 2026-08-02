@@ -54,6 +54,9 @@ GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/gpio_registers.rs",
      ["scripts/emit.py", "--type", "STM32_GPIOPort", "--method", "CreateRegisters",
       "--file", "gpio_registers"]),
+    ("src/renode-stm32/src/syscfg_registers.rs",
+     ["scripts/emit.py", "--type", "STM32_SYSCFG", "--method", "CreateRegisters",
+      "--file", "syscfg_registers"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is
