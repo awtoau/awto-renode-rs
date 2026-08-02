@@ -4,6 +4,11 @@
 # Scratch and logs.
 tmp/
 
+# Agent worktrees. These are separate git checkouts; `git add -A` otherwise
+# stages them as embedded repositories and the path check then walks into a
+# directory it cannot read.
+.claude/
+
 # Rust
 target/
 Cargo.lock
