@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-03T01:35:11+10:00 from `b3a21ff` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-03T01:33:53+10:00 from `b3a21ff` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
