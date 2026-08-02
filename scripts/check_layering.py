@@ -91,8 +91,18 @@ def main() -> int:
             violations += scan_text(py.read_text(),
                                     py.relative_to(root), log)
 
-    core = root / "rulesdb" / "rules" / "csharp_core.json"
-    if core.exists():
+    # Every language-layer rule document, not just the first one written.
+    # `csharp_core.json` was named literally here, so a second generic rule file
+    # -- which the work protocol tells agents to create -- was unchecked, and an
+    # unchecked file looks exactly like a checked one.
+    lang_docs = [root / "rulesdb" / "rules" / "csharp_core.json"]
+    for f in sorted((root / "rulesdb" / "rules").glob("*.json")):
+        if f not in lang_docs and json.loads(f.read_text()).get("layer") == "language":
+            lang_docs.append(f)
+
+    for core in lang_docs:
+        if not core.exists():
+            continue
         checked += 1
         # Scan the DATA, not the prose: `note` fields explain WHY a mapping
         # exists and may cite the corpus that motivated it. A key or an emitted
@@ -122,7 +132,7 @@ def main() -> int:
             elif isinstance(node, str):
                 if key in TEMPLATE_KEYS or "{" in node:
                     violations.extend(
-                        scan_text(node, Path(f"csharp_core.json{path}"), log))
+                        scan_text(node, Path(f"{core.name}{path}"), log))
 
         walk(doc)
 

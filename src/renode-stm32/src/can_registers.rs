@@ -29,11 +29,11 @@
 //!   - get_IsSlave: withheld, reaches state this peripheral does not have: st.master
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `FifoFiltersPrioritized`: no Rust mapping for `System.Collections.Generic.List<Antmicro.Renode.Peripherals.CAN.STMCAN.FilterBank>[]`
-//!   - state field `FilterBanks`: no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.FilterBank[]`
+//!   - state field `FilterBanks`: reference-typed, so the object-graph rule maps it to `Vec<Gc<FilterBank>>`; blocked: `FilterBank` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `FrameSent`: no Rust mapping for `System.Action<Antmicro.Renode.Core.CAN.CANMessageFrame>`
 //!   - state field `RxFifo`: no Rust mapping for `System.Collections.Generic.Queue<Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage>[]`
-//!   - state field `master`: no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN`
-//!   - state field `registers`: no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.DeviceRegisters`
+//!   - state field `master`: reference-typed, so the object-graph rule maps it to `Gc<STMCAN>`; blocked: `STMCAN` has no emitted Rust type yet, so there is nothing to point at
+//!   - state field `registers`: reference-typed, so the object-graph rule maps it to `Gc<DeviceRegisters>`; blocked: `DeviceRegisters` has no emitted Rust type yet, so there is nothing to point at
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

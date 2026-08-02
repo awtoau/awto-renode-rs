@@ -1,0 +1,142 @@
+{
+  "layer": "language",
+  "version": 1,
+  "object_graph": {
+    "issue": 57,
+    "status": {
+      "tier": "proposed",
+      "why": [
+        "Not `general` and not `committed`, and the distinction is not a",
+        "formality. Both validated tiers require instances that EMIT; this rule",
+        "currently decides a mapping and reports the blocker, because no target",
+        "type is emitted yet. It reaches `general` when the first target type is",
+        "emitted and three sites produce a handle; it reaches `committed` only",
+        "when those sites are oracle-backed, which needs a running instance.",
+        "Counting the classified sites below as validated instances would be",
+        "exactly the blurring the metrics rule forbids."
+      ],
+      "sites_classified_in_cut": 40,
+      "owning_types_in_cut": 21,
+      "of_which_arrays": 6,
+      "sites_inside_the_25_emitted_modules": 10,
+      "sites_emitting": 0,
+      "measured_by": "scripts/gap_census.py, category 'object graph: target not emitted'"
+    },
+    "why": [
+      "C# has one kind of object reference. Rust makes the translator choose one",
+      "per field, and the choice is not local: it depends on who else holds the",
+      "object and whether the graph comes back round. Measured on this corpus:",
+      "552 instance fields in the cut with 52 object-reference edges and 7",
+      "cycles; 15,216 fields tree-wide with 1,278 edges and 63+ cycles. At 1,278",
+      "edges, deciding an owner and a back-edge per field is not a mechanical",
+      "translation, and a wrong direction is a leak or a dangling handle --",
+      "neither of which a differential oracle can see.",
+      "So the rule removes the decision: every reference-typed field maps to the",
+      "same handle, and the translated graph is as cyclic as the source is."
+    ],
+    "runtime": {
+      "crate": "csharp-rt",
+      "handle": "Gc",
+      "arena": "Heap",
+      "trace_trait": "Trace",
+      "unsafe": "none -- the crate is forbid(unsafe_code)"
+    },
+    "map": {
+      "scalar": "Gc<{target}>",
+      "array": "Vec<Gc<{target}>>"
+    },
+    "access": {
+      "read": "heap[handle].field",
+      "write_shared": "heap[handle].field.set(v)",
+      "write_exclusive": "heap.get_mut(handle).field = v",
+      "note": [
+        "Reads and Cell writes need only a shared borrow of the arena, so a call",
+        "that re-enters an object already on the stack nests instead of",
+        "panicking. That is the same reasoning as decision D2 -- a Cell has no",
+        "borrow flag -- applied to the object graph rather than to scalar",
+        "fields. The exclusive form is available and is what a non-Cell field",
+        "needs; it forbids re-entrancy statically, at compile time, rather than",
+        "at run time."
+      ]
+    },
+    "null": {
+      "value": "Gc::null()",
+      "default": "Default for Gc<T> is null",
+      "deref": "panics, which is D4's mapping of NullReferenceException",
+      "test": "handle.is_null()",
+      "refinement": [
+        "Option<Gc<T>> is the stronger mapping wherever the source declares the",
+        "field non-nullable. It needs Roslyn's nullability annotation, which the",
+        "corpus does not record yet; until then a nullable handle is the",
+        "faithful mapping and the null deref reproduces the source's throw."
+      ]
+    },
+    "blocked_gap": "state field `{field}`: reference-typed, so the object-graph rule maps it to `{rust}`; blocked: `{target}` has no emitted Rust type yet, so there is nothing to point at",
+    "requires": [
+      "the target type is emitted, so the handle has something to name",
+      "the owning type has a generated `Trace` impl, one `t.edge(..)` per handle field",
+      "a root is added for each object reachable from outside the arena"
+    ],
+    "declines": {
+      "generic": "a declared type with generic arguments -- a collection OF references is the collection rule's shape, not this one",
+      "value_type": "an enum or a struct is copied on assignment and is not part of the object graph",
+      "interface": "an interface-typed field is a reference, but needs a Rust type to stand for the implementation; that is a separate rule and the driver reports it separately",
+      "delegate": "a delegate slot is a closure, not an object reference"
+    },
+    "deviations": [
+      {
+        "what": "Roots are explicit (add_root / remove_root), with no RAII guard.",
+        "why": "An RAII root needs a back-pointer into the root set, which means a refcounted cell inside the arena, which makes the arena non-Send. Decision D3 wants an instance movable to a worker thread for N-instance test parallelism. The cost is that forgetting to remove a root leaks; it is recorded rather than hidden.",
+        "reversible": true
+      },
+      {
+        "what": "Collection never runs implicitly.",
+        "why": "A graph that is built once and then lives for the process never needs to collect. Explicit collection means a handle in a local cannot go stale between two statements, which is the rooting discipline that would otherwise make the port less mechanical.",
+        "reversible": true
+      },
+      {
+        "what": "A handle held across a collection that freed its object panics; it does not silently read whatever was allocated next.",
+        "why": "Slots carry a generation counter. The source cannot express this situation at all, so there is no faithful behaviour to reproduce; a loud failure is the only defensible choice.",
+        "reversible": false
+      },
+      {
+        "what": "The `Trace` impl is generated, not written.",
+        "why": "A missed edge collects a live object, and the failure surfaces later as a generation panic somewhere else. It is derivable from the field list with no judgement, so it must not be a hand edit.",
+        "reversible": false
+      }
+    ],
+    "supersedes": {
+      "deviation": "D1",
+      "status": "not adopted",
+      "note": [
+        "D1 says every reference-typed field becomes Rc<RefCell<T>> with cycles",
+        "leaked deliberately, and its reasoning -- built once, process exits --",
+        "is why leaking was acceptable at 7 cycles. This rule is the alternative,",
+        "landed so it can be measured. Adopting it is a separate decision and",
+        "PLAN.md is unchanged until that decision is taken."
+      ]
+    },
+    "negative": [
+      {
+        "shape": "a field whose declared type is an enum or a struct",
+        "must_not": "Gc<T>",
+        "why": "copied on assignment; it is not in the object graph, and wrapping it would add an indirection the source does not have"
+      },
+      {
+        "shape": "a field whose declared type has generic arguments",
+        "must_not": "Gc<T>",
+        "why": "a collection of references is not a reference; claiming it here would hide the unsolved collection"
+      },
+      {
+        "shape": "a handle field of the typed-index family another rule already owns",
+        "must_not": "Gc<T>",
+        "why": "already an index into a different arena; a second indirection would be wrong and slower"
+      },
+      {
+        "shape": "a target type that is not emitted",
+        "must_not": "Gc<TargetName>",
+        "why": "names a type that does not exist -- it looks finished and does not compile"
+      }
+    ]
+  }
+}

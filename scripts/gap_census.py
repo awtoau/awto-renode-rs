@@ -66,6 +66,10 @@ CATEGORIES: list[tuple[str, str]] = [
     (r"no Rust mapping for `System\.", "BCL types"),
     (r"return type .* has no Rust mapping", "unmapped return type"),
     (r"parameter .* has no Rust mapping", "unmapped parameter type"),
+    # Distinct from "unmapped": the object-graph rule HAS decided the mapping
+    # (issue #57), and what is missing is the type it points at. Folding the
+    # two together would report a solved decision as an open one.
+    (r"the object-graph rule maps it to", "object graph: target not emitted"),
     (r"state field .* no Rust mapping", "unmapped state field type"),
     (r"base-class method", "untranslated base class"),
     (r"reaches state this peripheral does not have", "missing state (cascade)"),

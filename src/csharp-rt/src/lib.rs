@@ -12,6 +12,10 @@
 
 #![forbid(unsafe_code)]
 
+mod gc;
+
+pub use gc::{Collected, Gc, GcRaw, Heap, Trace, Tracer};
+
 use std::fmt;
 
 /// A C# rectangular array, `T[,]`.
