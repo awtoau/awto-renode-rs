@@ -453,9 +453,32 @@ class RegisterDsl:
                     r"\bst\.([a-z_][a-z0-9_]*)\s*\[", text)
                 if m != "f" and self.state_is_unsized(m)})
             if missing:
-                self.gaps.append(
-                    "callback for bit {} needs peer method(s) not yet emitted: {}"
-                    .format(env["pos"], ", ".join(missing)))
+                # THREE DIFFERENT FAILURES, and they used to share one message
+                # that named only the first. A state field reported as a
+                # "peer method not yet emitted" is not a smaller version of a
+                # missing method -- it is a different fix, in a different file,
+                # and `gap_census.py` filed all three under one category, so
+                # the runtime-panic case was counted as a method cascade.
+                #
+                # Split by what the reference actually is. The categories in
+                # gap_census.py match on these prefixes.
+                fns = [m for m in missing if not m.startswith("st.")]
+                unsized = [m for m in missing if m.endswith("[..]")]
+                fields = [m for m in missing
+                          if m.startswith("st.") and not m.endswith("[..]")]
+                if fns:
+                    self.gaps.append(
+                        "callback for bit {} needs peer method(s) not yet "
+                        "emitted: {}".format(env["pos"], ", ".join(fns)))
+                if fields:
+                    self.gaps.append(
+                        "callback for bit {} reaches state this peripheral "
+                        "does not have: {}".format(env["pos"], ", ".join(fields)))
+                if unsized:
+                    self.gaps.append(
+                        "callback for bit {} indexes a collection nothing "
+                        "sizes, so it would PANIC on the first read: {}"
+                        .format(env["pos"], ", ".join(unsized)))
                 continue
             self._callbacks.append("\n".join(body))
             slots[key] = f"Some({fname})"

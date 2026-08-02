@@ -9,14 +9,22 @@
 //! GAPS the converter reports rather than guessing:
 //!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - ClearIrqFlagOnCondition: parameter `flag` has no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.IFlagRegisterField`
-//!   - HighInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - HighInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - HighInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - HighInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - LowInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - LowInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - LowInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
-//!   - LowInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition, st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - HighInterruptClear: callback for bit 11 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - HighInterruptClear: callback for bit 21 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - HighInterruptClear: callback for bit 27 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - HighInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - HighInterruptClear: callback for bit 5 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 11 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - LowInterruptClear: callback for bit 11 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 21 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - LowInterruptClear: callback for bit 21 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 27 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - LowInterruptClear: callback for bit 27 reaches state this peripheral does not have: st.transfer_complete_irq_status
+//!   - LowInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
+//!   - LowInterruptClear: callback for bit 5 reaches state this peripheral does not have: st.transfer_complete_irq_status
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - Reset: withheld, calls reset on each `Stream` -- the sub-block emits its register layout, not its methods
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: no statement could be translated, so no initialiser is emitted at all

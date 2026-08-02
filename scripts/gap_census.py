@@ -91,6 +91,12 @@ CATEGORIES: list[tuple[str, str]] = [
     (r"the object-graph rule maps it to", "object graph: target not emitted"),
     (r"state field .* no Rust mapping", "unmapped state field type"),
     (r"base-class method", "untranslated base class"),
+    # BEFORE the two below, because it is the only one that describes a RUNTIME
+    # PANIC rather than a withholding. It used to share the peer-method message,
+    # so a collection nothing sizes -- which takes the peripheral down on its
+    # first read -- was counted as a method cascade and looked like ordinary
+    # unfinished work.
+    (r"indexes a collection nothing sizes", "unsized collection (would panic)"),
     (r"reaches state this peripheral does not have", "missing state (cascade)"),
     (r"needs peer method\(s\) not yet emitted", "missing peer method (cascade)"),
     (r"calls withheld method", "withheld dependency (cascade)"),

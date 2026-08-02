@@ -7,23 +7,26 @@
 //! Source: STM32_GPIOPort.CreateRegisters
 //!
 //! GAPS the converter reports rather than guessing:
-//!   - AlternateFunctionHigh: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
-//!   - AlternateFunctionLow: callback for bit 0 needs peer method(s) not yet emitted: st.alternate_function_outputs
+//!   - AlternateFunctionHigh: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
+//!   - AlternateFunctionLow: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - BaseGPIOPort..ctor `BaseGPIOPort(IMachine, int)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
-//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
-//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
-//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state, st.get_value_from_bits_array
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - BitReset: callback for bit 0 reaches state this peripheral does not have: st.get_value_from_bits_array
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - BitSet: callback for bit 0 reaches state this peripheral does not have: st.get_value_from_bits_array
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state
+//!   - BitSet: callback for bit 16 reaches state this peripheral does not have: st.get_value_from_bits_array
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
 //!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections
 //!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
+//!   - Mode: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.mode[..]
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
-//!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: st.mode[..]
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
-//!   - OutputSpeed: callback for bit 0 needs peer method(s) not yet emitted: st.output_speed[..]
-//!   - PullUpPullDown: callback for bit 0 needs peer method(s) not yet emitted: st.pull_up_pull_down[..]
+//!   - OutputSpeed: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.output_speed[..]
+//!   - PullUpPullDown: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
