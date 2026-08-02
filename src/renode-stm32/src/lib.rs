@@ -44,3 +44,11 @@ pub mod can_registers;
 /// replaces those handles with indices into a `Cell` arena -- so nothing
 /// implements them yet; they are what the converter produces from the C#.
 pub mod interfaces;
+
+/// GENERATED virtual dispatch. One trait per in-corpus base class with virtual
+/// members, implemented by every translated subclass that can supply the whole
+/// contract -- so peripherals whose `State` types differ share one
+/// `dyn` object. A member any implementor cannot supply leaves the trait
+/// entirely and is named in the module header: forwarding it to the base's body
+/// instead would run the wrong method, silently, in code that compiles.
+pub mod dispatch;

@@ -786,77 +786,91 @@
   "emitter_duplicates": {
     "ran": true,
     "what": "`state_fields` returning one name twice means the emitted `struct State` declares the field twice, which is rustc E0124 -- the type does not compile at all. Embedding cannot produce this, because the base's members sit behind a field.",
-    "n_types_with_duplicate_fields": 11,
-    "n_duplicate_names": 15,
+    "guard": "The emitter now withholds every copy of a colliding name and reports the collision as a gap, so a duplicate should no longer reach the struct. n_types_with_duplicate_fields is therefore what the GUARD MISSED and must be 0; n_types_guarded is the population it used to count. scripts/check_inheritance.py asserts the guard fires.",
+    "n_types_with_duplicate_fields": 0,
+    "n_duplicate_names": 0,
+    "n_types_guarded": 11,
+    "n_guarded_names": 15,
     "detail": [
       {
         "type": "ConsoleBackend",
-        "duplicate_state_fields": [
-          "plain_mode"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `plain_mode`: declared at `ConsoleBackend`, `FormattedTextBackend` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "Cypress_S25H",
-        "duplicate_state_fields": [
-          "sfdp_signature"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `sfdp_signature`: declared at `Cypress_S25H`, `GenericSpiFlash` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "DMALDP",
-        "duplicate_state_fields": [
-          "current_byte_count",
-          "length",
-          "name"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `current_byte_count`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open",
+          "state field `length`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open",
+          "state field `name`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "DMASTP",
-        "duplicate_state_fields": [
-          "current_byte_count",
-          "length",
-          "name"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `current_byte_count`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open",
+          "state field `length`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open",
+          "state field `name`: declared at `Instruction`, `Instruction` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "ExternalCPU",
-        "duplicate_state_fields": [
-          "instructions_executed_this_round"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `instructions_executed_this_round`: declared at `BaseCPU`, `ExternalCPU` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "MonitorPythonEngine",
-        "duplicate_state_fields": [
-          "imports"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `imports`: declared at `MonitorPythonEngine`, `PythonEngine` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "STM32WBA_SPI",
-        "duplicate_state_fields": [
-          "is_wba"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `is_wba`: declared at `STM32H7_SPI`, `STM32WBA_SPI` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "STM32_Timer",
-        "duplicate_state_fields": [
-          "initial_limit"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `initial_limit`: declared at `LimitTimer`, `STM32_Timer` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "TraceBasedModelFlatBufferWriter",
-        "duplicate_state_fields": [
-          "disposed"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `disposed`: declared at `TraceBasedModelFlatBufferWriter`, `TraceWriter` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "TraceTextWriter",
-        "duplicate_state_fields": [
-          "disposed"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `disposed`: declared at `TraceTextWriter`, `TraceWriter` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       },
       {
         "type": "VirtIOMMIOEntropy",
-        "duplicate_state_fields": [
-          "device_id"
+        "duplicate_state_fields": [],
+        "guarded": [
+          "state field `device_id`: declared at `VirtIOMMIO`, `VirtIOMMIOEntropy` of one chain, which merge into one struct -- rustc E0124. Every copy is withheld; the layout question is open"
         ]
       }
     ]

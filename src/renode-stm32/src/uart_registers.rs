@@ -127,28 +127,28 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
-fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () {
+pub fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () {
     bank.reset();
 }
 
-fn baud_rate(bank: &Bank<State>, st: &mut State) -> u32 {
+pub fn baud_rate(bank: &Bank<State>, st: &mut State) -> u32 {
     let mut fraction = if (bank.value(st.f.oversampling_mode) == OversamplingMode::By16 as u64) { bank.value(st.f.divider_fraction) } else { (bank.value(st.f.divider_fraction) & 7) };
     let mut divisor = (((8 * (2 - bank.value(st.f.oversampling_mode))) as f64) * ((bank.value(st.f.divider_mantissa) as f64) + ((fraction as f64) / 16.0)));
     return if (divisor == (0 as f64)) { 0 } else { (((st.frequency as f64) / divisor) as u32) };
 }
 
-fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
+pub fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
     return bank.read(offset as u64, st).unwrap_or(0) as u32;
 }
 
-fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc<std::cell::Cell<bool>>) -> () {
+pub fn report_idle_line_detected(bank: &Bank<State>, st: &mut State, ct: std::rc::Rc<std::cell::Cell<bool>>) -> () {
     if !ct.get() {
         bank.set_flag(st.f.idle_line_detected, true);
         update(bank, st);
     }
 }
 
-fn reset(bank: &Bank<State>, st: &mut State) -> () {
+pub fn reset(bank: &Bank<State>, st: &mut State) -> () {
     basic_double_word_peripheral_reset(bank, st);
     if let Some(__v) = st.idle_line_detected_cancellation_token_src.as_ref() {
         __v.set(true);
@@ -157,11 +157,11 @@ fn reset(bank: &Bank<State>, st: &mut State) -> () {
     st.irq = false;
 }
 
-fn update(bank: &Bank<State>, st: &mut State) -> () {
+pub fn update(bank: &Bank<State>, st: &mut State) -> () {
     st.irq = ((((bank.flag(st.f.idle_line_detected_interrupt_enabled) && bank.flag(st.f.idle_line_detected)) || (bank.flag(st.f.receiver_not_empty_interrupt_enabled) && bank.flag(st.f.read_fifo_not_empty))) || bank.flag(st.f.transmit_data_register_empty_interrupt_enabled)) || (bank.flag(st.f.transmission_complete_interrupt_enabled) && bank.flag(st.f.transmission_complete)));
 }
 
-fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
+pub fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
     bank.write(offset as u64, value as u64, st);
 }
 

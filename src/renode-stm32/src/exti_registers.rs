@@ -53,19 +53,19 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
-fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () {
+pub fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () {
     bank.reset();
 }
 
-fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
+pub fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
     return bank.read(offset as u64, st).unwrap_or(0) as u32;
 }
 
-fn size(bank: &Bank<State>, st: &mut State) -> i64 {
+pub fn size(bank: &Bank<State>, st: &mut State) -> i64 {
     return (1024 as i64);
 }
 
-fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
+pub fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
     bank.write(offset as u64, value as u64, st);
 }
 

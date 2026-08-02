@@ -380,8 +380,11 @@
   "emitter_duplicates": {
     "ran": true,
     "what": "`state_fields` returning one name twice means the emitted `struct State` declares the field twice, which is rustc E0124 -- the type does not compile at all. Embedding cannot produce this, because the base's members sit behind a field.",
+    "guard": "The emitter now withholds every copy of a colliding name and reports the collision as a gap, so a duplicate should no longer reach the struct. n_types_with_duplicate_fields is therefore what the GUARD MISSED and must be 0; n_types_guarded is the population it used to count. scripts/check_inheritance.py asserts the guard fires.",
     "n_types_with_duplicate_fields": 0,
     "n_duplicate_names": 0,
+    "n_types_guarded": 0,
+    "n_guarded_names": 0,
     "detail": []
   },
   "cut_overlap": {

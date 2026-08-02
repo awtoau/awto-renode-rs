@@ -84,6 +84,18 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
     elif "pub trait " not in r.stdout:
         bad.append("interfaces: emitted no trait -- not a module")
     out["interfaces.rs"] = r.stdout
+    # The dispatch module is a function of EVERY peripheral above, so it moves
+    # whenever any one of them does -- and it is the artefact that would move
+    # silently, since nothing else reads a peripheral's exported names.
+    r = subprocess.run(
+        [sys.executable, str(root / "scripts" / "emit.py"), "--dispatch"],
+        capture_output=True, text=True, cwd=root)
+    if r.returncode != 0:
+        bad.append(f"dispatch: emit.py exited {r.returncode}")
+    elif "impl " not in r.stdout:
+        bad.append("dispatch: emitted no impl -- a trait with no implementor "
+                   "is not dispatch")
+    out["dispatch.rs"] = r.stdout
     for name, script in (("gaps.txt", "gap_census.py"),
                          ("compile.txt", "compile_check.py")):
         r = subprocess.run([sys.executable, str(root / "scripts" / script)],
