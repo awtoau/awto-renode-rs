@@ -74,6 +74,16 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
             bad.append(f"{mod}: emitted {len(r.stdout)} bytes with no layout "
                        f"function -- not a module")
         out[f"{mod}.rs"] = r.stdout
+    # The trait module is keyed on no type: the corpus decides which interfaces
+    # appear in it, so a mapping change moves it without moving any peripheral.
+    r = subprocess.run(
+        [sys.executable, str(root / "scripts" / "emit.py"), "--interfaces"],
+        capture_output=True, text=True, cwd=root)
+    if r.returncode != 0:
+        bad.append(f"interfaces: emit.py exited {r.returncode}")
+    elif "pub trait " not in r.stdout:
+        bad.append("interfaces: emitted no trait -- not a module")
+    out["interfaces.rs"] = r.stdout
     for name, script in (("gaps.txt", "gap_census.py"),
                          ("compile.txt", "compile_check.py")):
         r = subprocess.run([sys.executable, str(root / "scripts" / script)],

@@ -18,8 +18,42 @@ from __future__ import annotations
 from emitter.core import snake
 
 
+def split_args(inner: str) -> list[str]:
+    """Split generic arguments at the TOP level only.
+
+    A nested `Func<long, T, T?>` inside another generic must not be split on
+    its own commas.
+    """
+    out, depth, buf = [], 0, ""
+    for ch in inner:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        out.append(buf.strip())
+    return out
+
+
 class Types:
     """Mixin: C# type to Rust type."""
+
+    def resolve_declared_type(self, cs: str, args: tuple[str, ...] = ()) -> str | None:
+        """A type the stdlib rules do not name -- one DECLARED by the input.
+
+        An extension point rather than a table: what a declared type becomes
+        depends on what the caller is emitting, and only the caller knows
+        whether a Rust definition for it will exist. Callers install a resolver
+        on `_type_resolver`; with none installed the answer is None, which is
+        the same "no mapping, withhold" this module has always returned.
+        """
+        fn = getattr(self, "_type_resolver", None)
+        return fn(cs, tuple(args)) if fn is not None else None
 
     def rust_type(self, cs: str) -> str | None:
         """A C# declared type as Rust, via the stdlib rules. None when unmapped
@@ -56,22 +90,8 @@ class Types:
             outer = cs.split("<")[0].split(".")[-1]
             inner = cs[cs.index("<") + 1:cs.rindex(">")]
             dele = std.get("delegates", {})
+            parts = split_args(inner)
             if outer in ("Func", "Action") and outer in dele:
-                # Split the generic arguments at the TOP level only: a nested
-                # `Func<long, T, T?>` inside another generic must not be split
-                # on its own commas.
-                parts, depth, buf = [], 0, ""
-                for ch in inner:
-                    if ch == "<":
-                        depth += 1
-                    elif ch == ">":
-                        depth -= 1
-                    if ch == "," and depth == 0:
-                        parts.append(buf.strip()); buf = ""
-                    else:
-                        buf += ch
-                if buf.strip():
-                    parts.append(buf.strip())
                 mapped = [self.rust_type(x) for x in parts]
                 if any(m is None for m in mapped):
                     return None
@@ -83,9 +103,18 @@ class Types:
             if outer in dele:
                 i = self.rust_type(inner)
                 return dele[outer].format(inner=i) if i else None
-            o, i = types.get(outer), self.rust_type(inner)
-            if o and i:
-                return std.get("generic_form", "{outer}<{inner}>").format(outer=o, inner=i)
-            return None
-        return types.get(cs.split(".")[-1])
+            # EVERY type argument, not just the first. A two-parameter generic
+            # went through `rust_type("int, Foo")` and failed on a string that
+            # is not a type at all -- reported as an unmapped type, which named
+            # the wrong problem.
+            mapped = [self.rust_type(x) for x in parts]
+            if any(m is None for m in mapped):
+                return None
+            o = types.get(outer)
+            if o:
+                return std.get("generic_form", "{outer}<{inner}>").format(
+                    outer=o, inner=", ".join(mapped))
+            return self.resolve_declared_type(cs.split("<")[0], tuple(mapped))
+        return (types.get(cs.split(".")[-1])
+                or self.resolve_declared_type(cs))
 
