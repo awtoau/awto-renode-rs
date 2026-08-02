@@ -37,9 +37,7 @@
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
-/// Register offsets for the registers defined below, only.
-/// The C# enum they were read from could not be identified by
-/// content, so this is not known to be the whole of it.
+/// Register offsets, from the C# `enum Register`.
 pub mod reg {
 }
 

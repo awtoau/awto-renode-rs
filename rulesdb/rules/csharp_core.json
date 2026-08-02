@@ -88,14 +88,6 @@
       "fix": "emit the receiver, treating only InstanceReference as `self`",
       "impact": "1,555 of 5,915 references (26%) read the wrong object -- `receiveFifo.Count` became `self.count()`",
       "why_it_hid": "the two peripherals converted so far access state through `this`, so both generated files were byte-identical and correct while the rule was wrong for a quarter of the corpus. Found only by emitting a lambda body, which is the first code that reaches through a named receiver. This is the breadth-is-a-health-check rule earning its place."
-    },
-    {
-      "bug": "field and property INITIALISERS were not walked",
-      "cause": "operations were walked only for members that had a method; an initialiser at the declaration belongs to a field, which has none",
-      "fix": "walk the declaration's EqualsValueClause, which GetOperation returns as an IFieldInitializerOperation, and attach it to the member",
-      "impact": "84 initialisers held no operations at all. An initialiser is where C# states a DECLARED SIZE, so an array's length had to be inferred from the highest index any later code used -- which is smaller, and compiles",
-      "why_it_hid": "an inferred length is not an error. Nothing indexes an element that no code binds, so the short array behaved identically in every test; the difference is visible only by comparing against the declaration",
-      "schema": "operation.method_id and call_site.caller_id referenced method(member_id) and now reference member(id): the constraint encoded the assumption that only methods contain code"
     }
   ],
   "statements": {

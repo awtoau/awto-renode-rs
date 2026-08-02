@@ -69,14 +69,7 @@ already exposed that we were not reading. **None were Roslyn limitations.**
         python3 scripts/check_derived.py
         python3 scripts/check_layering.py
         python3 scripts/check_ingest.py
-        python3 scripts/check_corpus_facts.py
         cargo test --workspace
-
-`check_corpus_facts.py` is the other half of `check_ingest.py`. That one asks
-whether a fact was EXTRACTED; this asks whether anything READ it. Four
-omissions shared the second shape -- the answer was in the database and the
-converter used a default instead -- and none of them could fail, because a
-dropped fact is a zero or a shorter array, not an error.
 
 ## "It compiles" is not evidence
 

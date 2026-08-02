@@ -141,19 +141,6 @@
       "note": "Deliberately emits nothing. These carry behaviour, not register shape, and a plausible-looking guess would leave the oracle checking generated guesswork."
     }
   ],
-  "field_mode": {
-    "note": "How a C# field-mode constant becomes a Rust one. There is NO member table here and none in the emitter: the enum's members and their bit values are read from the corpus by type key, and the Rust name is `to_const` of the C# name -- the same transformation every other identifier goes through. The table that used to live in `scripts/emit.py` listed six of the twelve members, so `ReadToClear` rendered as `FieldMode::default()` (a field answering neither reads nor writes) and `Read|ReadToClear` rendered as plain `READ`, losing clear-on-read. Both compile, and neither is visible to a test that does not read that register. Deriving the map makes a thirteenth member arrive for free instead of being silently dropped; `scripts/check_corpus_facts.py` fails if renode-regs lacks a constant the C# declares, or if the emitter renders a member without naming it.",
-    "enum": "Antmicro.Renode.Core.Structure.Registers.FieldMode",
-    "member": "FieldMode::{const}",
-    "combine": " | ",
-    "default": "FieldMode::READ_WRITE",
-    "empty": "FieldMode::default()",
-    "combination_aliases": {
-      "3": "FieldMode::READ_WRITE"
-    },
-    "aliases_note": "Read|Write is by far the commonest combination and renode-regs names it, so it renders as the named constant rather than as the bitwise or. Behaviourally identical -- this is spelling, not semantics.",
-    "deviation": "The C# switches on `WriteBits()` -- an EXACT match on the mode's write half -- while renode-regs tests the write modes in order with `contains`. The two agree for every mode C# `FieldModeHelper.IsValid` accepts, because IsValid requires at most one write bit and at most one read bit, and Renode's own BusRegister logic relies on that. They differ only for an INVALID mode carrying two write bits, where the C# switch matches no case and does nothing while the Rust chain applies the first. Recorded rather than silently equalised: making Rust reproduce 'do nothing' would mean building the exact-match, and the shapes that would need it cannot be constructed from valid C#."
-  },
   "register_forms": [
     {
       "name": "DEFINE_EXTENSION",
@@ -161,16 +148,14 @@
       "symbol_contains": ".Define(",
       "offset_from": "$first_argument_enum",
       "reset_from": "resetValue",
-      "reset_on": "$self",
       "chain_from": "$self"
     },
     {
       "name": "DICTIONARY_ADD",
-      "note": "`{(long)Registers.Mode, new DoubleWordRegister(this, 0xFFFFFFFF).With...}` -- a dictionary initialiser, which desugars to Dictionary.Add(key, value). Offset is the key; the combinator chain is inside the value. The RESET VALUE is an argument of the constructor at the root of that chain, not of Add, which is why it needs `reset_on`. It was `null` before, so every dictionary-form register reset to 0 no matter what the C# said: 11 of the 80 dictionary-form registers in the cut pass a non-zero reset (STM32_CRC 0xFFFFFFFF and 0x04C11DB7, STM32F4_RCC five, STM32F4_RTC four). Latent while the only two dictionary-form peripherals emitted used `new DoubleWordRegister(this)`.",
+      "note": "`{(long)Registers.Mode, new DoubleWordRegister(this).With...}` -- a dictionary initialiser, which desugars to Dictionary.Add(key, value). Offset is the key; the combinator chain is inside the value.",
       "symbol_contains": "Dictionary<TKey, TValue>.Add",
       "offset_from": "key",
-      "reset_from": "resetValue",
-      "reset_on": "$chain_root_creation",
+      "reset_from": null,
       "chain_from": "value"
     }
   ],

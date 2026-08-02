@@ -62,16 +62,6 @@ pub type WriteCallback<S> = fn(&Bank<S>, &mut S, usize, u64, u64);
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct FieldMode(u16);
 
-/// Every member of the C# `[Flags] enum FieldMode`, at the C# bit position.
-///
-/// All twelve, not the six the emitted corpus happened to reach. Six were
-/// missing, and a mode bit with no constant here did not fail — the emitter
-/// dropped it, so `ReadToClear` rendered as `FieldMode::default()`: a field
-/// that ignores reads AND writes, which compiles and passes every test that
-/// does not read that register. `scripts/check_corpus_facts.py` now fails if
-/// the C# enum in the corpus holds a member this list lacks.
-///
-/// The gaps at bits 9 and 10 are the C#'s: it jumps `1 << 8` to `1 << 11`.
 impl FieldMode {
     pub const READ: Self = Self(1 << 0);
     pub const WRITE: Self = Self(1 << 1);
@@ -82,26 +72,8 @@ impl FieldMode {
     /// Writing 0 clears the bit. Used by STM32 `USART_SR` RXNE/TC, which is why
     /// the C# comment there says the flags "cannot just be calculated".
     pub const WRITE_ZERO_TO_CLEAR: Self = Self(1 << 5);
-    /// Reading clears the field. The read reports the value it had BEFORE the
-    /// clear; the next read sees zero. A hardware behaviour, and the usual
-    /// interrupt-status idiom.
-    pub const READ_TO_CLEAR: Self = Self(1 << 6);
-    /// Writing 0 sets the bit.
-    pub const WRITE_ZERO_TO_SET: Self = Self(1 << 7);
-    /// Writing 0 inverts the bit.
-    pub const WRITE_ZERO_TO_TOGGLE: Self = Self(1 << 8);
-    /// Reading sets the field to all ones, reporting its previous value.
-    pub const READ_TO_SET: Self = Self(1 << 11);
-    /// Any write clears the field, whatever value was written.
-    pub const WRITE_TO_CLEAR: Self = Self(1 << 12);
-    /// Any write sets the field, whatever value was written.
-    pub const WRITE_TO_SET: Self = Self(1 << 13);
 
     pub const READ_WRITE: Self = Self(Self::READ.0 | Self::WRITE.0);
-
-    /// C# `FieldModeHelper.ReadBits`: the read half of the mode.
-    const READ_BITS: Self =
-        Self(Self::READ.0 | Self::READ_TO_CLEAR.0 | Self::READ_TO_SET.0);
 
     #[inline]
     pub const fn contains(self, other: Self) -> bool {
@@ -110,18 +82,6 @@ impl FieldMode {
     #[inline]
     pub const fn is_empty(self) -> bool {
         self.0 == 0
-    }
-    /// C# `FieldModeHelper.IsReadable`. NOT `contains(READ)`: a `ReadToClear`
-    /// or `ReadToSet` field is readable without carrying `Read`, and treating
-    /// it as unreadable made the whole field read back zero.
-    #[inline]
-    pub const fn is_readable(self) -> bool {
-        self.0 & Self::READ_BITS.0 != 0
-    }
-    /// C# `FieldModeHelper.IsWritable`: any bit that is not a read bit.
-    #[inline]
-    pub const fn is_writable(self) -> bool {
-        self.0 & !Self::READ_BITS.0 != 0
     }
 }
 
@@ -203,22 +163,10 @@ impl<S> Register<S> {
             // construction), so consulting it needs no further mode check.
             let raw = match f.provider {
                 Some(p) => p(bank, state, f.group_index, stored),
-                None if f.mode.is_readable() => stored,
+                None if f.mode.contains(FieldMode::READ) => stored,
                 None => continue,
             };
             v |= (raw & mask(f.width)) << f.offset;
-            // C# ReadInner: the value REPORTED is the one before these fire;
-            // the clear or set lands on the stored value for the next read.
-            // Both conditions are the C#'s, including "only when it would
-            // change anything", which is what decides whether the change
-            // handler runs.
-            let w = mask(f.width);
-            if f.mode.contains(FieldMode::READ_TO_CLEAR) && raw & w != 0 {
-                bank.slots[f.slot as usize].set(0);
-            }
-            if f.mode.contains(FieldMode::READ_TO_SET) && raw & w != w {
-                bank.slots[f.slot as usize].set(w);
-            }
         }
         v
     }
@@ -325,27 +273,6 @@ impl<S> Bank<S> {
                 if incoming != 0 {
                     slot.set((slot.get() == 0) as u64);
                 }
-            } else if mode.contains(FieldMode::WRITE_ZERO_TO_SET) {
-                // C# `negSetRegisters = ~value & ~UnderlyingValue`, then OrWith.
-                let set = !incoming & !slot.get() & mask(f.width);
-                if set != 0 {
-                    slot.set(slot.get() | set);
-                }
-            } else if mode.contains(FieldMode::WRITE_ZERO_TO_TOGGLE) {
-                let inverted = !incoming & mask(f.width);
-                if inverted != 0 {
-                    slot.set(slot.get() ^ inverted);
-                }
-            } else if mode.contains(FieldMode::WRITE_TO_CLEAR) {
-                // Any write clears, whatever was written -- the C# case tests
-                // UnderlyingValue, not `value`.
-                if slot.get() != 0 {
-                    slot.set(0);
-                }
-            } else if mode.contains(FieldMode::WRITE_TO_SET) {
-                if slot.get() != mask(f.width) {
-                    slot.set(mask(f.width));
-                }
             }
             // C# order: the field is updated, then the write callback fires.
             // It fires on any write to the register, matching CallWriteHandler.
@@ -406,12 +333,8 @@ impl<'a, S> RegisterBuilder<'a, S> {
         // Found by mutation testing: without it, mutating a provider-bearing
         // field's mode to write-only SURVIVED, because value() consulted the
         // provider regardless of the mode. The C# makes that unconstructable.
-        // `!IsReadable()` is the C# condition verbatim. `!contains(READ)` was a
-        // near-miss that only agreed while ReadToClear and ReadToSet were
-        // unrepresentable: a `ReadToClear` field with a provider is legal C#
-        // and would have panicked here.
         assert!(
-            !(provider.is_some() && !mode.is_readable()),
+            !(provider.is_some() && !mode.contains(FieldMode::READ)),
             "a write-only field cannot provide a value callback \
              (offset {offset}, width {width})"
         );
@@ -799,88 +722,6 @@ mod tests {
         assert_eq!(bank.value(first.offset(2)), 0b11);
         assert_eq!(bank.value(first.offset(0)), 0);
         assert_eq!(bank.read(0, &mut ()), Some(0b11 << 8));
-    }
-
-    /// `FieldMode.ReadToClear` on its own. Before the six missing members
-    /// existed, this mode reached the emitter as an unknown bit, was dropped,
-    /// and rendered as `FieldMode::default()` -- a field that answers neither
-    /// reads nor writes. Both assertions below fail against that.
-    #[test]
-    fn read_to_clear_reports_then_clears() {
-        let mut bank: Bank<()> = Bank::new();
-        let mut f = FlagId::default();
-        bank.define(0, 1).with_flag(0, &mut f, FieldMode::READ_TO_CLEAR).done();
-        // Readable without FieldMode::READ: C# IsReadable includes ReadToClear.
-        assert_eq!(bank.read(0, &mut ()), Some(1), "the read reports the old value");
-        assert!(!bank.flag(f), "the read cleared the field");
-        assert_eq!(bank.read(0, &mut ()), Some(0), "and stays cleared");
-    }
-
-    #[test]
-    fn read_to_set_reports_then_sets() {
-        let mut bank: Bank<()> = Bank::new();
-        let mut v = ValueId::default();
-        bank.define(0, 0).with_value(0, 4, &mut v, FieldMode::READ_TO_SET).done();
-        assert_eq!(bank.read(0, &mut ()), Some(0));
-        assert_eq!(bank.value(v), 0xF, "the read set every bit of the field");
-        assert_eq!(bank.read(0, &mut ()), Some(0xF));
-    }
-
-    /// `Read | ReadToClear`, and `ReadToClear | WriteZeroToClear` -- the two
-    /// shapes the cut actually contains (NVIC, STM32F1_I2C). Combined modes
-    /// used to lose the unmapped half silently: `Read|ReadToClear` rendered as
-    /// plain `READ`, which reads correctly and never clears.
-    #[test]
-    fn read_to_clear_combines_with_other_modes() {
-        let mut bank: Bank<()> = Bank::new();
-        let (mut a, mut b) = (FlagId::default(), FlagId::default());
-        bank.define(0, 0b11)
-            .with_flag(0, &mut a, FieldMode::READ | FieldMode::READ_TO_CLEAR)
-            .with_flag(1, &mut b, FieldMode::READ_TO_CLEAR | FieldMode::WRITE_ZERO_TO_CLEAR)
-            .done();
-        assert_eq!(bank.read(0, &mut ()), Some(0b11));
-        assert!(!bank.flag(a) && !bank.flag(b), "both cleared on read");
-    }
-
-    #[test]
-    fn write_zero_to_set_and_toggle() {
-        let mut bank: Bank<()> = Bank::new();
-        let (mut s, mut t) = (FlagId::default(), FlagId::default());
-        bank.define(0, 0)
-            .with_flag(0, &mut s, FieldMode::READ | FieldMode::WRITE_ZERO_TO_SET)
-            .with_flag(1, &mut t, FieldMode::READ | FieldMode::WRITE_ZERO_TO_TOGGLE)
-            .done();
-        bank.write(0, 0b11, &mut ()); // ones: neither fires
-        assert!(!bank.flag(s) && !bank.flag(t));
-        bank.write(0, 0b00, &mut ()); // zeros: set, and toggle
-        assert!(bank.flag(s) && bank.flag(t));
-    }
-
-    #[test]
-    fn write_to_clear_and_write_to_set_ignore_the_value_written() {
-        let mut bank: Bank<()> = Bank::new();
-        let (mut c, mut s) = (FlagId::default(), FlagId::default());
-        bank.define(0, 0b01)
-            .with_flag(0, &mut c, FieldMode::READ | FieldMode::WRITE_TO_CLEAR)
-            .with_flag(1, &mut s, FieldMode::READ | FieldMode::WRITE_TO_SET)
-            .done();
-        bank.write(0, 0, &mut ()); // writing zero still clears one and sets the other
-        assert!(!bank.flag(c));
-        assert!(bank.flag(s));
-    }
-
-    /// A `ReadToClear` field with a value provider is legal C# -- `IsReadable`
-    /// is true. Asserting on `contains(READ)` would panic here.
-    #[test]
-    fn read_to_clear_field_may_have_a_value_provider() {
-        fn provider(_b: &Bank<()>, _s: &mut (), _i: usize, _c: u64) -> u64 {
-            1
-        }
-        let mut bank: Bank<()> = Bank::new();
-        bank.define(0, 0)
-            .with_value_cb(0, 1, FieldMode::READ_TO_CLEAR, Some(provider), None)
-            .done();
-        assert_eq!(bank.read(0, &mut ()), Some(1));
     }
 
     #[test]

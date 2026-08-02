@@ -23,10 +23,7 @@
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
-/// Every member of the C# `enum Registers`, whether or
-/// not this file defines the register. A constant with no
-/// matching `bank.define` below is an address the C# declares
-/// and the converter did not emit.
+/// Register offsets, from the C# `enum Register`.
 pub mod reg {
     pub const LOW_INTERRUPT_STATUS: u64 = 0x00;
     pub const HIGH_INTERRUPT_STATUS: u64 = 0x04;
