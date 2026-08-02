@@ -418,7 +418,10 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             raw_names = (json.loads(det).get("params", "").split()
                          if det else [])
             for slot, nm in zip(tail, raw_names[-len(tail):]):
-                slot[0] = nm if nm != "_" else "_" + slot[0]
+                # snake_case here too: the BODY emits `snake(newValue)`, so
+                # binding the raw C# name into the signature declared
+                # `newValue` and used `new_value` -- E0425, not a type error.
+                slot[0] = snake(nm) if nm != "_" else "_" + slot[0]
         prev_slots = self._enum_slots
         self._enum_slots = {n for n, _ in slots if not n.startswith("_")}
         used = self.lambda_uses(oid)
@@ -499,7 +502,11 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             for cid, kind, sym in self.con.execute(
                     "SELECT id, kind, symbol FROM operation WHERE parent_id=?", (cur,)):
                 if kind == "ParameterReference" and sym:
-                    out.add(sym.split()[-1])
+                    # snake_cased, because the SLOT names are: comparing
+                    # `new_value` against a raw `newValue` marked a parameter
+                    # unused, prefixed it with an underscore, and left the body
+                    # referring to a name the signature no longer declared.
+                    out.add(snake(sym.split()[-1]))
                 stack.append(cid)
         return out
 
