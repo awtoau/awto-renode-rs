@@ -13,6 +13,17 @@ between them cover every type in the cut.
 Run:  python3 scripts/check_refactor.py --record   # before
       python3 scripts/check_refactor.py            # after, exits 1 on any diff
 Log:  ./tmp/logs/check_refactor.log
+
+The nine `emit.py` runs go in parallel; the two censuses stay SEQUENTIAL,
+because each of them now saturates every core on its own and running them
+together would only make each wait for the other. The censuses dominate this
+script's wall-clock, and they were made parallel internally -- see
+scripts/emit_pool.py.
+
+Parallel here is safe for a reason worth stating: each job is a separate
+`emit.py` process writing nothing but its own stdout, results are keyed by
+artefact name, and the comparison below iterates `sorted(current)`. Nothing
+reads a completion order.
 """
 
 from __future__ import annotations
@@ -21,8 +32,10 @@ import argparse
 import difflib
 import hashlib
 import logging
+import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # (type, method, module) -- the same list check_generated.py drives.
@@ -58,44 +71,55 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
     """
     out: dict[str, str] = {}
     bad: list[str] = []
-    for ty, method, mod in TARGETS:
-        r = subprocess.run(
-            [sys.executable, str(root / "scripts" / "emit.py"),
-             "--type", ty, "--method", method, "--file", mod],
-            capture_output=True, text=True, cwd=root)
+
+    emit = str(root / "scripts" / "emit.py")
+    # (artefact name, argv). The trait module is keyed on no type: the corpus
+    # decides which interfaces appear in it, so a mapping change moves it
+    # without moving any peripheral. The dispatch module is a function of EVERY
+    # peripheral, so it moves whenever any one of them does -- and it is the
+    # artefact that would move silently, since nothing else reads a
+    # peripheral's exported names.
+    jobs = [(f"{mod}.rs", [sys.executable, emit, "--type", ty,
+                           "--method", method, "--file", mod])
+            for ty, method, mod in TARGETS]
+    jobs += [("interfaces.rs", [sys.executable, emit, "--interfaces"]),
+             ("dispatch.rs", [sys.executable, emit, "--dispatch"])]
+
+    def run(job):
+        return subprocess.run(job[1], capture_output=True, text=True, cwd=root)
+
+    # `map` yields in JOB order, not completion order, so `bad` reads the same
+    # either way. Each job is one `emit.py` process; threads only wait on them.
+    with ThreadPoolExecutor(max_workers=min(len(jobs),
+                                            os.cpu_count() or 8)) as pool:
+        runs = list(pool.map(run, jobs))
+
+    for (name, _argv), r in zip(jobs, runs):
+        stem = name.removesuffix(".rs")
         if r.returncode != 0:
-            bad.append(f"{mod}: emit.py exited {r.returncode}: "
+            bad.append(f"{stem}: emit.py exited {r.returncode}: "
                        f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else '(no stderr)'}")
-            out[f"{mod}.rs"] = f"EMIT FAILED ({r.returncode})\n{r.stderr}"
+            out[name] = f"EMIT FAILED ({r.returncode})\n{r.stderr}"
             continue
         # A plausible module has a header, a `reg` module and a layout fn. A
         # short or headerless one means emit succeeded at producing nothing.
-        if "pub fn define_registers" not in r.stdout or len(r.stdout) < 500:
-            bad.append(f"{mod}: emitted {len(r.stdout)} bytes with no layout "
+        # `--interfaces` and `--dispatch` are different shapes, so each has its
+        # own "this is not a module" test.
+        if name == "interfaces.rs":
+            if "pub trait " not in r.stdout:
+                bad.append("interfaces: emitted no trait -- not a module")
+        elif name == "dispatch.rs":
+            if "impl " not in r.stdout:
+                bad.append("dispatch: emitted no impl -- a trait with no "
+                           "implementor is not dispatch")
+        elif "pub fn define_registers" not in r.stdout or len(r.stdout) < 500:
+            bad.append(f"{stem}: emitted {len(r.stdout)} bytes with no layout "
                        f"function -- not a module")
-        out[f"{mod}.rs"] = r.stdout
-    # The trait module is keyed on no type: the corpus decides which interfaces
-    # appear in it, so a mapping change moves it without moving any peripheral.
-    r = subprocess.run(
-        [sys.executable, str(root / "scripts" / "emit.py"), "--interfaces"],
-        capture_output=True, text=True, cwd=root)
-    if r.returncode != 0:
-        bad.append(f"interfaces: emit.py exited {r.returncode}")
-    elif "pub trait " not in r.stdout:
-        bad.append("interfaces: emitted no trait -- not a module")
-    out["interfaces.rs"] = r.stdout
-    # The dispatch module is a function of EVERY peripheral above, so it moves
-    # whenever any one of them does -- and it is the artefact that would move
-    # silently, since nothing else reads a peripheral's exported names.
-    r = subprocess.run(
-        [sys.executable, str(root / "scripts" / "emit.py"), "--dispatch"],
-        capture_output=True, text=True, cwd=root)
-    if r.returncode != 0:
-        bad.append(f"dispatch: emit.py exited {r.returncode}")
-    elif "impl " not in r.stdout:
-        bad.append("dispatch: emitted no impl -- a trait with no implementor "
-                   "is not dispatch")
-    out["dispatch.rs"] = r.stdout
+        out[name] = r.stdout
+
+    # SEQUENTIAL on purpose. Each census now saturates every core by itself
+    # (scripts/emit_pool.py), so running the two together would halve each
+    # one's workers and gain nothing.
     for name, script in (("gaps.txt", "gap_census.py"),
                          ("compile.txt", "compile_check.py")):
         r = subprocess.run([sys.executable, str(root / "scripts" / script)],

@@ -35,8 +35,10 @@ Exit: 0 clean, 1 if any generated file was hand-edited.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Files the converter owns. Adding a file here is a commitment that it is
@@ -108,15 +110,31 @@ def main() -> int:
         h.setFormatter(fmt)
         log.addHandler(h)
 
+    # The generators are independent processes writing nothing but their own
+    # stdout, so they run at once. `map` yields in GENERATED order, so the log
+    # reads identically to the serial version -- this is a pre-commit gate, and
+    # a gate whose report reshuffles run to run is one people stop reading.
+    #
+    # It was 25s serial. That is 25s on every commit of a hook that was already
+    # being skipped for being slow, which is the whole reason this work exists.
+    def generate(job):
+        rel, argv = job
+        if not (root / rel).exists():
+            return None
+        return subprocess.run([sys.executable, *argv], cwd=root,
+                              capture_output=True, text=True)
+
+    with ThreadPoolExecutor(max_workers=max(1, min(len(GENERATED) or 1,
+                                                   os.cpu_count() or 8))) as p:
+        produced_all = list(p.map(generate, GENERATED))
+
     violations = 0
-    for rel, argv in GENERATED:
+    for (rel, _argv), produced in zip(GENERATED, produced_all):
         path = root / rel
-        if not path.exists():
+        if produced is None:
             log.error("%s is listed as generated but does not exist", rel)
             violations += 1
             continue
-        produced = subprocess.run([sys.executable, *argv], cwd=root,
-                                  capture_output=True, text=True)
         if produced.returncode != 0:
             log.error("%s: generator failed: %s", rel, produced.stderr.strip()[:300])
             violations += 1

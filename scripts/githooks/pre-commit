@@ -73,16 +73,32 @@ def main() -> int:
                   file=sys.stderr)
             return 1
 
-    # 1b. Compile everything the converter emits, as a RATCHET. Fails only
-    #     when errors RISE. A hard zero would block every commit today; the
-    #     regression this catches actually happened -- a format-string rule
-    #     that was never called survived two commits, because nothing
-    #     compiled the 23 modules it broke.
-    ratchet = subprocess.run([py, "scripts/compile_check.py", "--ratchet"],
+    # 1b. Compile the DECLARED CLEAN SET, per module. Fails when a module that
+    #     compiled with zero errors stops doing so. The regression this catches
+    #     actually happened -- a format-string rule that was never called
+    #     survived two commits, because nothing compiled the 23 modules it
+    #     broke.
+    #
+    #     TWO CHANGES FROM THE VERSION THAT WAS BEING SKIPPED:
+    #
+    #     * It was `--ratchet` over all 569 modules and took ~15 min, so the
+    #       last several commits were made with RENODE_RS_SKIP_HOOK=1 and this
+    #       ran on none of them. A gate slow enough to be bypassed is a gate
+    #       that does not run -- the same outcome as the three checks this
+    #       repo found reporting success while verifying nothing. It is now
+    #       the working-set tier; `scripts/gates.py --full` is the whole
+    #       corpus and gates a push.
+    #     * It ratcheted on the ERROR TOTAL, which had stopped discriminating:
+    #       50 new errors against a baseline of 3,072 is a 1.6% rise and would
+    #       have passed. It is now per-module over the clean set.
+    #
+    #     The fast tier prints what it did NOT check, every run.
+    ratchet = subprocess.run([py, "scripts/compile_check.py",
+                              "--working-set", "--ratchet"],
                              cwd=root, capture_output=True, text=True)
     if ratchet.returncode != 0:
         print(ratchet.stdout[-1200:], file=sys.stderr)
-        print("pre-commit: generated code that used to compile no longer does",
+        print("pre-commit: a module that used to compile clean no longer does",
               file=sys.stderr)
         return 1
 

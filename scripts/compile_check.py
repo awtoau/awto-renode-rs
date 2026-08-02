@@ -24,28 +24,63 @@ classified the problem and pointed at the span.
 
 Nothing is written to the repo: the scratch crate lives under tmp/.
 
-Run:  python3 scripts/compile_check.py
+Full rationale and the measured numbers: docs/decisions/two-tier-compile-gate.md
+
+TWO TIERS
+---------
+    --working-set --ratchet   FAST. Compiles the declared clean set plus the
+                              types the working diff names. Pre-commit.
+    --ratchet                 FULL. All 569. Before a push, and on demand.
+
+The fast tier says what it did NOT check, every run. A gate over a subset that
+is quiet about its edges is exactly how the corpus cut hid four platform
+peripherals for weeks while every number over it looked healthy.
+
+THE GATE IS THE CLEAN SET, NOT THE ERROR TOTAL
+----------------------------------------------
+It used to be a ratchet on the total, and that had stopped being a gate. With
+3,072 errors over 567 modules, 50 new errors is a 1.6% rise -- a broken rule
+that takes out whole modules passes unnoticed. `compile_baseline.json` said so
+itself under `why_this_ratchet_is_now_weaker`.
+
+So the gate is per-module over the modules that compile CLEAN
+(docs/status/compile_clean_set.json, declared data, may only grow). A module
+leaving that set is unambiguous and attributable to one file. A module that
+already fails can get worse and this will not notice -- stated plainly rather
+than covered by a total that could not see it either.
+
+Run:  python3 scripts/compile_check.py --working-set --ratchet   # fast tier
+      python3 scripts/compile_check.py --ratchet                 # full tier
+      python3 scripts/compile_check.py --record-clean-set        # grow the gate
       python3 scripts/compile_check.py --keep     # leave the crate for poking
+      python3 scripts/compile_check.py -j1        # serial, for the byte oracle
 Log:  ./tmp/logs/compile_check.log
-Exit: 0 always -- this is a measurement, not a gate. Making it a gate before
-      the numbers are known would just block every commit.
+Exit: 0, or 1 if a declared-clean module stopped compiling.
+
+Emission runs on every core (scripts/emit_pool.py). THE EMITTED CRATE AND THIS
+REPORT ARE BYTE-IDENTICAL AT EVERY `-j`. That matters more here than anywhere
+else: this is the pre-commit compile gate, and a gate whose number moves with
+the scheduler is a gate that fails at random and gets skipped. It was already
+being skipped for taking ~15 min.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
-import contextlib
-import io
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import emit_pool
 
 
 def repo_root() -> Path:
@@ -54,12 +89,92 @@ def repo_root() -> Path:
                                check=True).stdout.strip())
 
 
-def emit_all(root: Path, db: Path, log: logging.Logger) -> list[tuple[str, int]]:
-    """Emit every type with a register-defining method into a scratch crate."""
-    from emit import Emitter
-    quiet = logging.getLogger("quiet")
-    quiet.addHandler(logging.NullHandler())
+CLEAN_SET = Path("docs") / "status" / "compile_clean_set.json"
 
+
+def module_name(type_name: str) -> str:
+    """The crate module a C# type is emitted as. One definition, used by all."""
+    return "".join(c if c.isalnum() else "_" for c in type_name).lower()
+
+
+def load_clean_set(root: Path, log: logging.Logger) -> set[str] | None:
+    """The declared set of modules that MUST compile clean. None if unusable.
+
+    This replaced a ratchet on the ERROR TOTAL, which had stopped being a gate:
+    against a total in the thousands, a broken rule that takes out whole
+    modules is a rise of a percent or two and passes unnoticed.
+    `docs/status/compile_baseline.json` said so itself, under
+    `why_this_ratchet_is_now_weaker`.
+
+    The clean set is the part of the population that carries signal. A module
+    LEAVING it is unambiguous, attributable to one file, and is the thing a
+    total can never tell you. A module that already fails can get worse and
+    this will not notice -- that is stated here rather than papered over,
+    because pretending the total covered it is how the weak ratchet survived.
+
+    No count is quoted here on purpose: the current one lives in the declared
+    file, and a number repeated in a docstring is a second source of truth that
+    goes stale without anything failing.
+    """
+    p = root / CLEAN_SET
+    # A MISSING DECLARATION IS A BROKEN GATE, not an empty one -- the same
+    # failure the old baseline had when it defaulted to a billion.
+    if not p.exists():
+        log.error("no clean set at %s. The per-module ratchet has nothing to",
+                  CLEAN_SET.as_posix())
+        log.error("compare against and is therefore not a gate. Record one with")
+        log.error("    python3 scripts/compile_check.py --record-clean-set")
+        return None
+    doc = json.loads(p.read_text())
+    mods = doc.get("modules")
+    if not isinstance(mods, list) or not mods:
+        log.error("%s has no `modules` list -- nothing to ratchet on.",
+                  CLEAN_SET.as_posix())
+        return None
+    floor = int(doc.get("min_modules", 0))
+    # The set may only GROW. Deleting entries is how a gate is quietly
+    # narrowed, and it looks exactly like a gate that has nothing to say, so
+    # shrinking has to take two edits and show up in review as a lowered floor.
+    if len(mods) < floor:
+        log.error("%s declares min_modules=%d but lists %d. The clean set may "
+                  "only grow; lower the floor deliberately if it must shrink.",
+                  CLEAN_SET.as_posix(), floor, len(mods))
+        return None
+    return set(mods)
+
+
+def touched_types(root: Path, candidates: set[str]) -> set[str]:
+    """Corpus types named anywhere in the working tree's diff against HEAD.
+
+    Crude on purpose. It is not trying to compute the true blast radius of a
+    rule change -- nothing can, which is exactly why the fast tier reports what
+    it did NOT check instead of claiming coverage. It catches the common case:
+    a plugin, a rule or a test that names a type is a type worth compiling.
+    """
+    diff = subprocess.run(["git", "diff", "HEAD", "--unified=0"],
+                          cwd=root, capture_output=True, text=True)
+    text = diff.stdout + subprocess.run(
+        ["git", "diff", "--cached", "--unified=0"],
+        cwd=root, capture_output=True, text=True).stdout
+    words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text))
+    return {t for t in candidates if t in words}
+
+
+def emit_all(root: Path, db: Path, log: logging.Logger,
+             timing: logging.Logger, jobs: int,
+             lpt: bool = True, keep_types: set[str] | None = None
+             ) -> tuple[list[tuple[str, int]], set[str]]:
+    """Emit types with a register-defining method into a scratch crate.
+
+    `keep_types` limits WHICH types are emitted (the fast tier); None means all
+    569. It never changes HOW one is emitted, so a module's bytes are the same
+    in either tier -- generated modules carry no cross-module references, so
+    compiling a subset gives each included module the same verdict.
+
+    Parallel across types, and byte-identical to the serial version: modules
+    are named from the type, written to their own path, and `mods` is built in
+    task order, so nothing here depends on which worker finished first.
+    """
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = con.execute("""
         SELECT t.name, MIN(mb.name) FROM type t
@@ -79,28 +194,36 @@ def emit_all(root: Path, db: Path, log: logging.Logger) -> list[tuple[str, int]]
     # It is compiled -- inside its parent's module, which is the only place it
     # exists. Counting it twice would report errors for a file the converter
     # does not actually produce.
-    from emitter.plugins.sub_blocks import sub_blocks
-    probe = Emitter(sqlite3.connect(f"file:{db}?mode=ro", uri=True), quiet)
-    nested = {s["child"] for name, _m in rows
-              for s in sub_blocks(probe, name)[0]}
+    #
+    # Probed over EVERY type even when only a subset is being compiled: a
+    # working-set module can be the child of a type outside the set, and
+    # probing only the subset would emit it standalone -- a module the
+    # converter does not actually produce, with errors nobody can act on.
+    tp = time.monotonic()
+    nested = emit_pool.probe_nested(db, [n for n, _m in rows], jobs)
+    timing.info("sub-block probe over %d type(s): %.1fs at -j%d", len(rows),
+                time.monotonic() - tp, jobs)
     if nested:
         log.info("%d type(s) emitted only inside a parent: %s",
                  len(nested), ", ".join(sorted(nested)))
 
+    wanted = [(n, m) for n, m in rows
+              if n not in nested and (keep_types is None or n in keep_types)]
+    t0 = time.monotonic()
+    results = emit_pool.emit_many(db, [(n, m, "m") for n, m in wanted],
+                                  jobs, lpt=lpt)
+    timing.info("emitted %d type(s) in %.1fs at -j%d", len(results),
+                time.monotonic() - t0, jobs)
+    emit_pool.report_tail(results, timing)
+
     mods: list[tuple[str, int]] = []
-    for name, method in rows:
-        if name in nested:
+    for r in results:
+        if r.err_type is not None:
+            log.warning("emit crashed on %s: %s", r.name, r.err_msg)
             continue
-        em = Emitter(sqlite3.connect(f"file:{db}?mode=ro", uri=True), quiet)
-        try:
-            with contextlib.redirect_stderr(io.StringIO()):
-                out = em.emit_file(name, method, "m")
-        except Exception as exc:                          # noqa: BLE001
-            log.warning("emit crashed on %s: %s", name, exc)
-            continue
-        mod = "".join(c if c.isalnum() else "_" for c in name).lower()
-        (crate / "src" / f"{mod}.rs").write_text(out)
-        mods.append((mod, len(out.splitlines())))
+        mod = module_name(r.name)
+        (crate / "src" / f"{mod}.rs").write_text(r.text)
+        mods.append((mod, len(r.text.splitlines())))
 
     (crate / "src" / "lib.rs").write_text(
         "//! Scratch crate: every module the converter can emit, compiled\n"
@@ -116,7 +239,12 @@ def emit_all(root: Path, db: Path, log: logging.Logger) -> list[tuple[str, int]]
         f"renode-regs = {{ path = \"{'../../src/renode-regs'}\" }}\n"
         f"csharp-rt = {{ path = \"{'../../src/csharp-rt'}\" }}\n"
         "log = \"0.4\"\n\n[workspace]\n")
-    return mods
+    # The second value is every module the FULL tier would have compiled. The
+    # fast tier subtracts what it emitted from this to say what it did not
+    # check -- and it must say so every run. A gate over a subset that stays
+    # quiet about the subset is how the corpus cut hid four platform
+    # peripherals for weeks while every headline number looked healthy.
+    return mods, {module_name(n) for n, _m in rows if n not in nested}
 
 
 def main() -> int:
@@ -124,26 +252,80 @@ def main() -> int:
     ap.add_argument("--db", default="rulesdb/patterns.db")
     ap.add_argument("--keep", action="store_true", help="leave the scratch crate")
     ap.add_argument("--ratchet", action="store_true",
-                    help="fail if errors rose above docs/status/compile_baseline.json")
+                    help="fail if a module in the declared clean set stopped "
+                         "compiling")
+    ap.add_argument("--working-set", action="store_true",
+                    help="FAST TIER: emit and compile only the declared clean "
+                         "set plus what the diff touches, and say what was "
+                         "not checked")
+    ap.add_argument("--record-clean-set", action="store_true",
+                    help="rewrite docs/status/compile_clean_set.json from a "
+                         "FULL run (refused on a working-set run)")
+    emit_pool.add_jobs_arg(ap)
     args = ap.parse_args()
+
+    if args.record_clean_set and args.working_set:
+        print("--record-clean-set needs a FULL run: a working-set run has not "
+              "compiled the modules it would be declaring clean.",
+              file=sys.stderr)
+        return 1
 
     root = repo_root()
     (root / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log = logging.getLogger("compile_check")
     log.setLevel(logging.INFO)
-    for h in (logging.FileHandler(root / "tmp" / "logs" / "compile_check.log",
-                                  mode="w"), logging.StreamHandler(sys.stdout)):
+    fileh = logging.FileHandler(root / "tmp" / "logs" / "compile_check.log",
+                                mode="w")
+    for h in (fileh, logging.StreamHandler(sys.stdout)):
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
 
-    mods = emit_all(root, root / args.db, log)
+    # Timing goes to the log file and STDERR, never stdout: `check_refactor.py`
+    # keeps this script's stdout as a golden artefact, and a clock in a golden
+    # file makes every run differ from every other one.
+    timing = logging.getLogger("compile_check.timing")
+    timing.setLevel(logging.INFO)
+    timing.propagate = False
+    for h in (fileh, logging.StreamHandler(sys.stderr)):
+        h.setFormatter(logging.Formatter("%(message)s"))
+        timing.addHandler(h)
+
+    # Only read when it is actually going to be used: `load_clean_set` reports
+    # a missing declaration as an error, and a plain measurement run has not
+    # asked to be gated.
+    declared: set[str] | None = None
+    if args.ratchet or args.working_set:
+        declared = load_clean_set(root, log)
+        if declared is None:
+            return 1
+
+    keep: set[str] | None = None
+    if args.working_set:
+        con = sqlite3.connect(f"file:{root / args.db}?mode=ro", uri=True)
+        all_types = {r[0] for r in con.execute(
+            "SELECT DISTINCT name FROM type WHERE kind='class'")}
+        con.close()
+        # A module name is lossy (`STM32_UART` -> `stm32_uart`), so the working
+        # set is built in TYPE space and the declared clean set is mapped into
+        # it, not the other way round.
+        declared_types = {t for t in all_types if module_name(t) in declared}
+        touched = touched_types(root, all_types)
+        keep = declared_types | touched
+        log.info("WORKING SET: %d declared-clean type(s), %d named in the "
+                 "working diff, %d total",
+                 len(declared_types), len(touched), len(keep))
+
+    mods, universe = emit_all(root, root / args.db, log, timing, args.jobs,
+                              lpt=not args.no_lpt, keep_types=keep)
     total_lines = sum(n for _, n in mods)
     log.info("emitted %d module(s), %s lines", len(mods), f"{total_lines:,}")
 
     crate = root / "tmp" / "compile_check"
+    tc = time.monotonic()
     proc = subprocess.run(
         ["cargo", "check", "--message-format=json", "--quiet"],
         cwd=crate, capture_output=True, text=True)
+    timing.info("cargo check: %.1fs", time.monotonic() - tc)
 
     # CARGO FAILING TO RUN IS NOT ZERO ERRORS. The error total below is parsed
     # from `compiler-message` lines, so if cargo dies BEFORE compiling -- broken
@@ -209,46 +391,105 @@ def main() -> int:
         for m, n in per_mod.most_common(8):
             log.info("    %-34s %4d", m, n)
 
-    clean = len(mods) - len(per_mod)
+    emitted = {m for m, _n in mods}
+    clean_now = emitted - set(per_mod)
     log.info("")
-    log.info("%d of %d modules compile clean", clean, len(mods))
+    log.info("%d of %d modules compile clean", len(clean_now), len(mods))
+
+    # WHAT THIS RUN DID NOT CHECK. Printed every run, in both tiers, because
+    # a subset that stays quiet about its own edges is the failure mode: the
+    # corpus cut excluded four platform peripherals for weeks and every
+    # headline number over it looked healthy.
+    unseen = universe - emitted
+    if unseen:
+        log.info("")
+        log.info("NOT CHECKED: %d of %d module(s) were not compiled by this "
+                 "run.", len(unseen), len(universe))
+        if keep is None:
+            # A full run, so these are the ones emission CRASHED on. They are
+            # named above; this says out loud that nothing below covers them,
+            # because "emit crashed on X" scrolls past and a clean-looking
+            # error table underneath reads like full coverage.
+            log.info("Emission crashed on them (listed above). Nothing here "
+                     "says anything about them.")
+        else:
+            log.info("They are outside the working set. Nothing here says "
+                     "anything about them. Run the full tier:")
+            log.info("    python3 scripts/gates.py --full")
     log.info("")
     log.info("An error CODE is a better work item than a gap: rustc has already")
     log.info("classified the problem and pointed at the span. A gap is what the")
     log.info("converter KNOWS it cannot do; these are what it got wrong anyway.")
 
+    if args.record_clean_set:
+        doc = {
+            "note": "Modules that compile with ZERO rustc errors. THE GATE. "
+                    "A module leaving this set is a regression attributable to "
+                    "one file; that is what an error TOTAL can never tell you, "
+                    "and why the total stopped being the ratchet.",
+            "not_covered": "A module NOT listed here already fails to compile. "
+                           "It can get worse and nothing will notice. That is "
+                           "accepted deliberately -- a ratchet over a mostly-"
+                           "broken population carries no signal (50 new errors "
+                           "was a 1.6% rise against 3,072 and passed).",
+            "may_only_grow": "min_modules is a floor. Shrinking the set takes "
+                             "two edits so it cannot happen quietly.",
+            "record_with": "python3 scripts/compile_check.py --record-clean-set",
+            "min_modules": len(clean_now),
+            "modules": sorted(clean_now),
+        }
+        (root / CLEAN_SET).write_text(json.dumps(doc, indent=2) + "\n")
+        log.info("")
+        log.info("recorded %d clean module(s) to %s",
+                 len(clean_now), CLEAN_SET.as_posix())
+
     if not args.keep:
         shutil.rmtree(crate, ignore_errors=True)
 
     if args.ratchet:
-        import json as _json
-        bf = root / "docs" / "status" / "compile_baseline.json"
-        # A MISSING BASELINE IS A BROKEN RATCHET, not an infinite one. This
-        # defaulted to a billion, so renaming or deleting the file turned the
-        # gate off in silence -- the same failure the ratchet exists to catch,
-        # one level up.
-        if not bf.exists():
-            log.error("no baseline at docs/status/compile_baseline.json.")
-            log.error("The ratchet has nothing to compare against and is")
-            log.error("therefore not a gate. Restore it or record one.")
-            return 1
-        base = _json.loads(bf.read_text())
-        if "errors" not in base:
-            log.error("baseline has no `errors` key -- nothing to ratchet on.")
-            return 1
-        allowed = int(base["errors"])
-        if total > allowed:
+        assert declared is not None            # checked before emitting
+        # A declared-clean module that was never compiled is a gate that did
+        # not run -- indistinguishable from a gate that passed. It can only
+        # happen if emission crashed on it or it left the corpus, and both are
+        # things to hear about rather than skip.
+        missing = declared - emitted
+        if missing:
             log.error("")
-            log.error("RATCHET: %d errors, baseline allows %d.", total, allowed)
-            log.error("Something that used to compile no longer does. A rule")
-            log.error("that quietly stops being applied looks exactly like a")
-            log.error("rule that correctly declines -- this is the check that")
-            log.error("tells the two apart.")
+            log.error("RATCHET CANNOT RUN: %d declared-clean module(s) were "
+                      "not compiled at all:", len(missing))
+            for m in sorted(missing)[:15]:
+                log.error("    %s", m)
+            log.error("Either emission crashed on them or they left the "
+                      "corpus. Not compiling a module is not the same as it "
+                      "passing.")
             return 1
-        if total < allowed:
+        regressed = sorted(declared & set(per_mod))
+        if regressed:
+            log.error("")
+            log.error("RATCHET: %d module(s) left the clean set.", len(regressed))
+            for m in regressed:
+                log.error("    %-34s %4d error(s)", m, per_mod[m])
+            log.error("Each of these compiled with zero errors and no longer "
+                      "does. A rule that quietly stops being applied looks "
+                      "exactly like a rule that correctly declines -- this is "
+                      "the check that tells the two apart.")
+            return 1
+        gained = sorted(clean_now - declared)
+        if gained:
             log.info("")
-            log.info("RATCHET: %d errors, below the baseline of %d -- lower it "
-                     "in docs/status/compile_baseline.json.", total, allowed)
+            log.info("RATCHET: %d module(s) now compile clean and are not "
+                     "declared. Grow the gate:", len(gained))
+            for m in gained[:15]:
+                log.info("    %s", m)
+            log.info("    python3 scripts/compile_check.py --record-clean-set")
+        log.info("")
+        log.info("RATCHET OK: all %d declared-clean module(s) still compile "
+                 "clean.", len(declared))
+        # Trend only, never a gate -- see load_clean_set. Reported only on a
+        # full run, because a subset's total is not comparable to anything.
+        if not unseen:
+            log.info("error total across all %d module(s): %d (trend, not a "
+                     "gate)", len(mods), total)
     return 0
 
 
