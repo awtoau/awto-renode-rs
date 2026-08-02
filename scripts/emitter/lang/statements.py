@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 
 from emitter import core
-from emitter.core import snake
+from emitter.core import must_explain, snake
 
 
 class Statements:
@@ -196,6 +196,7 @@ class Statements:
         self.unhandled[f"stmt:{kind}"] = self.unhandled.get(f"stmt:{kind}", 0) + 1
         return [f"{pad}/* {kind} */"]
 
+    @must_explain
     def emit_switch(self, oid: int, indent: int) -> list[str]:
         """C# switch as a Rust match.
 
@@ -260,6 +261,7 @@ class Statements:
         out.append(pad + "}")
         return out
 
+    @must_explain
     def emit_loop(self, oid: int, indent: int) -> list[str]:
         """A C# loop. The kind comes from the corpus (LoopKind), not from the
         child shape, so a For and a ForEach are never confused."""

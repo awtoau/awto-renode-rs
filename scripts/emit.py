@@ -397,6 +397,7 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         self.unhandled[name] = self.unhandled.get(name, 0) + 1
         return None
 
+    @_core_must_explain
     def emit_lambda(self, oid: int, name: str, param: str) -> list[str]:
         """A C# lambda as a Rust free function.
 
