@@ -84,6 +84,8 @@ def main() -> int:
         log.addHandler(h)
 
     con = sqlite3.connect(f"file:{root / args.db}?mode=ro", uri=True)
+    _cfg = con.execute("SELECT config FROM corpus_run LIMIT 1").fetchone()
+    breadth = bool(_cfg and _cfg[0] == "breadth")
     # Only CLASSES are object references. An enum-typed field is a VALUE --
     # classifying it SHARED because its type happens to be in the corpus was
     # wrong, and inflated both the shared count and the edge list.
@@ -153,9 +155,14 @@ def main() -> int:
     # graph is small enough that longer ones are visible in the diagram.
     cycles = sorted({tuple(sorted((a, b))) for a, b in edges if (b, a) in edges})
 
+    # Name outputs by SCOPE. Running this against the breadth DB used to
+    # overwrite the cut's files, replacing a readable 52-edge graph with an
+    # unreadable 1,278-edge one -- and the cut is the deliverable, so the
+    # useful artefact was the one that got clobbered.
+    scope = "tree" if breadth else "cut"
     status = root / "docs" / "status"
     status.mkdir(parents=True, exist_ok=True)
-    tsv = status / "ownership.tsv"
+    tsv = status / f"ownership-{scope}.tsv"
     tsv.write_text(
         "owner\tfield\ttype\tclass\treads\twrites\tevidence\n"
         + "\n".join("\t".join(r) for r in out) + "\n")
@@ -166,7 +173,7 @@ def main() -> int:
         lines.append(f"    {a.replace('.', '_')} --> {b.replace('.', '_')}")
     for a, b in cycles:
         lines.append(f"    %% cycle: {a} <-> {b}")
-    (status / "ownership.mmd").write_text("\n".join(lines) + "\n")
+    (status / f"ownership-{scope}.mmd").write_text("\n".join(lines) + "\n")
 
     log.info("%d instance field(s) classified", len(out))
     log.info("")
@@ -178,7 +185,7 @@ def main() -> int:
     for a, b in cycles:
         log.info("    %s <-> %s", a, b)
     log.info("")
-    log.info("wrote docs/status/ownership.tsv and ownership.mmd")
+    log.info("wrote docs/status/ownership-%s.tsv and ownership-%s.mmd", scope, scope)
     log.info("")
     log.info("EVERY ROW SAYS `static`. It sees declared types and access counts,")
     log.info("never what happens at run time. The dynamic half -- instrument C#")
