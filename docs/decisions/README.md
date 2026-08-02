@@ -1,23 +1,38 @@
 # Decisions
 
-Whole-program choices, and the reasoning behind them.
+PLAN.md holds the four declared deviations D1–D4. This directory holds decisions
+that are **not** one of those four but still bind the whole program — and, until
+PLAN.md is reconciled, the record of where PLAN.md and the implementation
+disagree.
 
-PLAN.md's D1–D4 are the original four and stay there. This directory holds the
-ones taken since, in the form that made them decidable: what was chosen, what
-was rejected, and **what evidence would overturn it**. A decision recorded
-without that last part is an opinion with a date on it.
+Rules, in the order they matter:
 
-The rule from CLAUDE.md applies to everything here:
+1. **A decision is a document, not a commit message.** The commit says what
+   changed; this says what was chosen, what it costs, and what was rejected.
+2. **Every number is a link into `docs/status/`, never a retyped figure.** A
+   decision that quotes a count in prose keeps quoting it after it stops being
+   true, and reads exactly the same when it does. The scripts that produce those
+   files are named in each document.
+3. **State the failure mode.** An option list without one is not a decision, it
+   is a preference.
+4. **Say what would overturn it.** A decision recorded without that is an
+   opinion with a date on it.
+5. **Reconciling PLAN.md is the maintainer's act.** An agent that edits PLAN.md
+   to match what it just built has removed the disagreement instead of resolving
+   it — which is exactly the failure #56 exists to correct.
+
+The rule from CLAUDE.md governs everything here:
 
 > The declared deviations are whole-program decisions; do not make a per-file
 > choice that contradicts one, and do not silently revisit one — reopen the
 > decision issue.
 
-That rule exists because it was broken: inheritance was implemented as
+It is in this repo because it was broken: inheritance was implemented as
 flattening and argued for as though it were a fresh decision, when PLAN.md line
-437 had already decided composition-plus-trait. That is issue #56.
+437 had already decided composition-plus-trait.
 
-| | decision | status |
+| # | decision | state |
 |---|---|---|
-| [target-one-peripheral-end-to-end](target-one-peripheral-end-to-end.md) | prove behaviour generation on UART before widening | taken 2026-08-02 |
-| [audit-cadence](audit-cadence.md) | read the C# beside the Rust, one peripheral per session | taken 2026-08-02 |
+| [#56](inheritance-layout.md) | inheritance: merge, embed, or a trait | **open — evidence gathered, choice is the maintainer's** |
+| — | [prove behaviour generation on UART before widening](target-one-peripheral-end-to-end.md) | taken 2026-08-02 |
+| — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |
