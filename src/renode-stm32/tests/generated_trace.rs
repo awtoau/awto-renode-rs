@@ -64,12 +64,26 @@
 //! read returned 0, and nothing reported a gap because nothing had matched.
 //!
 //! With offsets allowed to be expressions and the child emitted as a submodule,
-//! 5,629 of the 6,252 divergences disappear. What is left is attributable to
-//! ONE named gap: every remaining divergence is a read of LowInterruptStatus or
-//! HighInterruptStatus, whose per-stream flags are bound by a `for` loop that
-//! extends a register builder held in a local -- a shape the layout walker does
-//! not emit, and which now reports itself rather than vanishing. 0x20 is bit 5,
-//! TCIF0; 0x8000000 is bit 27, TCIF3. Exactly those flags, and nothing else.
+//! 5,629 of the 6,252 divergences disappear. Every remaining one is a read of
+//! LowInterruptStatus or HighInterruptStatus: 0x20 is bit 5, TCIF0; 0x8000000
+//! is bit 27, TCIF7. Exactly those flags, and nothing else.
+//!
+//! THAT REMAINDER WAS MISATTRIBUTED, and the correction is the useful part.
+//! Those flags are bound by a `for` loop extending a register builder held in a
+//! local -- a shape the layout walker did not emit, so the obvious reading was
+//! that the missing LAYOUT was the cause. The shape is emitted now (all 24
+//! combinator calls, the four TCIF flags in each status register at bits 5, 11,
+//! 21, 27, bound to `f.transfer_complete_irq_status[0..7]`), and BOTH NUMBERS
+//! ARE UNCHANGED. They had to be: a layout gives the register somewhere to put
+//! a value, and nothing here computes one. `TCIF` is `FieldMode.Read`, no trace
+//! write can set it, and its only C# writer is `Stream.PerformTransfer`, which
+//! needs `DmaEngine.IssueCopy` -- a type with no Rust mapping, and a gap this
+//! file has always reported.
+//!
+//! So these 623 are a BEHAVIOUR gap, not a layout one, and no register-map work
+//! will move them. A layout claim is falsifiable directly -- set the handle and
+//! read the register back -- and doing that is how the misattribution was
+//! found; the trace count alone could not tell the two apart.
 //!
 //! Neither number would be visible from the gap count, which reports the same
 //! kind of gap for both.
