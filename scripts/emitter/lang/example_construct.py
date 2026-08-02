@@ -4,9 +4,11 @@ This module exists to prove the registry works, and to give an agent picking up
 one of the emitter issues something to copy. Delete it if it ever stops being
 the simplest possible demonstration.
 
-`Parenthesized` is handled in the built-in chain too, so registering here also
-demonstrates the ORDER: registered handlers run first and may decline by
-returning None, in which case the built-in chain still gets its turn.
+`Parenthesized` has a real handler too, in `transparent.py`, so this module also
+demonstrates the ORDER: handlers for a kind run in priority order and may
+decline by returning None, in which case the next one still gets its turn. This
+one sits at the default language priority and declines every time, so the real
+handler behind it does all the work.
 """
 
 from __future__ import annotations
