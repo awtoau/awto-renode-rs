@@ -98,6 +98,17 @@ class Expressions:
                 tmpl = (linq.get("no_predicate", {}).get(meth) if not rest
                         else None) or linq.get("members", {}).get(meth)
                 if tmpl:
+                    # A chained LINQ call already yields an iterator; adding a
+                    # second `.iter()` does not compile.
+                    # Anywhere in the receiver, not just near its end: once a
+                    # chain is an iterator it stays one, and a predicate can be
+                    # arbitrarily long -- a fixed window missed `.filter(` by
+                    # one character.
+                    if any(p in recv for p in linq.get("iterator_producers", [])):
+                        tmpl = tmpl.replace("{recv}.iter()", "{recv}")
+                    # A closure body of one `return X;` is the expression X.
+                    rest = [re.sub(r"^\|([^|]*)\|\s*return\s+(.*?);?$",
+                                   r"|\1| \2", r) for r in rest]
                     return tmpl.format(recv=recv, args=", ".join(rest))
             self.unhandled[f"linq:{meth}"] = 1
             return f"/* Linq{meth} */"

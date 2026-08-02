@@ -224,7 +224,8 @@
   },
   "delegates_expr": {
     "note": "`_ => Foo(x)` in argument position becomes a Rust closure. This is the one place a lambda stays a closure rather than becoming a free fn: it is passed straight to a call and never stored on the peripheral, so it cannot outlive the borrow it captures.",
-    "closure": "|{params}| {body}"
+    "closure": "|{params}| {body}",
+    "single_expression": "A closure whose body is one `return X;` emits as `|p| X`. Rust closures are expressions, and `|x| return x.foo()` is legal but reads as a statement body -- and inside an iterator chain the parenthesisation differs enough to break. Emitted as the expression it is."
   },
   "literals": {
     "note": "A C# floating literal must keep its fraction in Rust: `16.0` emitted as `16` turns an f64 division into integer division, silently changing the result.",
@@ -313,7 +314,7 @@
       "Skip": "{recv}.iter().skip({args} as usize)",
       "ToArray": "{recv}.iter().cloned().collect::<Vec<_>>()",
       "ToList": "{recv}.iter().cloned().collect::<Vec<_>>()",
-      "OrderBy": "{recv}.iter().collect::<Vec<_>>()",
+      "OrderBy": "{recv}",
       "Sum": "{recv}.iter().sum()",
       "Max": "{recv}.iter().max().unwrap()",
       "Min": "{recv}.iter().min().unwrap()"
@@ -322,6 +323,16 @@
       "Any": "{recv}.iter().next().is_some()"
     },
     "cloned_note": "ToArray/ToList insert `.cloned()`: iterating a collection yields references, and collecting them into an owned Vec needs the copy. Mined from depyler DEPYLER-1001, which hit the same wall.",
-    "orderby_deviation": "OrderBy is NOT sorted here. C# orders by a key selector; doing that faithfully needs the key's type and an Ord bound the converter cannot yet establish, so this collects WITHOUT sorting and is wrong where order is observable. Recorded as a deviation rather than emitted as if correct -- it is the one entry in this table that is not faithful."
+    "orderby_deviation": "OrderBy is a NO-OP pass-through, and that is a recorded DEVIATION, not a mapping. C# orders by a key selector; doing that faithfully needs the key's type and an Ord bound the converter cannot yet establish. Emitting `.collect::<Vec<_>>()` was worse than doing nothing -- it terminated the iterator, so a following Select called `.map()` on a Vec and did not compile. A pass-through at least chains correctly and is honest about doing nothing. WRONG wherever order is observable; the key selector is discarded, which is why this is listed as the one unfaithful entry.",
+    "chaining_note": "The receiver gets `.iter()` only when it is a COLLECTION. A chained LINQ call already yields an iterator, and `xs.iter().filter(..).iter()` does not compile. Detected by whether the emitted receiver already ends in an iterator-producing call, which is textual but exact for what this emitter produces -- the alternative is tracking expression types, which the corpus does not yet give us for chained generics.",
+    "iterator_producers": [
+      ".iter()",
+      ".map(",
+      ".filter(",
+      ".take(",
+      ".skip(",
+      ".cloned()",
+      ".rev()"
+    ]
   }
 }
