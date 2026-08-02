@@ -37,9 +37,21 @@ def main() -> int:
 
     # 1. Hard failures. Both guard the same principle from different angles:
     #    a tracked file must not carry knowledge that belongs somewhere else.
+    # SIX OF THESE RAN NOWHERE until 2026-08-02, while four documents --
+    # CLAUDE.md, STATUS.md, the report and the work protocol -- all stated they
+    # gated every commit. `check_generated` is what turns "BUILD THE CONVERTER,
+    # DO NOT WRITE THE OUTPUT BY HAND" from a rule into an enforced one, and it
+    # was the loudest of the six not to be wired up.
+    #
+    # A documented check that does not run is worse than an undocumented one: it
+    # buys the confidence without doing the work, which is this project's whole
+    # recurring failure. Everything claimed as a gate is now actually a gate.
     for script, why in (
         ("scripts/check_paths.py", "absolute path(s) in tracked files"),
         ("scripts/check_derived.py", "derived value(s) copied into source"),
+        ("scripts/check_layering.py", "corpus knowledge in the generic layer"),
+        ("scripts/check_generated.py", "a generated file was hand-edited"),
+        ("scripts/check_ingest.py", "an operation kind lost its extraction"),
     ):
         if subprocess.run([py, script], cwd=root).returncode != 0:
             print(f"\npre-commit: {why} -- commit refused.", file=sys.stderr)

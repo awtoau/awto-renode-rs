@@ -145,6 +145,28 @@ def main() -> int:
         ["cargo", "check", "--message-format=json", "--quiet"],
         cwd=crate, capture_output=True, text=True)
 
+    # CARGO FAILING TO RUN IS NOT ZERO ERRORS. The error total below is parsed
+    # from `compiler-message` lines, so if cargo dies BEFORE compiling -- broken
+    # manifest, unresolvable path dependency, lock conflict, no registry -- it
+    # emits no JSON at all, `total` is 0, this logs "ALL MODULES COMPILE" and
+    # the ratchet exits 0.
+    #
+    # This is the only compile gate in the pre-commit hook, and it produced
+    # exactly that false green during a review on 2026-08-02. A check that
+    # reports success when it did not run is worse than no check: it is the
+    # third one found this week, after the refactor oracle that recorded a
+    # crash as a baseline and the concurrency suite that had never failed.
+    #
+    # Distinguished from "cargo ran and found errors" by whether any JSON
+    # arrived, because a normal failing build still emits messages and exits 101.
+    if not proc.stdout.strip():
+        log.error("cargo produced NO output. It did not compile anything --")
+        log.error("this is not a clean build, it is a build that never ran.")
+        log.error("exit code %d", proc.returncode)
+        for line in (proc.stderr or "(no stderr)").strip().splitlines()[:15]:
+            log.error("    %s", line)
+        return 1
+
     codes: collections.Counter = collections.Counter()
     per_mod: collections.Counter = collections.Counter()
     examples: dict[str, str] = {}
@@ -201,8 +223,20 @@ def main() -> int:
     if args.ratchet:
         import json as _json
         bf = root / "docs" / "status" / "compile_baseline.json"
-        base = _json.loads(bf.read_text()) if bf.exists() else {"errors": 10**9}
-        allowed = int(base.get("errors", 10**9))
+        # A MISSING BASELINE IS A BROKEN RATCHET, not an infinite one. This
+        # defaulted to a billion, so renaming or deleting the file turned the
+        # gate off in silence -- the same failure the ratchet exists to catch,
+        # one level up.
+        if not bf.exists():
+            log.error("no baseline at docs/status/compile_baseline.json.")
+            log.error("The ratchet has nothing to compare against and is")
+            log.error("therefore not a gate. Restore it or record one.")
+            return 1
+        base = _json.loads(bf.read_text())
+        if "errors" not in base:
+            log.error("baseline has no `errors` key -- nothing to ratchet on.")
+            return 1
+        allowed = int(base["errors"])
         if total > allowed:
             log.error("")
             log.error("RATCHET: %d errors, baseline allows %d.", total, allowed)

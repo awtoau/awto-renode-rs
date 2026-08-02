@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-02T21:36:05+10:00 from `949c38f` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-02T22:17:24+10:00 from `90d71ed` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -19,7 +19,7 @@ averaged 1.87 validation instances each.
 |---|---:|---:|
 | methods ingested | 1,564 | — |
 | operation nodes | 72,038 | — |
-| pattern clusters | 0 | — |
+| pattern clusters | 12,471 | — |
 | stubbed | 0 | 0.0% |
 | translated | 0 | 0.0% |
 | verified | 0 | 0.0% |
