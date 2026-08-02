@@ -79,6 +79,13 @@
       }
     },
     "warnings": {
+      "condwrite": {
+        "tag": "WARN",
+        "text": "the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.",
+        "severity": "warning",
+        "why": "A store the source makes conditionally, made unconditionally, accepts a value the source would have dropped. The alternative is to withhold the declaration, and that is worse: the READ side is derived from the same source and is right, so withholding to avoid one wrong write throws away every correct read with it. A warning states the difference where a reader of the output will meet it; a gap would state that nothing was emitted, which would be false.",
+        "oracle": "a trace sees it only when the guard is FALSE at a moment the trace writes. Recorded traces so far set the guard before writing — which is the ordinary driver sequence — so replay agrees while the difference is still there."
+      },
       "measure": {
         "tag": "SYNC",
         "text": "C# `lock`. Structure preserved; TIMING IS NOT.",

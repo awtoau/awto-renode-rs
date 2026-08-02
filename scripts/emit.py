@@ -138,6 +138,7 @@ from emitter.lang.postcondition import Postcondition  # noqa: E402
 from emitter.lang.severity import Severity  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
 from emitter.lang.types import Types  # noqa: E402
+from emitter.plugins.offset_switch_registers import OffsetSwitchRegisters  # noqa: E402
 from emitter.plugins.register_dsl import RegisterDsl, to_const  # noqa: E402
 from emitter.plugins.renode_expressions import RenodeExpressions  # noqa: E402
 
@@ -159,8 +160,14 @@ def _load_registered() -> None:
 _load_registered()
 
 
-class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
-              DispatchTrait, InterfaceTrait, Types, Postcondition, Severity):
+class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions,
+              Statements, DispatchTrait, InterfaceTrait, Types, Postcondition,
+              Severity):
+    # OffsetSwitchRegisters precedes RegisterDsl deliberately: it overrides
+    # `emit_registers`/`register_offsets`, calls `super()` FIRST, and only acts
+    # when the DSL forms found nothing. A peripheral that uses the DSL is
+    # therefore byte-identical to before; one that hand-rolls its registers gets
+    # a map instead of an empty function with no gap saying why.
     # Keys read from the project layer as DATA rather than as rules, so they are
     # not offered to a handler looking for a rule of that name.
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")

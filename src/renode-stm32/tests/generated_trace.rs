@@ -26,7 +26,46 @@
 //!     dma2   12,356 accesses    616 divergences    90.0%
 //!     adc1   16,800 accesses  1,192 divergences    89.6%
 //!     gpioPortA  62 accesses      3 divergences    82.4%
-//!     can1      228 accesses     99 divergences    13.9%
+//!     can1      228 accesses     28 divergences    75.7%
+//!
+//! CAN1 MOVED FURTHEST, 13.9% -> 75.7%, and what moved it is a whole SHAPE the
+//! converter could not see. `STMCAN` uses no register DSL: it hand-rolls a class
+//! per register with `SetValue(uint)`/`GetValue()` over `bool` fields and
+//! `const uint` masks, and dispatches with `switch((RegisterOffset)offset)` in
+//! `ReadDoubleWord`. The DSL forms found nothing, `define_registers` was `{}`,
+//! and NOT ONE of the forty gaps in the file said the type defines no registers.
+//!
+//! That is not one peripheral. 388 types serve a memory-mapped bus and 104 use
+//! no DSL; 59 of those dispatch a constant-case switch on the offset, and 145
+//! case bodies across 27 types read a plain field. The accessor-class half is
+//! narrow -- 3 types -- and is a SEPARATE rule so it cannot borrow the broad
+//! half's count. See rulesdb/rules/offset_switch.json.
+//!
+//! THE 28 THAT REMAIN ARE NOT LAYOUT, and each was traced to the C# statement
+//! that produces the value the trace expects:
+//!
+//!   * 20 reads of CAN_TSR expecting 0x1C000003 against 0x1C000000. Bits 0 and
+//!     1 are RQCP0/TXOK0, set by `TransmitStatusRegister.TxMailbox0Done()`,
+//!     which `WriteDoubleWord` calls after a CAN_TI0R write with TXRQ set. That
+//!     path runs `TransmitData`, and `CANMessage` has no Rust mapping -- an
+//!     existing gap. No register-map work moves these.
+//!   * 7 reads of CAN_MSR expecting 0xC01 (once 0xC00) against the reset 0xC02.
+//!     `WriteDoubleWord`'s CAN_MCR case sets `MSR.InitAck` when INRQ is set and
+//!     SLEEP clear, and clears both acks otherwise. Behaviour, and
+//!     `WriteDoubleWord` is withheld.
+//!   * 1 first read of CAN_MCR expecting 0x10000 against 0x10002. Neither side
+//!     is wrong: 0x10002 is exactly what `DeviceRegisters.Reset()` produces
+//!     (`CAN_MCR.SetValue(0x00010002)`), and it is also ST's documented reset
+//!     value. The platform description writes `WriteDoubleWord 0x0 0x00010000`
+//!     in can1's `init:` block -- before the CPU runs, so before the access log
+//!     exists. Replay starts from a reset bank and never applies it. A harness
+//!     that seeded the `.repl` init writes would close this one.
+//!
+//! Cross-checked against ST's own CMSIS header (`cmsis_device_f4`,
+//! `stm32f427xx.h`) as a THIRD opinion, used to VERIFY and never to source:
+//! every bit the C# declares individually lands on ST's position exactly -- all
+//! 10 of MCR, all 9 of MSR, all 14 of IER, all 6 of ESR, FULL/FOVR of both
+//! RFxR, TXRQ of TIxR, FINIT and CAN2SB of FMR, and FA1R's 28-bit FACT.
 //!
 //! SYSCFG AND GPIO MOVED, and for one reason each.
 //!
@@ -188,7 +227,7 @@ generated_replay!(exti_generated, renode_stm32::exti_registers, "exti", 0);
 generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1192);
 generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 7);
 generated_replay!(dma2_generated, renode_stm32::dma_registers, "dma2", 616);
-generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 99);
+generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 28);
 
 // GPIO and UART already have trace tests -- against the HAND-WRITTEN
 // peripherals. Running the GENERATED modules on the same traces is the

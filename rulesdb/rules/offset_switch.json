@@ -1,0 +1,184 @@
+{
+  "family": "OFFSET_SWITCH_REGISTERS",
+  "layer": "project",
+  "note": "Registers located by a CONSTANT-CASE SWITCH on the bus offset, and laid out from a hand-rolled accessor class, for peripherals that use no register DSL. PROJECT layer: `ReadDoubleWord` and `GetValue` are corpus conventions, not language ones.",
+  "why_this_is_a_rule_family_and_not_a_special_case": [
+    "388 types serve a memory-mapped bus; 284 use the register DSL and 104 do not. `scripts/census_memory_mapped.py` counts them and `scripts/census_handrolled_registers.py` asks the question that decides whether they SHARE anything.",
+    "59 of the 104 -- 57% -- dispatch through a switch whose case clauses are all compile-time constants: 50 on a CAST offset (`switch((SomeEnum)offset)`) and 9 on the raw parameter. That is the OFFSET half, and it is the broad half.",
+    "The FIELD half splits. `scripts/census_case_bodies.py` classifies 467 case bodies across 55 types: 125 in 24 types are `return someField` and 20 more in 4 types are `retval = someField` -- a plain storage register. 15 in 1 type delegate to a `GetValue()` accessor class, and 3 types in total declare such a class (STMCAN, EHCIHostController, ISP1761).",
+    "So `storage` is a broad rule and `accessor` is a narrow one, and they are recorded separately rather than as one number. Neither is a per-file special case: both are matched by shape over the corpus, and both decline where the shape is absent."
+  ],
+  "offset_switch": {
+    "bus_methods": {
+      "read": {
+        "ReadDoubleWord": 32,
+        "ReadWord": 16,
+        "ReadByte": 8
+      },
+      "write": {
+        "WriteDoubleWord": 32,
+        "WriteWord": 16,
+        "WriteByte": 8
+      },
+      "note": "Named rather than pattern-matched. `has a method whose name starts with Read` also catches ReadFromFile. The value is the register width in bits, which is what the bus access carries."
+    },
+    "accessor_methods": {
+      "read": "GetValue",
+      "write": "SetValue",
+      "note": "The get/set pair a hand-rolled register class declares. A case body that calls one of these on a field is a register whose LAYOUT is that field's declared type -- so the layout comes from the accessor class, not from the peripheral."
+    },
+    "modes": {
+      "read_write": "FieldMode::READ_WRITE",
+      "read": "FieldMode::READ",
+      "write": "FieldMode::WRITE",
+      "read_w1c": "FieldMode::READ | FieldMode::WRITE_ONE_TO_CLEAR",
+      "note": "Rendered names, not a mapping the emitter invents. scripts/check_field_mode.py pins the SCREAMING_SNAKE convention against renode_regs."
+    },
+    "emit": {
+      "define": "    bank.define(reg::{name}, {reset})",
+      "value": "        .with_value_anon({pos}, {width}, {mode})",
+      "flag": "        .with_flag_anon({pos}, {mode})",
+      "done": "        .done();"
+    },
+    "anonymous_fields_why": "The C# fields belong to a NESTED accessor class, not to the peripheral, so there is no `out` parameter to take a handle name from. Naming them would mean inventing one per field -- and four invented renames are already on this project's record as what made a file unreproducible. Anonymous fields carry the layout exactly and invent nothing; that behaviour cannot then reach them is a GAP, reported, not a name made up to hide it.",
+    "gaps": {
+      "no_switch": "{type} serves a memory-mapped bus but no register map could be found: no bus method dispatches a switch whose case clauses are all compile-time constants, and the type calls no register combinator either. NOTHING is in the bank.",
+      "case_not_layout": "{reg}: the case body is not a layout shape -- {why}. The register is NOT in the bank.",
+      "read_term": "{reg}: `{accessor}.GetValue()` composes a term this rule cannot place ({why}); those bits are absent from the register.",
+      "write_stmt": "{reg}: `{accessor}.SetValue()` has {n} statement(s) whose write semantics this rule cannot express ({why}); the bits they touch are emitted READ-ONLY, so a write the C# accepts is dropped here.",
+      "write_missing": "{reg}: the C# write path does not reach an accessor or a field this rule can place, so the register is emitted READ-ONLY.",
+      "shadow_field": "{reg}: `{accessor}.SetValue()` also assigns {fields}, which `GetValue()` never returns -- derived state, not register bits. Nothing here updates it, so behaviour reading it sees the default.",
+      "no_bits": "{reg}: located at {offset} but no bit could be placed, so the register is NOT in the bank.",
+      "reset": "{reg}: {why} -- the register is emitted with a reset value of 0, so its first read before any write answers 0 rather than what the source would.",
+      "region": "offsets {lo}..{hi} are decoded by a RANGE TEST in front of the switch, not by a case, so they are a replicated block rather than named registers. NOTHING in that range is in the bank."
+    },
+    "deviations": {
+      "conditional_write": {
+        "id": "condwrite",
+        "note": "The C# performs the write only under a guard it evaluates at write time. The emitted layout has no guard, so it stores where the C# would have dropped. Recorded at the site as a WARNING -- it emitted -- and NOT as a gap, because withholding the register would drop the reads as well and those are right."
+      }
+    }
+  },
+  "rules": [
+    {
+      "name": "offset_switch_register_map",
+      "family": "OFFSET_SWITCH_REGISTERS",
+      "description": "A `switch` in a bus method whose case clauses are all compile-time constants is a register map: each case constant IS an offset, and the case body says what the register is.",
+      "matches": "Switch|SwitchCase|CaseClause",
+      "emit": "bank.define(reg::{name}, {reset})",
+      "status": "proposed",
+      "instances_note": "59 of the 104 non-DSL memory-mapped types, measured by scripts/census_handrolled_registers.py.",
+      "postcondition": {
+        "emits_call": "define",
+        "combinators": 1,
+        "arity": 2,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "Two arguments and no more: the offset and the RESET WORD. The arity is the check that matters, because the reset slot is the one that can silently fall off -- a register defined without it reads 0 on its first access, before any firmware has run, and this project has already measured that as FLASH_OPTCR answering 0x0FFFAA01 against Renode's 0x0FFFAAED. Exactly one link, so locating a register can never also place a field: that is the next rule's job and merging them would let the offset rule emit bits nobody derived."
+      },
+      "negative": [
+        {
+          "must_not_match": "GetValue|SetValue",
+          "why": "This rule locates registers; it never decides what one CONTAINS. A switch that dispatches to an accessor and a switch that returns a field are the same shape here, and the layout rules below are what tell them apart. Matching the accessor call would make the offset rule depend on the field rule and neither would decline cleanly."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_reserved",
+            "with_tagged_flag"
+          ],
+          "why": "A tag or a reserved field holds no state and `Bank::write` skips it, so routing a register the C# stores into one drops every write while every trace still passes. 171 anonymous DSL fields already shipped that way once. Bits this rule cannot place are LEFT OUT and named in a gap, never covered with an inert field -- an invented `.with_reserved(9, 23)` in uart.rs is the other half of that same record."
+        }
+      ]
+    },
+    {
+      "name": "offset_switch_storage_register",
+      "family": "OFFSET_SWITCH_REGISTERS",
+      "description": "A case body that reads a plain integer field and writes it back is a full-width storage register: one value field at bit 0, the declared type's width, read-write.",
+      "matches": "SwitchCase>ExpressionStatement>SimpleAssignment>FieldReference",
+      "emit": ".with_value_anon({pos}, {width}, {mode})",
+      "status": "proposed",
+      "instances_note": "145 case bodies across 27 types (125 `return field` in 24 types, 20 `retval = field` in 4), measured by scripts/census_case_bodies.py.",
+      "postcondition": {
+        "emits_call": "with_value_anon",
+        "combinators": 1,
+        "arity": 3,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "The anonymous VALUE combinator, which stores. Every forbidden name pushes a reserved field, and `Bank::write` skips reserved fields -- so the register would drop every write and read back zero while a trace with no writes still passed. Arity 3 keeps the MODE: a storage register the source writes and this emits read-only is the same defect in the other direction, and the mode slot is what carries the difference."
+      },
+      "negative": [
+        {
+          "must_not_match": "Peek|Dequeue|Count",
+          "why": "A case body that reads through a QUEUE is computing, not storing: `RxFifo[0].Peek().CAN_RIR` has no backing word, and a full-width storage register there would answer every read with a value nothing ever wrote. STMCAN has eight such cases and they are gaps, not registers."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_reserved",
+            "with_tagged_flag"
+          ],
+          "why": "As above: a storage register that cannot be written is not a storage register."
+        }
+      ]
+    },
+    {
+      "name": "handrolled_accessor_flag",
+      "family": "OFFSET_SWITCH_REGISTERS",
+      "description": "A `(Field ? MASK : 0)` term in a hand-rolled `GetValue()` is a ONE-BIT field at the position of MASK. Its mode comes from `SetValue`: a plain `Field = (value & MASK) != 0` is read-write, an `if((value & MASK) != 0) Field = false` is write-one-to-clear, and a bit `SetValue` never touches is read-only.",
+      "matches": "Invocation>GetValue|Conditional>FieldReference",
+      "emit": ".with_flag_anon({pos}, {mode})",
+      "status": "proposed",
+      "instances_note": "3 types declare the accessor pair (STMCAN, EHCIHostController, ISP1761); STMCAN alone reaches 13 accessor classes over 15 read cases, and this form places 44 of its bits. The NARROW half of this family -- the offset half is 59 types, and the two are separate rules so the narrow one cannot borrow the broad one's count.",
+      "postcondition": {
+        "emits_call": "with_flag_anon",
+        "combinators": 1,
+        "arity": 2,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "Arity 2 and not 1 because the MODE is the whole point of reading `SetValue` at all. The tagged form hardcodes read-write and stores nothing; reaching it would turn a write-one-to-clear status bit into an inert one, and no trace that never writes the bit could see it."
+      },
+      "negative": [
+        {
+          "must_not_match": "Peek|Count|Dequeue",
+          "why": "A `GetValue` term that reads a collection is COMPUTED, not stored -- `((uint)RxFifo.Count & FMPMASK)` in STMCAN's ReceiveFifoRegister. Placing it as a field would put a field over bits nothing writes, which reads back 0 and looks like a working register."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_reserved",
+            "with_tagged_flag"
+          ],
+          "why": "A bit this rule cannot derive is LEFT OUT and gapped. Covering it with a reserved field asserts `the C# accounts for this bit and stores nothing in it`, which is a claim about the source, not about the converter's reach."
+        }
+      ]
+    },
+    {
+      "name": "handrolled_accessor_value",
+      "family": "OFFSET_SWITCH_REGISTERS",
+      "description": "A `((Field & MASK) << SHIFT)` term in a hand-rolled `GetValue()` is a MULTI-BIT field at SHIFT, as wide as MASK; a bare `return Field` is the whole word. Adjacent bits are one field only when they share both the C# field they come from and their mode.",
+      "matches": "Invocation>GetValue|Binary>LeftShift",
+      "emit": ".with_value_anon({pos}, {width}, {mode})",
+      "status": "proposed",
+      "instances_note": "Same 3 types as the flag form. In STMCAN it places ESR's LEC/TEC/REC, FMR's CAN2SB and both reserved runs, FA1R's 28-bit FACT, and the whole-word registers BTR/FM1R/FS1R/FFA1R/TI0R/TSR.",
+      "postcondition": {
+        "emits_call": "with_value_anon",
+        "combinators": 1,
+        "arity": 3,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "As the flag form, plus the WIDTH slot: a run derived from a mask that lost its width would place a one-bit field where the source has eight, and the seven bits above it would read the reset value for ever. `with_tag` takes a position and a width too, which is exactly why the name check is separate from the arity check."
+      },
+      "negative": [
+        {
+          "must_not_match": "Peek|Count|Dequeue",
+          "why": "As the flag form. A masked term whose operand is a Conversion over a property -- `(uint)RxFifo.Count & FMPMASK` -- is a computed value with no backing word, and it is reported as a gap rather than placed."
+        },
+        {
+          "emit_must_not_contain": [
+            "with_tag",
+            "with_reserved",
+            "with_tagged_flag"
+          ],
+          "why": "As the flag form."
+        }
+      ]
+    }
+  ]
+}

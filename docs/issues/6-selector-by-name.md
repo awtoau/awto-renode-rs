@@ -102,6 +102,44 @@ separate and much larger question: the idiom appears **twice** in 448k lines
 matching two sites is what CLAUDE.md calls a hand-written file wearing a rule's
 name. Do not build it to move this row.
 
+### CORRECTION -- the paragraph above drew the boundary too tight
+
+It is right about the *accessor class*: `GetValue()`/`SetValue(uint)` over
+`const uint` masks occurs in **3** types corpus-wide (`STMCAN`,
+`EHCIHostController`, `ISP1761`), which is the project's threshold and no more.
+
+It is wrong that this is all there is. That idiom is only the FIELD half of the
+shape. The OFFSET half -- a bus method dispatching a `switch` whose case clauses
+are all compile-time constants -- occurs in **59 of the 104**, 50 on a cast
+offset and 9 on the raw parameter (`scripts/census_handrolled_registers.py`).
+And a third rule sits between them: a case body that reads a plain field is a
+full-width storage register, and that is **145 case bodies across 27 types**
+(`scripts/census_case_bodies.py`). Three rules, not one, so the narrow one
+cannot borrow the broad ones' counts.
+
+Built as `rulesdb/rules/offset_switch.json` +
+`scripts/emitter/plugins/offset_switch_registers.py`. Measured reach
+(`scripts/check_offset_switch.py`): **30 of the 104 types now yield a register
+map -- 144 registers, 188 fields**; 74 decline WITH a gap saying so; none
+raises; none is silent. `can1` went 99 divergences to **28**, 13.9% to 75.7%.
+
+The census that made the difference is the second one. The first counted types
+and said 104; that number alone justifies nothing, because 104 types sharing no
+shape are 104 special cases. Asking what the case BODIES do is what separated a
+rule family from a special case, and it also confirmed which half of the
+original claim was correct.
+
+The acceptance criterion "a memory-mapped type that yields no registers emits a
+GAP saying so" is now met on the EMIT side for all 104: a type with a bus read
+method and no constant-case switch reports `no register map could be found`,
+and a case body that computes rather than stores reports which case and why.
+
+Nothing here touches the selector, which landed separately as the by-content
+change. The two are independent and compose: the selector decides WHICH method
+is asked, and these rules decide what a method that uses no DSL yields. STMCAN
+is the case where the selector's answer used to be a `bool` predicate picked in
+alphabetical order and the emitter had nothing to say about it either way.
+
 ## Acceptance
 
 - The selector is `find_registers`-based, over every member with a body
