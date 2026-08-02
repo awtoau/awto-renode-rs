@@ -52,6 +52,13 @@ def main() -> int:
         ("scripts/check_layering.py", "corpus knowledge in the generic layer"),
         ("scripts/check_generated.py", "a generated file was hand-edited"),
         ("scripts/check_ingest.py", "an operation kind lost its extraction"),
+        # Both guards fail SILENTLY if they regress: a trait forwarding to a
+        # base body compiles and passes its trace, and a field-collision guard
+        # that stops firing is indistinguishable from a corpus that stopped
+        # colliding. Neither is visible in a diff.
+        ("scripts/check_inheritance.py",
+         "dispatch stopped resolving strictly, or the collision guard stopped "
+         "being able to fire"),
     ):
         if subprocess.run([py, script], cwd=root).returncode != 0:
             print(f"\npre-commit: {why} -- commit refused.", file=sys.stderr)

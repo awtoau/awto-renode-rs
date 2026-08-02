@@ -156,6 +156,7 @@ from emitter.core import must_explain as _core_must_explain  # noqa: E402
 import importlib
 import pkgutil
 
+from emitter.lang.dispatch_trait import DispatchTrait  # noqa: E402
 from emitter.lang.expressions import Expressions  # noqa: E402
 from emitter.lang.interface_trait import InterfaceTrait  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
@@ -182,7 +183,7 @@ _load_registered()
 
 
 class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
-              InterfaceTrait, Types):
+              DispatchTrait, InterfaceTrait, Types):
     # Keys read from the project layer as DATA rather than as rules, so they are
     # not offered to a handler looking for a rule of that name.
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")
@@ -933,18 +934,26 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         spec = self.project.get("state_struct", {})
         handles = spec.get("handle_types", [])
         _ = spec.get("requires_storage")  # documented in the rule; applied in SQL
-        out: list[tuple[str, str]] = []
+        # (rust name, rust type, DECLARING C# class). The third element is what
+        # the collision guard below needs and it has to come from the query: two
+        # rows carrying one name is precisely the case, so the name alone cannot
+        # say which level each came from.
+        out: list[tuple[str, str, str]] = []
         gaps: list[str] = []
         locked = self.lock_target_fields(type_name)
         kinds = spec.get("also_state", {}).get("kinds", ["field"])
         qmarks = ",".join("?" for _ in kinds)
-        for n, dt in self.con.execute(
-                f"SELECT mb.name, mb.declared_type FROM member mb "
+        for n, dt, owner in self.con.execute(
+                f"SELECT mb.name, mb.declared_type, t.name FROM member mb "
                 f"JOIN type t ON t.id=mb.type_id WHERE t.name IN "
                 f"({','.join('?' for _ in [type_name] + self.base_chain(type_name))}) "
                 f"AND mb.kind IN ({qmarks}) "
                 f"AND mb.is_static=0 AND mb.has_storage=1 "
-                f"ORDER BY mb.name",
+                # Tie-broken on the DECLARING class. Ordering on the member name
+                # alone left two levels declaring one name in whatever order the
+                # database returned, which is exactly the population the guard
+                # below reports on -- so the gap text was not deterministic.
+                f"ORDER BY mb.name, t.name",
                 (*([type_name] + self.base_chain(type_name)), *kinds)):
             if any(h in (dt or "") for h in handles):
                 continue          # a register handle: already in `Fields`
@@ -957,7 +966,8 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 # idiom: it holds no data and exists only for mutual exclusion.
                 out.append((snake(n), self.language.get("locking", {})
                             .get("sentinel", {}).get("type",
-                                                     "std::sync::Mutex<()>")))
+                                                     "std::sync::Mutex<()>"),
+                            owner))
                 continue
             sub = getattr(self, "_sub_fields", {}).get(snake(n))
             if sub is not None:
@@ -966,7 +976,7 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 # withheld every method touching it.
                 out.append((snake(n), self.project.get("sub_blocks", {})
                             .get("state_elem", "Vec<{module}::State>")
-                            .format(**sub)))
+                            .format(**sub), owner))
                 continue
             if rt is None:
                 # An interface-typed field is D1's case and has a settled
@@ -1005,7 +1015,7 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 from emitter.lang.object_graph import reference_field
                 og_type, og_gap = reference_field(self, n, dt or "")
                 if og_type is not None:
-                    out.append((snake(n), og_type))
+                    out.append((snake(n), og_type, owner))
                     continue
                 if og_gap is not None:
                     gaps.append(og_gap)
@@ -1017,8 +1027,17 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 # the `locking` rule: structure preserved, timing not claimed.
                 rt = self.language.get("locking", {}).get(
                     "field_type", "std::sync::Mutex<{inner}>").format(inner=rt)
-            out.append((snake(n), rt))
-        return out, gaps
+            out.append((snake(n), rt, owner))
+        # MERGE'S ONE UNSAFE CASE, caught here rather than by rustc. Two levels
+        # of the chain declaring one name emit the field twice (E0124), and the
+        # struct then does not compile at all. Today's cut has no collision --
+        # which is why this is here: the census finds 11 tree-wide, two of them
+        # on types this project ships, hidden only by bases outside the cut.
+        from emitter.lang.field_collision import guard as _collision_guard
+        kept, dup_gaps = _collision_guard(
+            out, self.language.get("field_collision", {}))
+        gaps.extend(dup_gaps)
+        return kept, gaps
 
     def field_type(self, name: str) -> str:
         """Flag or value handle, decided by how the field is used."""
@@ -1199,6 +1218,32 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         return out
 
 
+def dispatch_targets(em: "Emitter") -> list[dict]:
+    """Every module the converter owns, with its text, for the trait to read.
+
+    The list is IMPORTED from check_generated.py, never retyped: it is the one
+    statement of which files the converter produces and with what arguments, and
+    a second copy here would drift into a dispatch module built from a `--method`
+    nobody else uses.
+
+    The text is REGENERATED rather than read off disk. Reading the committed
+    file would make the dispatch module a function of what happens to be checked
+    in, so a stale peripheral would silently reshape the trait; regenerating
+    makes it a function of the corpus and the rules, which is what the byte
+    oracle assumes.
+    """
+    from check_generated import GENERATED
+    out: list[dict] = []
+    for _rel, argv in GENERATED:
+        kv = dict(zip(argv[1::2], argv[2::2]))
+        if "--type" not in kv:
+            continue
+        out.append(dict(type=kv["--type"], module=kv["--file"],
+                        text=em.emit_file(kv["--type"], kv["--method"],
+                                          kv["--file"])))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--type")
@@ -1209,9 +1254,13 @@ def main() -> int:
     ap.add_argument("--interfaces", action="store_true",
                     help="emit every C# interface that can be a COMPLETE Rust "
                          "trait, to stdout")
+    ap.add_argument("--dispatch", action="store_true",
+                    help="emit the virtual-dispatch traits over every module "
+                         "the converter owns, to stdout")
     args = ap.parse_args()
-    if not args.interfaces and not (args.type and args.method):
-        ap.error("--type and --method are required unless --interfaces is given")
+    if not (args.interfaces or args.dispatch) and not (args.type and args.method):
+        ap.error("--type and --method are required unless --interfaces or "
+                 "--dispatch is given")
 
     root = repo_root()
     logdir = root / "tmp" / "logs"
@@ -1236,6 +1285,18 @@ def main() -> int:
         # byte.
         print(f"{done} of {len(report)} interface(s) emitted complete; "
               f"{len(report) - done} withheld", file=sys.stderr)
+        return 0
+    if args.dispatch:
+        text, report = em.emit_dispatch_traits(
+            dispatch_targets(em), em.project.get("dispatch", {}))
+        con.close()
+        sys.stdout.write(text)
+        traits = [r for r in report if r["methods"]]
+        print(f"{len(traits)} dispatch trait(s) emitted over "
+              f"{len({d for r in traits for d in r['implementors']})} "
+              f"implementor(s); "
+              f"{sum(len(r['withheld']) for r in report)} member(s) withheld",
+              file=sys.stderr)
         return 0
     if args.file:
         text = em.emit_file(args.type, args.method, args.file)

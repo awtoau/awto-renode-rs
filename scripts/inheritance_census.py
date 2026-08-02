@@ -396,6 +396,14 @@ class Census:
         corpus may never reach the struct. Only this can say whether merging
         breaks today, and "it would break" is exactly the kind of assertion
         this project has been burned by. So it is executed, not argued.
+
+        SINCE THE GUARD LANDED THIS MEASURES SOMETHING ELSE, and the file has to
+        say so or a reader takes the new zero for the old question's answer.
+        `state_fields` now WITHHOLDS every copy of a colliding name and reports
+        a gap, so `n_types_with_duplicate_fields` is the count of collisions the
+        guard MISSED and must stay 0. The population that used to be counted
+        there is now `n_types_guarded`: types whose struct would not have
+        compiled and which now name the collision instead.
         """
         try:
             import logging as _logging
@@ -422,8 +430,10 @@ class Census:
                 continue
             names = [n for n, _ in fields]
             dup = sorted({n for n in names if names.count(n) > 1})
-            if dup:
-                rows.append(dict(type=name, duplicate_state_fields=dup))
+            guarded = sorted(g for g in _gaps if "E0124" in g)
+            if dup or guarded:
+                rows.append(dict(type=name, duplicate_state_fields=dup,
+                                 guarded=guarded))
         con.close()
         return dict(
             ran=True,
@@ -431,10 +441,18 @@ class Census:
                   "`struct State` declares the field twice, which is rustc "
                   "E0124 -- the type does not compile at all. Embedding cannot "
                   "produce this, because the base's members sit behind a field."),
+            guard=("The emitter now withholds every copy of a colliding name "
+                   "and reports the collision as a gap, so a duplicate should "
+                   "no longer reach the struct. n_types_with_duplicate_fields "
+                   "is therefore what the GUARD MISSED and must be 0; "
+                   "n_types_guarded is the population it used to count. "
+                   "scripts/check_inheritance.py asserts the guard fires."),
             n_types_with_duplicate_fields=len(
                 [r for r in rows if r.get("duplicate_state_fields")]),
             n_duplicate_names=sum(len(r.get("duplicate_state_fields", ()))
                                   for r in rows),
+            n_types_guarded=len([r for r in rows if r.get("guarded")]),
+            n_guarded_names=sum(len(r.get("guarded", ())) for r in rows),
             detail=rows,
         )
 

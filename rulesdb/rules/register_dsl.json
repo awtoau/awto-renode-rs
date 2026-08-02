@@ -235,7 +235,8 @@
   },
   "peripheral_methods": {
     "note": "EVERY peripheral method becomes a free fn over (bank, state) -- not only the ones that touch the bank. Inside a DSL callback you hold `&Bank<S>` and `&mut S`, which is the peripheral taken apart, so a method reached from a callback cannot have a `self`. Splitting methods by whether they touch registers would give two calling conventions and a classification that shifts as rules change; 49 of 296 methods in register-bearing types touch a field today, but which ones is not a stable property. Uniform is cheaper and needs no analysis.",
-    "decl": "fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}",
+    "decl": "pub fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}",
+    "decl_visibility_note": "`pub`, and it was `fn` until the dispatch trait landed. A trait impl lives in a SIBLING module -- it has to, because one trait spans peripherals whose State types differ -- and a private fn is callable from no sibling, so the forwarding target did not exist. This is the one-time, non-additive cost the inheritance-layout decision priced and accepted: it moves every emitted peripheral-method declaration and nothing else. It is not additive and check_refactor.py goes red on it by design. Callback free fns are NOT affected: they come from the language layer's `lambdas.free_fn`, nothing outside the module calls one, and widening them would be visibility nobody asked for.",
     "call": "{name}(bank, st{args})",
     "field_handles": "st.f.{field}",
     "why_handles_in_state": "The field handles must be reachable from a free fn, so they live in S alongside the peripheral's data rather than in a sibling struct the callback cannot see.",
@@ -350,6 +351,19 @@
     "qualified_call": "{base}_{name}",
     "qualified_note": "When the derived type overrides a base method, both flatten to the same name. `base.Reset()` therefore calls the base's version under a name qualified by its declaring type -- unambiguous at any depth, and derived from the corpus rather than a hand-kept table.",
     "skip_when_external": "A base outside the corpus cut (BaseGPIOPort) cannot be flattened; the derived members that need it are withheld and the gap names the type."
+  },
+  "dispatch": {
+    "note": "How a dispatch trait REACHES a translated body. The language layer decides which members form the contract and which survive; it cannot know how one is called, because that is this project's calling convention (D2's free fns over (bank, st)) and not a fact about C#. So the shapes live here and the generic module fills them in.",
+    "why_a_receiver_type": "A trait needs something to be implemented ON, and the emitted bodies are free functions -- there is no type that owns them. The receiver holds exactly what they take, the bank and the state, so `impl Trait for Receiver` forwards with no adaptation. It also fixes the spike's mistake of keeping a separate `Fields`: the handles bound by define_registers must land in `st.f`, because that is where every emitted body reads them from, and a receiver holding its own copy would leave every handle at its default and read zeros.",
+    "signature": "^pub fn (?P<name>[a-z_][a-z0-9_]*)\\(bank: &Bank<State>, st: &mut State(?P<extra>[^\\n]*?)\\) -> (?P<ret>.+) \\{$",
+    "signature_note": "The trait's parameter and return types are read back out of the emitted module with this. Anchored on `pub fn` so a callback free fn -- which is private, from the language layer's lambdas.free_fn, and called by nothing outside the module -- is correctly invisible to dispatch. define_registers does not match either: it takes `&mut Bank<State>` and the layout struct, not the state.",
+    "imports": [
+      "use renode_regs::Bank;"
+    ],
+    "module_import": "use crate::{module};",
+    "receiver": "pub struct {ty} {{\n    pub bank: Bank<{module}::State>,\n    pub st: {module}::State,\n}}",
+    "receiver_new": "impl {ty} {{\n    pub fn new() -> Self {{\n        let mut bank: Bank<{module}::State> = Bank::new();\n        let mut st = {module}::State::default();\n        {module}::define_registers(&mut bank, &mut st.f);\n        Self {{ bank, st }}\n    }}\n}}",
+    "forward": "        {module}::{target}(&self.bank, &mut self.st{args})"
   },
   "register_collection": {
     "note": "The C# RegistersCollection IS renode-regs' Bank -- it was elided from State for that reason, so its uses must resolve to `bank` rather than to a fabricated accessor. The bank threads `&mut S` through read/write because callbacks need the peripheral's state, which is why the argument lists differ from C#. Matched on BaseRegisterCollection, the generic DECLARATION Roslyn resolves calls to -- the concrete DoubleWordRegisterCollection never appears at a call site, because targets are keyed on OriginalDefinition.",

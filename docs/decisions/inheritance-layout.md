@@ -44,6 +44,43 @@ it. That is the correct behaviour — the alternative silently ran the base's bo
 **PLAN.md line 437 stays unreconciled**, because the half that would reconcile
 it is the half that is deferred.
 
+### Landed, and one number that was wrong
+
+Both halves are in the converter. Nothing below is re-litigated; this records
+what the implementation found.
+
+- The trait is **converter output**, not a spike:
+  `src/renode-stm32/src/dispatch.rs`, produced by `python3 scripts/emit.py
+  --dispatch`, listed in `check_generated.py` and byte-checked like every other
+  generated file. The §(a) approximation is written into the file's own header,
+  from `dispatch_traits.deviation` in the language rules, so it cannot be read
+  as a translation.
+- **The cost was 26 committed lines, not 39.** The 39 counted every `fn` in the
+  seven modules; 13 of those are CALLBACK free fns, which come from the
+  language layer's `lambdas.free_fn`, are called by nothing outside their
+  module, and did not need widening. Only `peripheral_methods.decl` moved. The
+  estimate was high because it was measured with a regex over the output rather
+  than against the rule that emits each line.
+- `reset` and `offset_to_string` do leave the trait, exactly as predicted.
+  `BaseGPIOPort` yields **no** trait at all -- its only in-corpus implementor
+  can supply neither member -- which the spike did not report because it chose a
+  single base by implementor count.
+- The strict resolver is enforced, not merely written:
+  `scripts/check_inheritance.py` fails if any forward names a `{base}_{name}`
+  copy, **and fails equally if the permissive resolver stops being able to
+  demonstrate the bug**, so the check cannot quietly become vacuous. It shows 4
+  forwards that would run a base's body today.
+- The collision guard fires on **11 types, 15 names** tree-wide -- the same
+  population §2 measured as emitting a duplicate field -- including
+  `STM32_Timer`. It is asserted on a synthetic two-level corpus so it is checked
+  without a breadth database, and asserted NOT to fire on a corpus that does not
+  collide.
+
+`scripts/dispatch_spike.py` and `docs/status/dispatch.json` are left as the
+measurement taken **before** the change, which is what §(a)-(c) below cite.
+They are a snapshot, not a live file: re-running the spike now measures a tree
+where the change it was pricing has already been paid.
+
 ### What would overturn it
 
 - A closed cut showing collisions that the guard turns into gaps at a rate that

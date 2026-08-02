@@ -74,6 +74,13 @@ GENERATED: list[tuple[str, list[str]]] = [
     # A hand edit here would be a trait asserting membership the C# does not.
     ("src/renode-stm32/src/interfaces.rs",
      ["scripts/emit.py", "--interfaces"]),
+    # Also keyed on no type: the trait spans the modules above, so it is a
+    # function of ALL of them and moves whenever any one does. It reads this
+    # list to know which, and regenerates each in memory rather than reading the
+    # committed file -- otherwise a stale peripheral on disk would reshape the
+    # trait and the two checks would disagree about which is wrong.
+    ("src/renode-stm32/src/dispatch.rs",
+     ["scripts/emit.py", "--dispatch"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is

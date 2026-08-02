@@ -147,14 +147,14 @@ pub struct State {
 // The peripheral's own methods. C# reaches its state through
 // `this`; these receive it as (bank, st) instead, so a callback
 // can call them -- a closure cannot borrow what it lives inside.
-fn base_gpio_port_on_gpio(bank: &Bank<State>, st: &mut State, number: i32, value: bool) -> () {
+pub fn base_gpio_port_on_gpio(bank: &Bank<State>, st: &mut State, number: i32, value: bool) -> () {
     if !check_pin_number(bank, st, number) {
         return;
     }
     st.state[number as usize] = value;
 }
 
-fn check_pin_number(bank: &Bank<State>, st: &mut State, number: i32) -> bool {
+pub fn check_pin_number(bank: &Bank<State>, st: &mut State, number: i32) -> bool {
     if ((number < 0) || (number >= st.number_of_connections)) {
         log::error!("This peripheral supports gpio inputs from 0 to {}, but {} was called.", st.number_of_connections, number);
         return false;
@@ -162,11 +162,11 @@ fn check_pin_number(bank: &Bank<State>, st: &mut State, number: i32) -> bool {
     return true;
 }
 
-fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
+pub fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {
     return bank.read(offset as u64, st).unwrap_or(0) as u32;
 }
 
-fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
+pub fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value: u32) -> () {
     bank.write(offset as u64, value as u64, st);
 }
 
