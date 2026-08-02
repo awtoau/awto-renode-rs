@@ -51,6 +51,7 @@ pub struct Fields {
     pub dma_enabled: FlagId,
     pub dma_issue_request: FlagId,
     pub end_of_conversion_select: FlagId,
+    pub regular_sequence: [ValueId; 16],
 }
 
 /// The peripheral's own state: every C# instance member that actually
@@ -203,29 +204,29 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::REGULAR_SEQUENCE1, 0)
-        .with_tag(0, 5)
-        .with_tag(5, 5)
-        .with_tag(10, 5)
-        .with_tag(15, 5)
+        .with_value(0, 5, &mut f.regular_sequence[12], FieldMode::READ_WRITE)
+        .with_value(5, 5, &mut f.regular_sequence[13], FieldMode::READ_WRITE)
+        .with_value(10, 5, &mut f.regular_sequence[14], FieldMode::READ_WRITE)
+        .with_value(15, 5, &mut f.regular_sequence[15], FieldMode::READ_WRITE)
         .with_value_cb(20, 4, FieldMode::READ_WRITE, None, Some(regular_sequence1_20_writer))
         .done();
 
     bank.define(reg::REGULAR_SEQUENCE2, 0)
-        .with_tag(0, 5)
-        .with_tag(5, 5)
-        .with_tag(10, 5)
-        .with_tag(15, 5)
-        .with_tag(20, 5)
-        .with_tag(25, 5)
+        .with_value(0, 5, &mut f.regular_sequence[6], FieldMode::READ_WRITE)
+        .with_value(5, 5, &mut f.regular_sequence[7], FieldMode::READ_WRITE)
+        .with_value(10, 5, &mut f.regular_sequence[8], FieldMode::READ_WRITE)
+        .with_value(15, 5, &mut f.regular_sequence[9], FieldMode::READ_WRITE)
+        .with_value(20, 5, &mut f.regular_sequence[10], FieldMode::READ_WRITE)
+        .with_value(25, 5, &mut f.regular_sequence[11], FieldMode::READ_WRITE)
         .done();
 
     bank.define(reg::REGULAR_SEQUENCE3, 0)
-        .with_tag(0, 5)
-        .with_tag(5, 5)
-        .with_tag(10, 5)
-        .with_tag(15, 5)
-        .with_tag(20, 5)
-        .with_tag(25, 5)
+        .with_value(0, 5, &mut f.regular_sequence[0], FieldMode::READ_WRITE)
+        .with_value(5, 5, &mut f.regular_sequence[1], FieldMode::READ_WRITE)
+        .with_value(10, 5, &mut f.regular_sequence[2], FieldMode::READ_WRITE)
+        .with_value(15, 5, &mut f.regular_sequence[3], FieldMode::READ_WRITE)
+        .with_value(20, 5, &mut f.regular_sequence[4], FieldMode::READ_WRITE)
+        .with_value(25, 5, &mut f.regular_sequence[5], FieldMode::READ_WRITE)
         .done();
 
     bank.define(reg::REGULAR_DATA, 0)

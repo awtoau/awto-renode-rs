@@ -249,7 +249,20 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         inner = self.children(args[ordinal][0])
         if not inner:
             return None
-        sym = inner[0][2]
+        node, kind, sym = inner[0][0], inner[0][1], inner[0][2]
+        if kind == "ArrayElementReference":
+            # `out regularSequence[0]` -- the target is an ARRAY ELEMENT, not a
+            # plain field. Unrecognised, this returned None, the combinator
+            # rule fell through to the tag form, and the register STOPPED
+            # STORING: every read came back 0 while the trace expected the
+            # written value. Silent, and only a trace could see it.
+            kids = self.children(node)
+            if len(kids) >= 2:
+                arr = kids[0][2]
+                idx = self.emit_expr(kids[1][0])
+                if arr:
+                    base = snake(arr.split(".")[-1].split("(")[0])
+                    return f"{base}[{idx}]"
         # Symbol is a fully-qualified field reference; the leaf is the name.
         return snake(sym.split(".")[-1].split("(")[0]) if sym else None
 
@@ -853,7 +866,23 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
         a("#[derive(Default)]")
         a("pub struct Fields {")
         for f in fields:
+            if "[" in f:
+                continue          # collapsed into an array below
             a(f"    pub {f}: {self.field_type(f)},")
+        # `out arr[i]` handles collapse into ONE array declaration. Emitting
+        # `pub regular_sequence[12]: ValueId` per index is not Rust; the size
+        # is the highest index seen, because C# sized the array at its
+        # declaration and every element the register map binds must exist.
+        arrays: dict[str, int] = {}
+        for f in fields:
+            if "[" in f:
+                base, _, rest = f.partition("[")
+                try:
+                    arrays[base] = max(arrays.get(base, -1), int(rest.rstrip("]")))
+                except ValueError:
+                    continue
+        for base, hi in sorted(arrays.items()):
+            a(f"    pub {base}: [{self.field_type(base)}; {hi + 1}],")
         a("}")
         a("")
         # The offset enum is already `mod reg`; identified by content.

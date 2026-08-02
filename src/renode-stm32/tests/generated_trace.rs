@@ -110,7 +110,7 @@ macro_rules! generated_replay {
 
 generated_replay!(syscfg_generated, renode_stm32::syscfg_registers, "syscfg", 2);
 generated_replay!(exti_generated, renode_stm32::exti_registers, "exti", 0);
-generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1788);
+generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1192);
 generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 88);
 generated_replay!(dma2_generated, renode_stm32::dma_registers, "dma2", 6164);
 generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 99);
