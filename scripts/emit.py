@@ -1189,6 +1189,13 @@ class Emitter(RenodeExpressions, Expressions, Statements, Types):
             WHERE t.name = ? AND mb.name = ? AND m.has_body = 1""",
             (type_name, method_name)).fetchone()
         if not row:
+            # Silent before: a method that does not exist, or has no body,
+            # produced nothing AND reported nothing -- so a caller referring to
+            # it showed up as "needs peer method not yet emitted", naming a
+            # method the corpus has never heard of. Say which.
+            self.gaps.append(
+                f"{method_name}: no such method on `{type_name}` with a body "
+                f"-- the caller's reference may be to a different type")
             return []
         method_id, ret_cs = row
         before = len(self.unhandled)
