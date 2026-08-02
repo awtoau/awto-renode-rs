@@ -1,0 +1,60 @@
+graph LR
+    ActualLogger --> LogSourcesMap
+    AlarmConfig --> STM32F4_RTC
+    AlarmConfig --> TimerConfig
+    BaseGPIOPort --> IMachine
+    BaseRegisterCollection --> IPeripheral
+    BaseRegisterCollection --> RegisterSelector
+    BasicBytePeripheral --> IBusController
+    BasicBytePeripheral --> IMachine
+    BasicDoubleWordPeripheral --> IBusController
+    BasicDoubleWordPeripheral --> IMachine
+    BitBanding --> IBusController
+    CaptureCompareChannel --> GPIO
+    CaptureCompareChannel --> STM32_Timer
+    CortexM --> NVIC
+    DeviceRegisters --> BitTimingRegister
+    DeviceRegisters --> ErrorStatusRegister
+    DeviceRegisters --> FifoAssignmentRegister
+    DeviceRegisters --> FilterActiveRegister
+    DeviceRegisters --> FilterMasterRegister
+    DeviceRegisters --> FilterModeRegister
+    DeviceRegisters --> FilterScaleRegister
+    DeviceRegisters --> InterruptEnableRegister
+    DeviceRegisters --> MailboxIdentifierRegister
+    DeviceRegisters --> MasterControlRegister
+    DeviceRegisters --> MasterStatusRegister
+    DeviceRegisters --> ReceiveFifoRegister
+    DeviceRegisters --> TransmitStatusRegister
+    GPIOAlternateFunction --> STM32_GPIOPort
+    InternalReceiver --> STM32_SYSCFG
+    MappedMemory --> IMachine
+    MappedMemory --> SharedSegment
+    MappedSegment --> MappedMemory
+    NVIC --> CortexM
+    NVIC --> ExceptionSimpleArray
+    NVIC --> IMachine
+    NVIC --> SecurityBanked
+    PeripheralRegister --> IPeripheral
+    RegisterField --> PeripheralRegister
+    STM32DMA --> Stream
+    STM32F4_FlashController --> MappedMemory
+    STM32F4_RTC --> AlarmConfig
+    STM32F4_RTC --> TimerConfig
+    STM32_GPIOPort --> GPIOAlternateFunction
+    STM32_Timer --> CaptureCompareChannel
+    STM32_Timer --> IBusController
+    STM32_Timer --> IMachine
+    STMCAN --> DeviceRegisters
+    STMCAN --> FilterBank
+    STMCAN --> STMCAN
+    Stream --> STM32DMA
+    SysTick --> NVIC
+    TimerConfig --> STM32F4_RTC
+    %% cycle: AlarmConfig <-> STM32F4_RTC
+    %% cycle: CaptureCompareChannel <-> STM32_Timer
+    %% cycle: CortexM <-> NVIC
+    %% cycle: GPIOAlternateFunction <-> STM32_GPIOPort
+    %% cycle: STM32DMA <-> Stream
+    %% cycle: STM32F4_RTC <-> TimerConfig
+    %% cycle: STMCAN <-> STMCAN
