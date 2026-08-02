@@ -199,6 +199,36 @@
       "fix": "record both, in the same column the expression operator kinds use",
       "impact": "`> 5` was indistinguishable from `< 5`, and `and` from `or`, on 21 pattern nodes",
       "why_it_hid": "the hand-typed corpus cut contained no C# pattern matching whatsoever, so the kinds never appeared. Surfaced the first time the ingest read the whole tree."
+    },
+    {
+      "bug": "field, property and event INITIALISERS were not walked",
+      "cause": "operations were walked only for members that had a method; an initialiser written at the declaration belongs to a field, which has none",
+      "fix": "walk the declaration's EqualsValueClause -- GetOperation returns the IFieldInitializerOperation / IPropertyInitializerOperation directly -- and attach the tree to the member. Const fields and enum members are excluded because their value is already on the member row, and re-recording it would be a second source of truth",
+      "impact": "1,414 initialisers, 30,719 operation nodes, absent from the corpus entirely. `private bool x = true;` was indistinguishable from `private bool x;`, which INVERTS the initial value; and an array's declared length existed nowhere, so a length could only be inferred from the highest index later code happened to use -- which is smaller, and compiles",
+      "why_it_hid": "an inferred length is not an error and an unstated initial value is not an error. Nothing reads an element no code binds, so the short array behaved identically under every test; the difference is visible only against the declaration",
+      "schema": "operation.method_id, call_site.caller_id and field_access.method_id referenced method(member_id) and now reference member(id). The constraint encoded the assumption that only methods contain code",
+      "why_the_first_attempt_was_reverted": "not the walker, which was correct. It was measured by a re-ingest run through `dotnet run --no-build`, which executes whatever is already in bin/ -- so the walk that produced 'zero field-attached operations' was the OLD binary. Rebuilding that same branch's Walker.cs from source produces 30,139 field-attached operations. scripts/check_determinism.py and scripts/check_breadth.py now build before their --no-build runs, and Ingest.cs now counts and names every row the write discards, so neither half of that failure can recur in silence"
+    },
+    {
+      "bug": "parameter default VALUES unrecorded",
+      "cause": "only the has_default FLAG was read; IParameterSymbol.ExplicitDefaultValue was not",
+      "fix": "record the value, invariant-culture. NULL means either no default or a default of null, and has_default separates the two -- a \"null\" sentinel string would collide with the literal \"null\"",
+      "impact": "2,698 optional parameters said they were optional without saying what omitting one MEANS, which is the entire content of an optional argument and of folding a constructor into Default. 1,741 carry a non-null value",
+      "why_it_hid": "no consumer existed. Optional arguments were deferred on instance count, so nothing ever asked the corpus for the value and found it missing"
+    },
+    {
+      "bug": "IUnaryOperation.IsChecked unrecorded",
+      "cause": "the detail switch had a case for IBinaryOperation and none for IUnaryOperation, though both expose IsChecked and IsLifted",
+      "fix": "record checked and lifted for unary too",
+      "impact": "all 4,360 Unary rows had empty detail where every Binary row carried one, so unary minus could not be routed to the runtime the way Subtract was. 2 sites are checked; `-int.MinValue` is the case that separates them",
+      "why_it_hid": "routing on an ASSUMED unchecked context is a guess that looks like a mapping, and it is right almost everywhere -- the two sites where it is not are the whole point"
+    },
+    {
+      "bug": "exception filter presence unrecorded",
+      "cause": "ICatchClauseOperation.Filter was not read; CatchClause was declared structural",
+      "fix": "record filter presence and the exception type on every catch clause",
+      "impact": "5 of 268 catch clauses have a `when` filter. A filter runs BEFORE unwinding and may DECLINE, so it is not an `if` at the top of the handler; without the fact, translating one away leaves no trace",
+      "why_it_hid": "recorded in the issue as 0 tree-wide, which was never re-counted after the corpus stopped being a hand-picked subset. The fact was requested so a FUTURE corpus would fail loudly; the current one already contains five"
     }
   ],
   "statements": {

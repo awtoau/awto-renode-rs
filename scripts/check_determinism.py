@@ -34,10 +34,14 @@ TABLES = {
                     "COALESCE(base_type_id,-1), COALESCE(base_extern,'')",
     "member":       "id, type_id, key, kind, name, declared_type, accessibility",
     "method":       "member_id, signature, return_type, is_virtual, is_extension",
-    "parameter":    "id, method_id, ordinal, name, type, is_out, is_ref",
+    # has_default/default_value and operation.detail are compared because a
+    # column this check does not read is a column that can diverge unnoticed --
+    # `detail` is the walker's whole per-kind extraction and was unchecked.
+    "parameter":    "id, method_id, ordinal, name, type, is_out, is_ref, "
+                    "has_default, COALESCE(default_value,'')",
     "operation":    "id, method_id, COALESCE(parent_id,-1), ordinal, depth, kind, "
                     "COALESCE(type,''), COALESCE(symbol,''), COALESCE(const_value,''), "
-                    "span_start, span_len",
+                    "COALESCE(detail,''), span_start, span_len",
     "call_site":    "id, caller_id, COALESCE(callee_id,-1), COALESCE(callee_extern,''), "
                     "operation_id, is_virtual",
     "field_access": "id, method_id, member_id, operation_id, is_write",
@@ -60,6 +64,26 @@ def load_env(root: Path) -> dict[str, str]:
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
     return env
+
+
+def build(root: Path, env: dict[str, str], log) -> bool:
+    """Compile the ingest before the two `--no-build` runs below.
+
+    `--no-build` runs whatever is already in bin/, so a Walker.cs change that
+    was never compiled produces a re-ingest that SUCCEEDS while extracting the
+    old facts. That is not hypothetical: the field-initialiser branch was
+    reverted for "does not reproduce on a clean re-ingest" after a run that
+    reported zero field-attached operations -- and its walker, rebuilt from
+    source and re-run, produces 30,139 of them. The code was right; the binary
+    was stale. One build, once, removes the whole failure mode.
+    """
+    r = subprocess.run(["dotnet", "build", "-v", "q"],
+                       cwd=root / "frontend" / "RenodeIngest", env=env,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        log.error("ingest build failed:\n%s", r.stdout[-2000:] + r.stderr[-2000:])
+        return False
+    return True
 
 
 def ingest(root: Path, env: dict[str, str], db: Path, threads: int, log) -> bool:
@@ -114,6 +138,8 @@ def main() -> int:
     tmp.mkdir(exist_ok=True)
     db1, dbn = tmp / "determinism-j1.db", tmp / f"determinism-j{args.threads}.db"
 
+    if not build(root, env, log):
+        return 1
     if not ingest(root, env, db1, 1, log):
         return 1
     if not ingest(root, env, dbn, args.threads, log):

@@ -19,6 +19,14 @@ public sealed class FileResult
     public List<OperationRec> Operations { get; } = new();
     public List<CallSiteRec> Calls { get; } = new();
     public List<FieldAccessRec> FieldAccesses { get; } = new();
+
+    /// Member initialisers whose operation tree was walked, and those whose
+    /// declaration HAD an `= ...` clause that bound to no operation. The second
+    /// number must stay 0: a non-zero value is the walker losing code, which is
+    /// exactly how the first attempt at initialisers shipped zero rows while
+    /// appearing to run. Reported by Ingest, never inferred from a row count.
+    public int InitialisersWalked;
+    public int InitialisersUnbound;
 }
 
 public sealed class TypeRec
@@ -70,8 +78,13 @@ public sealed class MethodRec
     public List<LocalRec> Locals { get; } = new();
 }
 
+/// <param name="DefaultValue">
+/// The default's value, or null when there is none OR when the default is
+/// itself null -- `HasDefault` separates those. See Walker.DefaultValueOf.
+/// </param>
 public sealed record ParamRec(int Ordinal, string Name, string Type,
-                              bool IsOut, bool IsRef, bool IsParams, bool HasDefault);
+                              bool IsOut, bool IsRef, bool IsParams, bool HasDefault,
+                              string? DefaultValue);
 
 public sealed record LocalRec(string Name, string Type, bool IsCaptured);
 

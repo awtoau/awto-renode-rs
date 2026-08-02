@@ -23,7 +23,7 @@ were taken against the 21,620-line cut; the corpus is now 448,375 lines.
 | `IDisposable` / `using` | 3 | 215 | `Drop`, with two documented divergences. The existing `no_rust_form` refusal covers the TYPE, not the statement. **215 tree-wide is no longer a rounding error.** |
 | `yield return` / `yield break` | 8 / 1 | 82 / 3 | Rust `gen` blocks are **still unstable** (rust-lang#117078), so the only stable option is an explicit state machine — which is what the C# compiler itself emits. Note it lowers BELOW `IOperation`, so it is a whole-method rewrite, not a rule. |
 | `async` / `await` | **0** | 15 | correctly deferred. **No prior art exists** on translating a language's async to Rust's, and no published rejection either. Picking an executor is a whole-program decision of D1–D4 weight. |
-| exception filters (`catch … when`) | **0** | 0 | correctly not built. But the ingest should RECORD filter presence so a future corpus fails loudly — it does not. |
+| exception filters (`catch … when`) | **0** | **5** | the tree count was never re-taken and is not 0. The ingest now records filter presence on all 268 catch clauses, so the five are visible instead of silently translatable as an `if` at the top of the handler. Still not built — but now it can refuse rather than guess. |
 | `dynamic` | 3 | 90 | no handler and, worse, **no refusal note**. Every surveyed AOT C# compiler refuses `dynamic`; we have the precedent and never wrote it down. |
 | operator overloading | 11 | ~76 | `op_Implicit`/`op_Explicit` dominate tree-wide (30/15) — user-defined conversions, the dangerous half. Unmeasured. |
 | extension methods, general case | 220 | 567 | only LINQ is handled, via a marker match. |
@@ -43,25 +43,34 @@ existence proof that this is a **component**, not a rule.
 **`Queue.Dequeue` / `.Peek`.** The panic is faithful; only the *message*
 differs. Recorded to move together with `First` when D4 lands.
 
-## Blocked on an ingest gap, not on instance count
+## Blocked on an ingest gap, not on instance count — CLOSED
 
-These are properties Roslyn exposes that `Walker.cs` does not read. Same class
-as the nine already recorded in `csharp_core.json` under
-`known_transpiler_bugs_fixed`, **none of which was a Roslyn limitation**.
+All four were properties Roslyn exposes that `Walker.cs` did not read. Same
+class as the nine already recorded in `csharp_core.json` under
+`known_transpiler_bugs_fixed`, **none of which was a Roslyn limitation**, and
+these four were not either. Each is now recorded there, and each has a count in
+`scripts/check_ingest.py` so losing it again moves a number.
 
-1. **Parameter default VALUES.** `parameter.has_default` is a flag; the value is
-   absent. `IParameterSymbol.ExplicitDefaultValue`. Blocks folding any
-   constructor into `Default`, and blocks optional arguments entirely.
-2. **Field initialisers.** Absent from the corpus completely — verified twice,
-   independently. `private bool x = true;` is **indistinguishable from**
-   `private bool x;`, which silently inverts the initial value.
-   `IFieldInitializerOperation`. This is what still blocks
-   `CortexM.pcNotInitialized`.
-3. **`IUnaryOperation` has no `checked` flag.** Every Unary row's `detail` is
-   empty where every Binary row carries one, so `operators.unary.Minus` cannot
-   be routed to the runtime the way `Subtract` was — routing on an assumed
-   context is a guess dressed as a mapping.
-4. **Exception filter presence** — see above.
+| gap | Roslyn property | corpus before | after |
+|---|---|---:|---:|
+| field / property / event initialisers | `GetOperation(EqualsValueClauseSyntax)` | 0 | 1,414 initialisers, 30,719 operation nodes |
+| parameter default VALUES | `IParameterSymbol.ExplicitDefaultValue` | flag only | 1,741 of 2,698 carry a value |
+| unary checked-ness | `IUnaryOperation.IsChecked` | 0 of 4,360 | 4,360 of 4,360 |
+| exception filter presence | `ICatchClauseOperation.Filter` | 0 of 268 | 268 of 268, five of them true |
+
+Consuming them is separate work and is not done: optional arguments, folding a
+constructor into `Default`, routing unary minus to the runtime, and refusing a
+`when` filter are all still unbuilt. The corpus can now answer the questions
+they ask, which it could not before.
+
+**The first attempt at the initialisers was reverted for not reproducing, and
+the walker was not the reason.** The measuring run went through
+`dotnet run --no-build`, which executes whatever is in `bin/` — so it walked
+with the previous binary and honestly reported zero. That branch's `Walker.cs`,
+rebuilt from source, produces 30,139 field-attached operations. Both halves are
+now closed: `check_determinism.py` and `check_breadth.py` build first, and
+`Ingest.cs` counts and names every row the write discards instead of
+`continue`-ing past it.
 
 ## Latent, found and not fixed
 

@@ -85,6 +85,24 @@ public static class Ingest
         var memberIds = new Dictionary<string, long>(StringComparer.Ordinal);
         var opIds = new Dictionary<(string File, int Local), long>();
 
+        // EVERY `continue` below is a row the walk produced and the write threw
+        // away. They used to be silent, and that silence cost a whole reverted
+        // branch: field initialisers were walked, never landed, and the only
+        // symptom was an array three elements short -- which compiles.
+        //
+        // A drop is not automatically a bug (a field access whose target is a
+        // BCL member has nothing in the corpus to point at), so this counts and
+        // names rather than throwing. What it removes is the ability for a
+        // whole category to vanish without a number moving. The categories that
+        // SHOULD be empty are a hard failure, checked before the commit.
+        var drops = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        var dropExample = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Drop(string what, string example)
+        {
+            drops[what] = drops.GetValueOrDefault(what) + 1;
+            if (!dropExample.ContainsKey(what)) dropExample[what] = example;
+        }
+
         // 2a. files, types, members, methods
         foreach (var f in ordered)
         {
@@ -109,7 +127,11 @@ public static class Ingest
             foreach (var m in f.Members)
             {
                 if (memberIds.ContainsKey(m.Key)) continue;
-                if (!typeIds.TryGetValue(m.TypeKey, out var typeId)) continue;
+                if (!typeIds.TryGetValue(m.TypeKey, out var typeId))
+                {
+                    Drop("member: containing type not written", m.Key);
+                    continue;
+                }
                 var id = await ScalarInsert(db, tx,
                     "INSERT INTO member(run_id,type_id,key,kind,name,declared_type," +
                     "accessibility,is_static,is_readonly,has_storage,const_value) " +
@@ -134,10 +156,12 @@ public static class Ingest
                 foreach (var p in mm.Parameters)
                     await Exec(db, tx,
                         "INSERT INTO parameter(method_id,ordinal,name,type,is_out,is_ref," +
-                        "is_params,has_default) VALUES ($m,$o,$n,$t,$u,$r,$p,$d)",
+                        "is_params,has_default,default_value) " +
+                        "VALUES ($m,$o,$n,$t,$u,$r,$p,$d,$v)",
                         ("$m", id), ("$o", p.Ordinal), ("$n", p.Name), ("$t", p.Type),
                         ("$u", p.IsOut ? 1 : 0), ("$r", p.IsRef ? 1 : 0),
-                        ("$p", p.IsParams ? 1 : 0), ("$d", p.HasDefault ? 1 : 0));
+                        ("$p", p.IsParams ? 1 : 0), ("$d", p.HasDefault ? 1 : 0),
+                        ("$v", (object?)p.DefaultValue ?? DBNull.Value));
             }
         }
 
@@ -170,7 +194,11 @@ public static class Ingest
         foreach (var f in ordered)
         foreach (var o in f.Operations)
         {
-            if (!memberIds.TryGetValue(o.MethodKey, out var methodId)) continue;
+            if (!memberIds.TryGetValue(o.MethodKey, out var methodId))
+            {
+                Drop("operation: owning member not written", $"{o.Kind} in {o.MethodKey}");
+                continue;
+            }
             object parentId = o.ParentLocalId is { } pl && opIds.TryGetValue((f.Path, pl), out var p)
                               ? p : DBNull.Value;
             var id = await ScalarInsert(db, tx,
@@ -191,8 +219,16 @@ public static class Ingest
         {
             foreach (var c in f.Calls)
             {
-                if (!memberIds.TryGetValue(c.CallerKey, out var caller)) continue;
-                if (!opIds.TryGetValue((f.Path, c.OperationLocalId), out var opId)) continue;
+                if (!memberIds.TryGetValue(c.CallerKey, out var caller))
+                {
+                    Drop("call_site: caller not written", c.CallerKey);
+                    continue;
+                }
+                if (!opIds.TryGetValue((f.Path, c.OperationLocalId), out var opId))
+                {
+                    Drop("call_site: call operation not written", c.CallerKey);
+                    continue;
+                }
                 var inCorpus = c.CalleeKey is not null && memberIds.ContainsKey(c.CalleeKey);
                 await Exec(db, tx,
                     "INSERT INTO call_site(run_id,caller_id,callee_id,callee_extern," +
@@ -204,15 +240,72 @@ public static class Ingest
             }
             foreach (var a in f.FieldAccesses)
             {
-                if (!memberIds.TryGetValue(a.MethodKey, out var mid)) continue;
-                if (!memberIds.TryGetValue(a.MemberKey, out var fid)) continue;
-                if (!opIds.TryGetValue((f.Path, a.OperationLocalId), out var opId)) continue;
+                if (!memberIds.TryGetValue(a.MethodKey, out var mid))
+                {
+                    Drop("field_access: accessing member not written", a.MethodKey);
+                    continue;
+                }
+                // EXPECTED and not a bug: the field is outside the corpus (a BCL
+                // or third-party member), so there is no row to point at.
+                // Counted anyway -- a sudden jump means the corpus shrank.
+                if (!memberIds.TryGetValue(a.MemberKey, out var fid))
+                {
+                    Drop("field_access: target field outside the corpus", a.MemberKey);
+                    continue;
+                }
+                if (!opIds.TryGetValue((f.Path, a.OperationLocalId), out var opId))
+                {
+                    Drop("field_access: reference operation not written", a.MemberKey);
+                    continue;
+                }
                 await Exec(db, tx,
                     "INSERT INTO field_access(run_id,method_id,member_id,operation_id,is_write) " +
                     "VALUES ($r,$m,$f,$o,$w)",
                     ("$r", runId), ("$m", mid), ("$f", fid), ("$o", opId),
                     ("$w", a.IsWrite ? 1 : 0));
             }
+        }
+
+        var walked = ordered.Sum(r => (long)r.InitialisersWalked);
+        var unbound = ordered.Sum(r => (long)r.InitialisersUnbound);
+        Console.WriteLine($"initialisers {walked:N0} walked, {unbound} that had an "
+                        + "`= ...` clause and bound to no operation");
+
+        Console.WriteLine();
+        if (drops.Count == 0)
+        {
+            Console.WriteLine("drops     none -- every walked row was written");
+        }
+        else
+        {
+            Console.WriteLine("drops     rows the walk produced and the write discarded");
+            foreach (var (what, n) in drops)
+                Console.WriteLine($"          {n,8:N0}  {what}   e.g. {Truncate(dropExample[what], 90)}");
+        }
+
+        // The categories that must be empty. A member the walk built and the
+        // write could not place, or an operation with no owning member, means
+        // the two passes disagree about what exists -- the exact failure that
+        // made field initialisers vanish while every count that existed stayed
+        // green.
+        //
+        // Checked BEFORE the commit, and the transaction is abandoned, so an
+        // incomplete corpus never reaches disk. A written-but-refused database
+        // is how a stale corpus gets used by the next tool: the ingest exits
+        // non-zero, and whoever ignores that finds a file where they expect one.
+        var fatal = drops.Where(d => !d.Key.StartsWith("field_access: target field outside",
+                                                       StringComparison.Ordinal)).ToList();
+        if (fatal.Count > 0 || unbound > 0)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("INGEST INCOMPLETE -- the walk produced rows the write did not store.");
+            foreach (var (what, n) in fatal)
+                Console.Error.WriteLine($"  {n:N0}  {what}");
+            if (unbound > 0)
+                Console.Error.WriteLine($"  {unbound:N0}  initialiser clause bound to no operation");
+            Console.Error.WriteLine("Nothing was committed.");
+            await tx.RollbackAsync();
+            return false;
         }
 
         await Exec(db, tx, "UPDATE corpus_run SET finished_at=$f WHERE id=$i",
@@ -222,9 +315,12 @@ public static class Ingest
 
         Console.WriteLine($"write     {write.Elapsed.TotalSeconds:F1}s [SERIAL -- ids assigned here, "
                         + "so they never depend on thread scheduling]");
+
         await Report(db, full);
         return true;
     }
+
+    private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n] + "...";
 
     private static async Task Report(SqliteConnection db, string dbPath)
     {

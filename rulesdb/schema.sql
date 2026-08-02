@@ -123,6 +123,15 @@ CREATE TABLE IF NOT EXISTS parameter (
     is_ref      INTEGER NOT NULL DEFAULT 0,
     is_params   INTEGER NOT NULL DEFAULT 0,
     has_default INTEGER NOT NULL DEFAULT 0,
+    -- The default's VALUE, invariant-culture. `has_default` alone said a
+    -- parameter was optional without saying what omitting it means, which is
+    -- the whole content of an optional argument and of folding a constructor
+    -- into `Default`. IParameterSymbol.ExplicitDefaultValue has always had it.
+    --
+    -- NULL here means EITHER no default OR a default of null; `has_default`
+    -- separates them, so (has_default = 1, default_value IS NULL) is `= null`.
+    -- A "null" sentinel string would have collided with the literal `"null"`.
+    default_value TEXT,
     UNIQUE (method_id, ordinal)
 );
 
@@ -141,7 +150,13 @@ CREATE TABLE IF NOT EXISTS local (
 CREATE TABLE IF NOT EXISTS operation (
     id          INTEGER PRIMARY KEY,
     run_id      INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    method_id   INTEGER NOT NULL REFERENCES method(member_id) ON DELETE CASCADE,
+    -- The MEMBER the code belongs to, not necessarily a method. This referenced
+    -- `method(member_id)`, which encoded the assumption that method bodies are
+    -- the only code -- a field INITIALISER is code, and it belongs to a field.
+    -- The COLUMN NAME stays `method_id` because every query in the tree reads
+    -- it and renaming buys nothing; the constraint is what was wrong. A query
+    -- that wants methods only should join `method`.
+    method_id   INTEGER NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     parent_id   INTEGER REFERENCES operation(id),
     ordinal     INTEGER NOT NULL,   -- position among siblings
     depth       INTEGER NOT NULL,
@@ -168,7 +183,9 @@ CREATE INDEX IF NOT EXISTS idx_op_symbol ON operation(run_id, symbol);
 CREATE TABLE IF NOT EXISTS call_site (
     id            INTEGER PRIMARY KEY,
     run_id        INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    caller_id     INTEGER NOT NULL REFERENCES method(member_id),
+    -- A MEMBER, for the same reason as operation.method_id: a field initialiser
+    -- calls things (`= Enumerable.Range(0, 8).ToArray()`) and is not a method.
+    caller_id     INTEGER NOT NULL REFERENCES member(id),
     callee_id     INTEGER REFERENCES method(member_id),  -- null when outside the corpus
     callee_extern TEXT,             -- BCL/external target name, when callee_id is null
     operation_id  INTEGER NOT NULL REFERENCES operation(id),
@@ -180,7 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_call_callee ON call_site(callee_id);
 CREATE TABLE IF NOT EXISTS field_access (
     id           INTEGER PRIMARY KEY,
     run_id       INTEGER NOT NULL REFERENCES corpus_run(id) ON DELETE CASCADE,
-    method_id    INTEGER NOT NULL REFERENCES method(member_id),
+    method_id    INTEGER NOT NULL REFERENCES member(id),   -- see call_site.caller_id
     member_id    INTEGER NOT NULL REFERENCES member(id),
     operation_id INTEGER NOT NULL REFERENCES operation(id),
     is_write     INTEGER NOT NULL DEFAULT 0
