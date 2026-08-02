@@ -1,10 +1,6 @@
 # renode-rs — scorecard
 
-<<<<<<< HEAD
-Generated 2026-08-02T23:54:52+10:00 from `86b6445` by `scripts/scorecard.py`. **Do not edit by hand.**
-=======
-Generated 2026-08-03T00:17:41+10:00 from `d52b950` by `scripts/scorecard.py`. **Do not edit by hand.**
->>>>>>> worktree-agent-a8efade672243620a
+Generated 2026-08-03T01:33:53+10:00 from `b3a21ff` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -23,7 +19,7 @@ averaged 1.87 validation instances each.
 |---|---:|---:|
 | methods ingested | 26,159 | — |
 | operation nodes | 1,560,005 | — |
-| pattern clusters | 200,936 | — |
+| pattern clusters | 0 | — |
 | stubbed | 0 | 0.0% |
 | translated | 0 | 0.0% |
 | verified | 0 | 0.0% |
@@ -56,16 +52,16 @@ Genuine stop points. A failed gate means stop, not retry.
 
 | marker | sites in emitted Rust | what differs |
 |---|---:|---|
-| `WARN(eager)` | 0 | a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ. |
+| `WARN(eager)` | 6 | a lazy sequence became an owned collection: it is evaluated EAGERLY, so enumeration side effects and their order differ. |
 | `SYNC(measure)` | 0 | C# `lock`. Structure preserved; TIMING IS NOT. |
-| `WARN(multicast)` | 0 | a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first. |
+| `WARN(multicast)` | 7 | a multicast event collapsed to ONE subscribe: there is no unsubscribe, and a second subscriber replaces the first. |
 | `WARN(narrowed)` | 16 | a value outside the declared set has no variant here: the source keeps the number, this falls back to the default. |
 | `WARN(orderby)` | 0 | ordering is a PASS-THROUGH: the key selector is discarded and the sequence keeps its source order. |
-| **total** | **16** | |
+| **total** | **29** | |
 
 A **gap** withholds the member, so it can never read as a translation. A **warning** emitted and is wrong in a stated way — the number is the count of sites carrying the marker, not the count of deviations declared, so a deviation that is declared and never marked reads as zero rather than as done.
 
-> **4 declared deviation(s) mark nothing yet** — `eager`, `measure`, `multicast`, `orderby`. Each has sites in the corpus and none of those sites reaches emitted Rust today: the members carrying them are withheld for unrelated reasons. The zero is a fact about how little is emitted, not evidence that the deviation is gone.
+> **2 declared deviation(s) mark nothing yet** — `measure`, `orderby`. Each has sites in the corpus and none of those sites reaches emitted Rust today: the members carrying them are withheld for unrelated reasons. The zero is a fact about how little is emitted, not evidence that the deviation is gone.
 
 ## Tests
 
