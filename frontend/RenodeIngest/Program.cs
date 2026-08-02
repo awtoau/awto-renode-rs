@@ -24,7 +24,21 @@ public static class Program
     public static async Task<int> Main(string[] args)
     {
         var dryRun = args.Contains("--dry-run");
-        var dbPath = ArgValue(args, "--db") ?? "rulesdb/patterns.db";
+        // Resolved against the REPO ROOT, not the current directory. The default
+        // used to be the bare relative path, so `dotnet run` from
+        // frontend/RenodeIngest -- the natural place to run it from -- wrote a
+        // SECOND corpus at frontend/RenodeIngest/rulesdb/patterns.db. Its `-shm`
+        // and `-wal` were then committed and pushed, because .gitignore anchored
+        // its rulesdb patterns to the top level.
+        //
+        // Worse than the stray files: two corpora, and the emitter reads the
+        // top-level one. An ingest that appeared to succeed could leave the
+        // corpus the converter actually uses untouched.
+        //
+        // This is CLAUDE.md's rule for scripts -- resolve the workspace with
+        // `git rev-parse --show-toplevel`, never a hardcoded or cwd-relative
+        // root -- which the C# frontend was not following.
+        var dbPath = ArgValue(args, "--db") ?? Path.Combine(RepoRoot(), "rulesdb", "patterns.db");
         var threads = int.TryParse(ArgValue(args, "-j"), out var j) && j > 0
                       ? j : Environment.ProcessorCount;
         // Breadth mode: ingest EVERY file. This is a TOOLING HEALTH CHECK --
@@ -196,4 +210,42 @@ public static class Program
 
     private static string Truncate(string s, int n) =>
         s.Length <= n ? s : s[..n] + "...";
+
+    /// <summary>
+    /// The workspace root, from git — the same rule every script in this repo
+    /// follows, and which this program did not.
+    ///
+    /// Falls back to the current directory rather than throwing: a tarball
+    /// export with no `.git` should still run, and `--db` overrides this
+    /// anyway. The fallback is announced, because a silent one is how the
+    /// second corpus appeared in the first place.
+    /// </summary>
+    private static string RepoRoot()
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --show-toplevel",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+            if (p is not null)
+            {
+                var root = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit();
+                if (p.ExitCode == 0 && root.Length > 0 && Directory.Exists(root))
+                    return root;
+            }
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"warn      could not ask git for the repo root: {e.Message}");
+        }
+        Console.Error.WriteLine(
+            "warn      no git repo root; writing relative to the current directory. " +
+            "Pass --db if that is not what you want.");
+        return Directory.GetCurrentDirectory();
+    }
 }

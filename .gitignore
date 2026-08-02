@@ -28,7 +28,11 @@ tmp/baseline/
 # Rust spike build output
 spike/*/target/
 
-# Corpus database: regenerable via frontend/RenodeIngest (10 MB, changes every run)
-rulesdb/*.db
-rulesdb/*.db-wal
-rulesdb/*.db-shm
+# Corpus database: regenerable via frontend/RenodeIngest (10 MB, changes every run).
+# UNANCHORED (`**/`) deliberately: these patterns were anchored to the top-level
+# rulesdb/ only, and the ingest resolves its output path relative to the CURRENT
+# DIRECTORY -- so running it from frontend/RenodeIngest created a second corpus
+# there whose -shm and -wal were committed and pushed.
+**/rulesdb/*.db
+**/rulesdb/*.db-wal
+**/rulesdb/*.db-shm
