@@ -344,18 +344,20 @@ class InterfaceTrait:
                 m = a.strip()
                 # A base's type argument is a TYPE, not a value slot: the
                 # object-graph wrapper belongs on a field, not on `Trait<T>`.
-                mapped = (m if m in pset else self._plain(m, resolve))
+                mapped = (m if m in pset else self._plain(m, blockers))
                 if mapped is None:
                     return None
                 args.append(mapped)
             out += "<" + ", ".join(args) + ">"
         return out
 
-    def _plain(self, cs: str, resolve) -> str | None:
-        """A type argument, mapped without the object-graph wrapper.
+    def _plain(self, cs: str, blockers: list[dict]) -> str | None:
+        """A supertrait's type argument, mapped WITHOUT the object-graph wrapper.
 
-        `Trait<u64>` is a supertrait bound; wrapping the argument would make it
-        `Trait<Rc<RefCell<...>>>`, which is a different trait.
+        `Trait<u64>` is a bound; wrapping the argument would make it
+        `Trait<Rc<RefCell<...>>>`, which is a different trait and would compile
+        while meaning something else. So only a by-value mapping is accepted
+        here, and anything else is reported rather than approximated.
         """
         prev = getattr(self, "_type_resolver", None)
         self._type_resolver = lambda name, args=(): None
@@ -363,7 +365,10 @@ class InterfaceTrait:
             direct = self.rust_type(cs)
         finally:
             self._type_resolver = prev
-        return direct if direct is not None else resolve(cs)
+        if direct is None:
+            blockers.append({"type": cs,
+                             "reason": "type_argument_without_value_form"})
+        return direct
 
     # -------------------------------------------------------------- emission
 

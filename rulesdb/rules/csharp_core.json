@@ -254,6 +254,7 @@
       "generic_method": "The member declares its own type parameters. Holding an interface as `dyn` requires object safety, and a generic method forbids it. `where Self: Sized` restores object safety by making the method uncallable through `dyn`, which is a member that is not there.",
       "overload": "Two members share a name. Rust traits have one method per name; renaming needs a rule the call sites use too, and inventing names here would break every caller.",
       "bcl_unmapped": "A BCL type with no mapping. Either deliberate -- see stdlib.no_rust_form -- or below the >=3 threshold.",
+      "type_argument_without_value_form": "An inherited interface is parameterised by a type with no by-value mapping. A supertrait bound takes the TYPE, and substituting the shared handle instead would name a different trait -- one that compiles and means something else.",
       "property_without_accessor": "A property the corpus records with no accessor method, so there is no parameter list to emit from."
     }
   },
