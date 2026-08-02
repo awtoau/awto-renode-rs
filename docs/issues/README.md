@@ -16,6 +16,7 @@ for work in progress, which is why `docs/issues-draft.md` was deleted earlier.
 | [3-loop-builder](3-loop-builder.md) | **LANDED, premise wrong** — see the note at the top |
 | [4-unread-corpus-facts](4-unread-corpus-facts.md) | partly landed; the ingest half was reverted |
 | [5-subblocks-latent](5-subblocks-latent.md) | open |
+| [6-adc-behaviour-gap](6-adc-behaviour-gap.md) | **DIAGNOSED, not fixable** — adc1's 1,192 are a behaviour gap this oracle cannot reach |
 | [p2-not-in-the-corpus](p2-not-in-the-corpus.md) | open — deferred only for want of instances |
 
 Three landed the same night they were drafted, so file those as **closed** with

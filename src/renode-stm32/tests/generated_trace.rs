@@ -87,6 +87,26 @@
 //!
 //! Neither number would be visible from the gap count, which reports the same
 //! kind of gap for both.
+//!
+//! ADC1 IS THE SAME STORY, AND WORSE. Its 1,192 land on exactly two offsets:
+//! Status bit 1 (596 reads expecting 0x2, getting 0) and RegularData (all 596
+//! of its reads, expecting a sample and getting 0). Both registers ARE in the
+//! bank and both ARE wired to the state the C# reads -- tests/adc_semantics.rs
+//! sets each by hand and reads it back, so the layout claim is falsified
+//! directly rather than inferred. The sole C# writer of both is
+//! `OnConversionFinished`, reached from `LimitTimer.LimitReached`.
+//!
+//! THIS RATCHET WILL NOT COME DOWN, and treating it as one would be a mistake.
+//! The trace reads Status as 0, then 0, then 0x2 with NO INTERVENING BUS
+//! ACCESS -- a virtual-time event set it, and `Replayable` has no clock. And
+//! `adcData` comes from `ADCChannel.GetSample()`, a queue filled by
+//! `FeedSample` from the emulation script: the expected 0x5DE / 0x800 / 0x745
+//! are external stimulus, not a function of any bus history, so a bus-only
+//! replay cannot reproduce them even from a complete port.
+//! See docs/issues/6-adc-behaviour-gap.md.
+//!
+//! ADON's dropped `changeCallback` is NOT the cause: `EnableADC()` assigns
+//! `currentChannel` and nothing reads it through a register.
 
 use renode_oracle::{load_trace, run, Replayable};
 use renode_regs::Bank;
@@ -137,6 +157,19 @@ macro_rules! generated_replay {
             );
             for d in report.divergences.iter().take(5) {
                 println!("    {d}");
+            }
+            // Five lines cannot tell a missing register from a missing writer
+            // -- that distinction needs every divergence, grouped. Set
+            // TRACE_DUMP_DIR to write the full list; unset, nothing changes.
+            if let Ok(dir) = std::env::var("TRACE_DUMP_DIR") {
+                use std::io::Write;
+                let dir = std::path::PathBuf::from(dir);
+                std::fs::create_dir_all(&dir).expect("dump dir");
+                let mut out = std::fs::File::create(
+                    dir.join(concat!($trace, "-divergences.txt"))).expect("dump file");
+                for d in report.divergences.iter() {
+                    writeln!(out, "{d}").expect("dump write");
+                }
             }
             assert!(report.total > 0, "{}: replayed zero accesses", $trace);
             // Ratchet, not pass/fail -- see the note above. LOWER as behaviour
