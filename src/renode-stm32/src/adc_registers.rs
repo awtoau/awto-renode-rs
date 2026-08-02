@@ -23,7 +23,10 @@
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
-/// Register offsets, from the C# `enum Register`.
+/// Every member of the C# `enum Registers`, whether or
+/// not this file defines the register. A constant with no
+/// matching `bank.define` below is an address the C# declares
+/// and the converter did not emit.
 pub mod reg {
     pub const STATUS: u64 = 0x00;
     pub const CONTROL1: u64 = 0x04;
@@ -34,9 +37,16 @@ pub mod reg {
     pub const INJECTED_CHANNEL_DATA_OFFSET2: u64 = 0x18;
     pub const INJECTED_CHANNEL_DATA_OFFSET3: u64 = 0x1C;
     pub const INJECTED_CHANNEL_DATA_OFFSET4: u64 = 0x20;
+    pub const WATCHDOG_HIGHER_THRESHOLD: u64 = 0x24;
+    pub const WATCHDOG_LOWER_THRESHOLD: u64 = 0x28;
     pub const REGULAR_SEQUENCE1: u64 = 0x2C;
     pub const REGULAR_SEQUENCE2: u64 = 0x30;
     pub const REGULAR_SEQUENCE3: u64 = 0x34;
+    pub const INJECTED_SEQUENCE: u64 = 0x38;
+    pub const INJECTED_DATA1: u64 = 0x3C;
+    pub const INJECTED_DATA2: u64 = 0x40;
+    pub const INJECTED_DATA3: u64 = 0x44;
+    pub const INJECTED_DATA4: u64 = 0x48;
     pub const REGULAR_DATA: u64 = 0x4C;
 }
 
@@ -51,7 +61,7 @@ pub struct Fields {
     pub dma_enabled: FlagId,
     pub dma_issue_request: FlagId,
     pub end_of_conversion_select: FlagId,
-    pub regular_sequence: [ValueId; 16],
+    pub regular_sequence: [ValueId; 19],
 }
 
 /// The peripheral's own state: every C# instance member that actually

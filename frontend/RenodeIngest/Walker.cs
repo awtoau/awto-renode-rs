@@ -106,7 +106,11 @@ public static class Walker
                 if (rec is null) continue;
                 result.Members.Add(rec);
 
-                if (rec.Method is null) continue;
+                if (rec.Method is null)
+                {
+                    WalkInitializer(member, rec.Key, tree, model, result, ref nextOpId);
+                    continue;
+                }
                 // Partial methods keep their body on the implementation part.
                 var bodyOwner = member is IMethodSymbol pm && pm.PartialImplementationPart is { } impl
                                 ? impl : member;
@@ -122,6 +126,49 @@ public static class Walker
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// A field's or property's INITIALISER, walked as its own operation tree
+    /// and attached to the member.
+    ///
+    /// Only members with a METHOD had their operations walked, so every
+    /// initialiser written at the declaration was absent from the corpus --
+    /// with nothing thrown and no count to notice, which is the same silence
+    /// as the partial-method gap. It is not a Roslyn limitation: an
+    /// `EqualsValueClauseSyntax` on a field declaration is an
+    /// `IFieldInitializerOperation`, and `GetOperation` has always returned it.
+    ///
+    /// It matters because an initialiser is where C# often states a SIZE:
+    /// `private readonly IValueRegisterField[] regularSequence =
+    /// new IValueRegisterField[19];` is the only place that 19 exists. Without
+    /// it the emitter could only count the elements the register map bound --
+    /// 16 -- and emit an array three elements short of the declaration.
+    ///
+    /// Two exclusions, both because the value is already on the member row and
+    /// re-recording it would be a second source of truth:
+    ///   * enum members -- the discriminant is `member.const_value`;
+    ///   * const fields -- likewise, and Roslyn has already folded them.
+    /// </summary>
+    private static void WalkInitializer(ISymbol member, string key, SyntaxTree tree,
+                                        SemanticModel model, FileResult result,
+                                        ref int nextId)
+    {
+        if (member is IFieldSymbol { HasConstantValue: true }) return;
+        foreach (var reference in member.DeclaringSyntaxReferences)
+        {
+            if (reference.SyntaxTree != tree) continue;
+            var equals = reference.GetSyntax() switch
+            {
+                VariableDeclaratorSyntax v => v.Initializer,
+                PropertyDeclarationSyntax p => p.Initializer,
+                _ => null,
+            };
+            if (equals is null) continue;
+            var op = model.GetOperation(equals);
+            if (op is null) continue;
+            WalkOperations(op, key, result, ref nextId, model);
+        }
     }
 
     /// Does this property or event have a compiler-generated backing field?

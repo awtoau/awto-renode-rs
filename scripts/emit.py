@@ -49,16 +49,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# FieldMode enum values as the C# defines them, for rendering.
-FIELD_MODE = {
-    1: "FieldMode::READ",
-    2: "FieldMode::WRITE",
-    4: "FieldMode::SET",
-    8: "FieldMode::TOGGLE",
-    16: "FieldMode::WRITE_ONE_TO_CLEAR",
-    32: "FieldMode::WRITE_ZERO_TO_CLEAR",
-}
-
 
 def repo_root() -> Path:
     return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
@@ -136,26 +126,13 @@ def load_register_forms(rules_dir: Path) -> list[dict]:
     return forms
 
 
-def render_mode(const: str | None) -> str:
-    """C# FieldMode is a [Flags] enum; render the combination."""
-    if const is None:
-        return "FieldMode::READ_WRITE"  # the C# default
-    try:
-        v = int(const)
-    except ValueError:
-        return "FieldMode::READ_WRITE"
-    if v == 3:
-        return "FieldMode::READ_WRITE"
-    parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
-    return " | ".join(parts) if parts else "FieldMode::default()"
-
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emitter.core import snake  # noqa: E402
 from emitter.core import must_explain as _core_must_explain  # noqa: E402
 import importlib
 import pkgutil
 
+from emitter.lang.array_field import ArrayField  # noqa: E402
 from emitter.lang.expressions import Expressions  # noqa: E402
 from emitter.lang.interface_trait import InterfaceTrait  # noqa: E402
 from emitter.lang.statements import Statements  # noqa: E402
@@ -182,7 +159,7 @@ _load_registered()
 
 
 class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
-              InterfaceTrait, Types):
+              InterfaceTrait, Types, ArrayField):
     # Keys read from the project layer as DATA rather than as rules, so they are
     # not offered to a handler looking for a rule of that name.
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")
@@ -291,7 +268,7 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             "pos": const("position"),
             "width": const("width"),
             "count": const("count"),
-            "mode": render_mode(const("mode")),
+            "mode": self.render_mode(const("mode")),
             "field": self.out_field(oid, symbol),
         }
         flags = {
@@ -717,6 +694,58 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             offsets.extend((n, o) for n, o in sub_offsets if n not in seen_off)
         offsets.sort(key=lambda kv: kv[1])
 
+        # WHICH C# enum the offsets came from, identified by content -- its
+        # members are a superset of every offset discovered. Needed twice: to
+        # fill `mod reg` with the whole enum, and to elide the duplicate Rust
+        # enum further down. One lookup, so the two cannot disagree.
+        off_names = {n for n, _ in offsets}
+        offset_enum = next(((n, m) for n, m in self.nested_enums(type_name)
+                            if off_names and {x for x, _ in m} >= off_names), None)
+        if offset_enum:
+            for mname, val in offset_enum[1]:
+                try:
+                    v = int(val)
+                except ValueError:
+                    continue
+                if v >= 0 and mname not in off_names:
+                    offsets.append((mname, v))
+                    off_names.add(mname)
+            offsets.sort(key=lambda kv: (kv[1], kv[0]))
+
+        # `out arr[i]` handles collapse into ONE array declaration. Emitting
+        # `pub regular_sequence[12]: ValueId` per index is not Rust.
+        #
+        # The size is the C# DECLARATION's, not the highest index bound. The
+        # comment beside this used to claim the former while the code did the
+        # latter, and the two differ: STM32_ADC declares
+        # `new IValueRegisterField[19]` and its register map binds 16, so the
+        # array came out three elements short -- invisibly, because nothing
+        # indexes an element the map never bound.
+        #
+        # Computed here rather than where it is written, so a gap can still
+        # reach the header.
+        highest: dict[str, int] = {}
+        for f in fields:
+            if "[" in f:
+                base, _, rest = f.partition("[")
+                try:
+                    highest[base] = max(highest.get(base, -1), int(rest.rstrip("]")))
+                except ValueError:
+                    continue
+        arrays: list[tuple[str, int]] = []
+        for base, hi in sorted(highest.items()):
+            declared, why = self.declared_array_length(type_name, base)
+            if declared is None:
+                gaps.append(f"handle array `{base}`: sized {hi + 1} from the "
+                            f"highest index the register map binds, because "
+                            f"{why}")
+                arrays.append((base, hi + 1))
+            elif declared < hi + 1:
+                gaps.append(f"handle array `{base}`: the C# declares {declared} "
+                            f"element(s) and the register map binds index {hi}")
+                arrays.append((base, hi + 1))
+            else:
+                arrays.append((base, declared))
 
         L: list[str] = []
         a = L.append
@@ -735,7 +764,21 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
         a("")
         a("use renode_regs::{Bank, FieldMode, FlagId, ValueId};")
         a("")
-        a("/// Register offsets, from the C# `enum Register`.")
+        # The doc comment said "from the C# `enum Register`" while holding only
+        # the registers that EMITTED -- UART omitted GuardTimeAndPrescaler, ADC
+        # held 13 of 20, SYSCFG 1 of 30. Non-behavioural, and still the one
+        # thing generated output may never do: state something it is not. So
+        # the module now holds the whole enum where the enum is identified, and
+        # says so where it is not.
+        if offset_enum:
+            a(f"/// Every member of the C# `enum {offset_enum[0]}`, whether or")
+            a("/// not this file defines the register. A constant with no")
+            a("/// matching `bank.define` below is an address the C# declares")
+            a("/// and the converter did not emit.")
+        else:
+            a("/// Register offsets for the registers defined below, only.")
+            a("/// The C# enum they were read from could not be identified by")
+            a("/// content, so this is not known to be the whole of it.")
         a("pub mod reg {")
         for name, off in offsets:
             a(f"    pub const {to_const(name)}: u64 = 0x{off:02X};")
@@ -748,20 +791,8 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
             if "[" in f:
                 continue          # collapsed into an array below
             a(f"    pub {f}: {self.field_type(f)},")
-        # `out arr[i]` handles collapse into ONE array declaration. Emitting
-        # `pub regular_sequence[12]: ValueId` per index is not Rust; the size
-        # is the highest index seen, because C# sized the array at its
-        # declaration and every element the register map binds must exist.
-        arrays: dict[str, int] = {}
-        for f in fields:
-            if "[" in f:
-                base, _, rest = f.partition("[")
-                try:
-                    arrays[base] = max(arrays.get(base, -1), int(rest.rstrip("]")))
-                except ValueError:
-                    continue
-        for base, hi in sorted(arrays.items()):
-            a(f"    pub {base}: [{self.field_type(base)}; {hi + 1}],")
+        for base, size in arrays:
+            a(f"    pub {base}: [{self.field_type(base)}; {size}],")
         for sub in subs:
             a(self.project.get("sub_blocks", {}).get(
                 "parent_field", "    pub {field}: Vec<{module}::Fields>,")
@@ -778,10 +809,12 @@ class Emitter(RegisterDsl, RenodeExpressions, Expressions, Statements,
                 a("")
         for line in sub_mods:
             a(line.rstrip())
-        # The offset enum is already `mod reg`; identified by content.
-        off_names = {n for n, _ in offsets}
+        # The offset enum is already `mod reg`; identified by content above.
+        # Compared on NAME AND MEMBERS, not name alone: two nested enums under
+        # one peripheral may share a name at different nesting depths, and
+        # eliding by name would silently drop the one that is not `mod reg`.
         enums = [(n, m) for n, m in self.nested_enums(type_name)
-                 if not (off_names and {x for x, _ in m} >= off_names)]
+                 if offset_enum is None or (n, m) != offset_enum]
         for ename, members in enums:
             spec = self.project.get("enums", {})
             a(f"/// C# `enum {ename}`, discriminants as declared.")

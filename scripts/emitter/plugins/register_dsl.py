@@ -42,6 +42,65 @@ def to_const(name: str) -> str:
 class RegisterDsl:
     """Mixin: finding registers, and emitting the bank they describe."""
 
+    def mode_members(self) -> list[tuple[int, str]]:
+        """(bit, C# member name) for the field-mode enum, READ FROM THE CORPUS.
+
+        This used to be a twelve-entry dict with six entries, hand-written in
+        the driver. Two things were wrong with that and only one was visible:
+        it was a SECOND SOURCE OF TRUTH for an enum the corpus already records
+        in full, and it was incomplete, so six of the twelve members rendered
+        as nothing at all.
+
+        Deriving it means a member added to the C# arrives here for free, and
+        the mapping from `WriteZeroToClear` to `WRITE_ZERO_TO_CLEAR` is the
+        same `to_const` every other identifier goes through -- not a table.
+        """
+        if getattr(self, "_mode_members", None) is None:
+            key = self.project.get("field_mode", {}).get("enum", "")
+            rows = self.con.execute(
+                "SELECT mb.const_value, mb.name FROM member mb "
+                "JOIN type t ON t.id = mb.type_id "
+                "WHERE t.key = ? AND mb.kind = 'field' "
+                "AND mb.const_value IS NOT NULL ORDER BY mb.name", (key,)).fetchall()
+            self._mode_members = sorted(
+                ((int(v), n) for v, n in rows), key=lambda kv: kv[0])
+        return self._mode_members
+
+    def render_mode(self, const: str | None) -> str:
+        """C# FieldMode is a [Flags] enum; render the combination.
+
+        Empty means "the mode named no member the C# declares". That is not a
+        mode, so it is reported rather than rendered: the old code returned
+        `FieldMode::default()`, which is a field that answers neither reads nor
+        writes and which nothing can distinguish from a deliberate one."""
+        spec = self.project.get("field_mode", {})
+        if const is None:
+            return spec.get("default", "FieldMode::READ_WRITE")
+        try:
+            v = int(const)
+        except ValueError:
+            self.gaps.append(
+                f"field mode `{const}` is not a constant, so the mode is "
+                f"unknown; assumed the C# default")
+            return spec.get("default", "FieldMode::READ_WRITE")
+        alias = spec.get("combination_aliases", {}).get(str(v))
+        if alias:
+            return alias
+        members = self.mode_members()
+        parts = [spec.get("member", "FieldMode::{const}").format(const=to_const(n))
+                 for bit, n in members if v & bit]
+        left = v & ~sum(bit for bit, _ in members)
+        if left:
+            self.gaps.append(
+                f"field mode {v} sets bit(s) 0x{left:X} that the C# "
+                f"`{spec.get('enum', 'mode enum')}` does not declare")
+        if not parts:
+            self.gaps.append(
+                f"field mode {v} names no declared member -- the field would "
+                f"answer neither reads nor writes")
+            return spec.get("empty", "FieldMode::default()")
+        return spec.get("combine", " | ").join(parts)
+
     def out_field(self, oid: int, symbol: str) -> str | None:
         """Name of the `out` parameter's target, e.g. `readFifoNotEmpty`.
 
@@ -146,8 +205,28 @@ class RegisterDsl:
                 return (name, int(const)), other
         return None, None
 
+    def chain_root_creation(self, method_id: int, chain_span: int) -> tuple[int, str] | None:
+        """The `new XxxRegister(...)` at the root of a combinator chain.
+
+        Every call in a fluent chain shares the span start of the chain's root
+        expression -- the same fact `emit_registers` groups on -- so the
+        constructor is the shallowest ObjectCreation at that span. Returned as
+        (operation id, constructor symbol) so its arguments can be bound by
+        parameter name like any other call."""
+        return self.con.execute(
+            "SELECT id, symbol FROM operation WHERE method_id=? AND "
+            "kind='ObjectCreation' AND span_start=? ORDER BY depth LIMIT 1",
+            (method_id, chain_span)).fetchone()
+
     def find_registers(self, method_id: int) -> list[tuple[str | None, int, str, int, str | None]]:
-        """(name, offset, reset, chain span start, runtime term) per register."""
+        """(name, offset, reset, chain span start, runtime term) per register.
+
+        `self.form_gaps` collects what a FORM could not read -- drained by
+        `emit_registers`. A form that declares where the reset value lives and
+        then does not find it must say so: silently falling back to 0 is how
+        every dictionary-form register got a reset of 0 for as long as no
+        emitted peripheral passed one."""
+        self.form_gaps: list[str] = []
         found: list[tuple[str | None, int, str, int, str | None]] = []
         for oid, symbol, span in self.con.execute(
                 "SELECT id, symbol, span_start FROM operation WHERE method_id=? "
@@ -164,20 +243,58 @@ class RegisterDsl:
                     name, offset = self.arg_enum(oid, form["offset_from"])
                 if offset is None:
                     break
-                reset = "0"
-                if form.get("reset_from"):
-                    v = b.get(form["reset_from"])
-                    if v and v[2] is not None:
-                        reset = v[2]
                 if form["chain_from"] == "$self":
                     chain_span = span
                 else:
                     chain_span = self.arg_span(oid, form["chain_from"])
                     if chain_span is None:
                         break
+                reset = self.form_reset(form, method_id, b, chain_span,
+                                        name or hex(offset))
                 found.append((name, offset, reset, chain_span, term))
                 break
         return found
+
+    def form_reset(self, form: dict, method_id: int, b: dict,
+                   chain_span: int, label: str) -> str:
+        """The register's reset value, from wherever the FORM says it lives.
+
+        Two places, because the two idioms put it in two places: an argument of
+        the call that located the register (`Define(this, 0xC0)`), or an
+        argument of the constructor at the root of the chain
+        (`new DoubleWordRegister(this, 0xC0).With...`). Absent means the C#
+        default of 0 -- the parameter is optional -- but a form that names a
+        location and cannot reach it is a gap, not a zero."""
+        param = form.get("reset_from")
+        if not param:
+            return "0"
+        scope = form.get("reset_on", "$self")
+        if scope == "$self":
+            bindings = b
+        elif scope == "$chain_root_creation":
+            root = self.chain_root_creation(method_id, chain_span)
+            if root is None:
+                self.form_gaps.append(
+                    f"{label}: form `{form['name']}` reads the reset value from "
+                    f"the constructor at the root of the chain, and there is no "
+                    f"object creation there -- the reset value is unknown, not 0")
+                return "0"
+            bindings = self.bind(root[0], root[1])
+        else:
+            self.form_gaps.append(
+                f"{label}: form `{form['name']}` names an unknown reset scope "
+                f"`{scope}`")
+            return "0"
+        v = bindings.get(param)
+        if v and v[2] is not None:
+            return v[2]
+        if v and v[0] != "DefaultValue":
+            # Present, and not a constant Roslyn folded. Emitting 0 here would
+            # claim a reset the C# does not give.
+            self.form_gaps.append(
+                f"{label}: reset value `{param}` is an expression, not a "
+                f"constant -- emitted as 0, which may be wrong")
+        return "0"
 
     def arg_enum(self, oid: int, param: str) -> tuple[str | None, int | None]:
         """Enum member passed as a NAMED parameter, e.g. the dictionary key."""
@@ -235,6 +352,7 @@ class RegisterDsl:
         gaps: list[str] = []
 
         found = self.find_registers(method_id)
+        gaps.extend(self.form_gaps)
         pre, pre_gaps = self.register_preamble(
             method_id, [r[4] for r in found if r[4]], {r[3] for r in found})
         stmts.extend(pre)

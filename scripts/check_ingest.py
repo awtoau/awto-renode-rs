@@ -44,6 +44,12 @@ STRUCTURAL = {
     "YieldReturn", "YieldBreak", "InterpolatedStringAppendLiteral",
     "InterpolatedStringAppendFormatted",
     "InterpolatedStringHandlerArgumentPlaceholder",
+    # An initialiser node carries nothing itself; its single child is the
+    # value, and the member it belongs to is `operation.method_id`. Present
+    # only since field and property initialisers began to be walked -- they
+    # were absent from the corpus entirely, which is how a C# array's DECLARED
+    # length was unavailable and handle arrays were sized from usage instead.
+    "FieldInitializer", "PropertyInitializer",
     "CoalesceAssignment", "Coalesce", "ConditionalAccess",
     "ConditionalAccessInstance", "InterpolatedString", "InterpolatedStringText",
     "Interpolation", "NameOf", "TypeOf", "SizeOf", "Await", "AnonymousObjectCreation",
