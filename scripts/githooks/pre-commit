@@ -106,6 +106,32 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # 1e. A rule's OUTPUT must have the shape the rule promised. `negative`
+    #     above is a statement about the input; this is the only check on what
+    #     came out, and it is the one that can refuse a combinator the source
+    #     does not contain -- the defect that reached a translated file,
+    #     survived a 33,000-access trace because it was behaviourally inert,
+    #     and was found by regenerating and diffing rather than by any test.
+    post = subprocess.run([py, "scripts/check_postconditions.py"],
+                          cwd=root, capture_output=True, text=True)
+    if post.returncode != 0:
+        print(post.stdout[-1500:], file=sys.stderr)
+        print("pre-commit: a rule emitted something that is not the shape it "
+              "promised", file=sys.stderr)
+        return 1
+
+    # 1f. ...and the postconditions must still be able to REJECT. A check that
+    #     has never rejected anything reports exactly what a check doing
+    #     nothing reports. This breaks the emitter four ways on purpose and
+    #     fails if any break goes unnoticed.
+    prove = subprocess.run([py, "scripts/prove_postconditions.py"],
+                           cwd=root, capture_output=True, text=True)
+    if prove.returncode != 0:
+        print(prove.stdout[-1500:], file=sys.stderr)
+        print("pre-commit: a deliberate break went undetected -- the emit-shape "
+              "postconditions are decoration", file=sys.stderr)
+        return 1
+
     # 2. Regenerate the scorecard and stage it if it moved. Never fail the
     #    commit on this -- a stale scorecard is a nuisance, not a defect, and
     #    blocking a commit because `gh` was offline would be worse than useless.

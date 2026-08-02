@@ -34,6 +34,10 @@
 //!   - state field `RxFifo`: no Rust mapping for `System.Collections.Generic.Queue<Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage>[]`
 //!   - state field `master`: reference-typed, so the object-graph rule maps it to `Gc<STMCAN>`; blocked: `STMCAN` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `registers`: reference-typed, so the object-graph rule maps it to `Gc<DeviceRegisters>`; blocked: `DeviceRegisters` has no emitted Rust type yet, so there is nothing to point at
+//!
+//! WARNINGS -- these DID emit, and their semantics DIFFER from
+//! the source. Marked at every site, not only summarised here:
+//!   ! WARN(narrowed) x3: a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -54,6 +58,7 @@ pub enum FilterBankMode {
     FilterIdentifierList = 1,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl FilterBankMode {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -72,6 +77,7 @@ pub enum FilterBankScale {
     FilterScale32Bit = 1,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl FilterBankScale {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -123,6 +129,7 @@ pub enum RegisterOffset {
     CAN_F27R2 = 796,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl RegisterOffset {
     pub fn from_u64(v: u64) -> Self {
         match v {

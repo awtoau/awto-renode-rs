@@ -53,6 +53,14 @@ def linq_invocation(em, oid):
             # A closure body of one `return X;` is the expression X.
             rest = [re.sub(r"^\|([^|]*)\|\s*return\s+(.*?);?$",
                            r"|\1| \2", r) for r in rest]
-            return tmpl.format(recv=recv, args=", ".join(rest))
+            out = tmpl.format(recv=recv, args=", ".join(rest))
+            # A mapping that is not an equivalence marks its own site. The
+            # identifier comes from the data, so a member absent from `warn`
+            # is claiming faithfulness rather than merely not having been
+            # thought about -- which is the difference the tier exists for.
+            wid = linq.get("warn", {}).get(meth)
+            if wid:
+                return f"{em.warn_inline(wid)} {out}"
+            return out
     em.unhandled[f"linq:{meth}"] = 1
     return f"/* Linq{meth} */"

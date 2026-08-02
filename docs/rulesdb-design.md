@@ -262,6 +262,85 @@ CREATE TABLE rule_deviation (
 );
 ```
 
+### A rule's emit-shape postcondition
+
+`matcher` and `rule_negative` are both statements about the **input**. Nothing
+in the schema above says anything about the **output**, so a rule could be
+selected perfectly and emit something nobody had ever described — which is how
+a combinator the C# does not contain reached a translated file, stayed
+behaviourally inert, survived a 33,000-access trace and was found by
+regenerating and diffing.
+
+A rule stanza therefore also carries a `postcondition`, checked against the
+emitted text at the moment it is produced:
+
+```jsonc
+"postcondition": {
+  "emits_call":    "with_value_anon",   // the output function it is about
+  "combinators":   1,                   // chained calls, at bracket depth zero
+  "arity":         3,                   // arguments of the outermost call
+  "must_not_emit": ["with_tag", "with_reserved"],
+  "why":           "..."
+}
+```
+
+The constraint that makes it runnable at every site rather than on a sample:
+**it is checkable from the emitted text alone.** A predicate needing the corpus,
+the input node, or emitter state is a different mechanism and belongs elsewhere.
+
+Each predicate catches a failure that has happened here:
+
+| predicate | what it caught |
+|---|---|
+| `combinators` | an extra link on the chain — the invented `.with_reserved(9, 23)` |
+| `emits_call` | a storing template retargeted at a tagging one — 171 fields whose writes were dropped |
+| `arity` | a slot dropped from a template — a bound callback that fell off the end while the field kept its handle |
+| `must_not_emit` | a forbidden shape arriving through a **substituted slot**, which a template-level check cannot see |
+
+A violation **raises**. It means the rule and the emitter disagree about what
+the rule produces, which is a defect in one of them; recording it as a gap would
+file it as "the converter knows it cannot do this", which is not what happened.
+
+Prior art: Oxidizer (PLDI 2025) writes each mapping rule as an inference rule
+whose conclusion carries `code ⇓ <expected target shape>` and checks it
+statically at emit time. Their ablation: rules plus checks, 73% I/O-equivalent;
+a model with repair and no rules, 0%.
+
+Enforced by `scripts/check_postconditions.py` (template and corpus) and
+`scripts/prove_postconditions.py`, which breaks the emitter four ways on purpose
+and fails if any break goes unnoticed — because a check that has never rejected
+anything reports exactly what a check doing nothing reports.
+
+### Severity — translated, but the semantics differ
+
+There was one marker class. A `/* GAP */` means the converter could not express
+something and the member is **withheld**, so it can never read as a translation.
+Nothing could say the other thing: *this emitted, and it is wrong.*
+
+Three mappings sat in exactly that position — a sort that discards its key
+selector, a lazy sequence materialised eagerly, a multicast event collapsed to
+one subscribe — each described accurately in `csharp_core.json` and invisible in
+the output. Prose beside a rule cannot be counted, cannot be grepped and cannot
+fail a build.
+
+`csharp_core.json` now carries a `severity` block: three tiers (`faithful`,
+`warning`, `gap`), the marker templates, and one entry per declared warning with
+its tag, text and reason. A mapping references a warning by identifier; the
+emitter renders the marker from the table.
+
+- The marker is a **comment**, in both line and inline form. A marker that can
+  break a build creates pressure to stop emitting markers.
+- Sites are counted **from the emitted text**, not from calls to the renderer: a
+  marker rendered into a method that is later withheld was rendered and never
+  landed.
+- A warning summarised in a file header is bulleted `!`, not `-`; three tools
+  count a `//!   - ` line as a gap.
+- The scorecard reports the count per identifier, reading the same table the
+  emitter renders from.
+
+The generalised mechanism was already there for exactly one mapping — the `lock`
+marker — and had been for months. Its tag and text are unchanged.
+
 ### Translation state
 
 ```sql

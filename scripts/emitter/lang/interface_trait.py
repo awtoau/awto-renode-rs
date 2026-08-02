@@ -264,7 +264,10 @@ class InterfaceTrait:
         resolve = self._trait_resolver(pset, defined, blockers)
         cs_sig = mkey or mname
         entry: dict = {"member": mname, "kind": kind, "csharp": cs_sig,
-                       "rust": None, "blockers": blockers}
+                       "rust": None, "blockers": blockers, "warn": []}
+        # Drain anything an earlier member queued, so a marker cannot be
+        # attributed to the wrong signature.
+        self.take_type_warnings()
 
         # `Foo<T>(...)` in the member key: the METHOD declares type parameters
         # of its own, which is not the same thing as being declared on a generic
@@ -290,6 +293,11 @@ class InterfaceTrait:
                 name=snake(mname))
             entry["rust"] = form.format(name=entry["fn"], handler=handler)
             entry["deviation"] = "event_subscribe_only"
+            # The narrowing is a WARNING, not a gap: the method emits and one
+            # subscriber does work. What is missing is `-=` and the second
+            # subscriber, so the CLAIM is what has to change, not the emission.
+            wid = spec.get("event_warning")
+            entry["warn"] = ([wid] if wid else []) + self.take_type_warnings()
             return entry
 
         ret_cs = rtype if rtype is not None else dtype
@@ -324,6 +332,10 @@ class InterfaceTrait:
         entry["rust"] = spec.get("method",
                                  "    fn {name}(&mut self{extra}) -> {ret};") \
             .format(name=entry["fn"], extra=extra, ret=ret)
+        # A parameter or return type whose mapping is not an equivalence marks
+        # the signature it appears in. Only reached when the member EMITS: a
+        # blocked one returned above and is reported as a gap instead.
+        entry["warn"] = self.take_type_warnings()
         return entry
 
     def _super_trait(self, bname, pset, defined, blockers, resolve) -> str | None:
@@ -404,7 +416,12 @@ class InterfaceTrait:
         the file states what it does not contain as plainly as what it does.
         """
         spec = self.language.get("interface_traits", {})
+        # `interface_report` runs the member analysis to a fixpoint, so a member
+        # is entered several times and each round queues its type warnings
+        # afresh. Drained here so what reaches the emitted members is this
+        # round's, not every round's.
         report = self.interface_report()
+        self.take_type_warnings()
         L: list[str] = []
         a = L.append
         a("//! C# interfaces as Rust traits, GENERATED from the corpus.")
@@ -445,6 +462,9 @@ class InterfaceTrait:
             a("//! `-=` has no form -- a boxed closure has no identity to remove")
             a("//! by -- and the multicast narrowing is the one already recorded")
             a("//! in stdlib.delegates.")
+        # Spliced at the end: the marked members are emitted below, so a summary
+        # written here would list none of them.
+        warn_at = len(L)
         a("")
         for r in emitted:
             bounds = [b["rust"] for b in r["bases"] if b["rust"]]
@@ -457,7 +477,19 @@ class InterfaceTrait:
             a(decl)
             for e in r["members"]:
                 if e["rust"]:
+                    for wid in e.get("warn", []):
+                        for line in self.warn_line(wid, 1):
+                            a(line)
                     a(e["rust"])
             a("}")
             a("")
+        summary = self.warning_summary(L[warn_at:])
+        if summary:
+            L[warn_at:warn_at] = [
+                "//!",
+                "//! WARNINGS -- these DID emit, and their semantics DIFFER from",
+                "//! the source. Marked at every site, not only summarised here:",
+                # `!` and not `-`: a `//!   - ` line is counted as a GAP by
+                # three separate tools, and a warning is the opposite of a gap.
+                *[f"//!   ! {s}" for s in summary]]
         return "\n".join(L).rstrip() + "\n", report

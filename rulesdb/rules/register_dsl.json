@@ -58,12 +58,28 @@
       "note": "changeCallback, readCallback and shadowReloadCallback have no slot in any rule, ON PURPOSE. Adding one means adding a hook to renode-regs, and a hook nothing calls is dead configuration -- the exact thing the write-callback asserts in renode-regs exist to reject. Of the 18 changeCallback sites in the cut, the two inside generated peripherals are both withheld for unrelated reasons (STM32_ADC's EnableADC reaches untranslated state; STM32_SYSCFG's is loop-replicated), so a runtime hook added today could not fire. They are reported instead, which is what makes the count visible and the work orderable."
     }
   },
+  "postconditions": {
+    "note": "Every rule below carries a POSTCONDITION: what its output must look like, checked against the emitted text at the moment it is produced. `matches`, `when` and `negative` are all statements about the INPUT; nothing said anything about the output, so an emitter that produced plausible nonsense produced it in silence. That is the defect this repository was founded on -- a combinator in a translated file that the source does not contain, behaviourally inert, invisible to a 33,000-access trace and shaped like every other line.",
+    "prior_art": "Oxidizer (PLDI 2025) writes each mapping rule as an inference rule whose conclusion carries `code |> <expected target shape>` and checks it statically at emit time, rejecting on failure with no oracle involved. Their ablation puts rules-plus-checks at 73% I/O-equivalence and a model with repair and no rules at 0%.",
+    "predicates": "Defined in scripts/emitter/lang/postcondition.py, which is the language layer -- the mechanism is generic and this file only supplies the values. `emits_call` names the output function the rule is about; `combinators` is how many chained calls it may produce, at bracket depth zero; `arity` is the argument count of the outermost call; `must_not_emit` are substrings the OUTPUT may not contain.",
+    "why_all_four_on_almost_every_rule": "Each catches a different way to be wrong, and each of the three has happened here. `emits_call` catches a template quietly retargeted at a different output function. `combinators` catches a link nobody asked for -- the invented one was exactly this. `arity` catches the opposite: a slot dropped from a template, which is how bound callbacks fell off the end and a field kept its handle while silently losing its behaviour. `must_not_emit` catches a forbidden shape arriving through a SUBSTITUTED slot, which the template-level check in `negative` cannot see.",
+    "relationship_to_negative": "`negative.emit_must_not_contain` reads the TEMPLATE and `postcondition.must_not_emit` reads the OUTPUT. They overlap deliberately: the first fails at review time on any corpus, the second fails at emit time on this one, and a slot substitution is visible only to the second.",
+    "a_violation_is_never_the_input_s_fault": "It means the rule and the emitter disagree about what the rule produces. So it RAISES rather than recording a gap -- a gap asserts the converter knows it cannot do something, which is not what has happened.",
+    "arity_is_the_target_signature": "The argument counts here are the arities of the output functions. They are stated per rule rather than derived from the target crate because a rule must be checkable without building anything, and because a mismatch should name the RULE that is wrong, not the call site."
+  },
   "rules": [
     {
       "name": "WITH_FLAG_BOUND_COMPUTED",
       "matches": "WithFlag|DefineFlagField",
       "when": "field and provider or field and writer",
       "emit": ".with_flag_cb({pos}, &mut f.{field}, {mode}, {provider_fn}, {writer_fn})",
+      "postcondition": {
+        "emits_call": "with_flag_cb",
+        "combinators": 1,
+        "arity": 5,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "Both halves in one call, or the site loses one of them silently. The arity is the check that matters here: this rule exists BECAUSE a template with too few slots let a bound callback fall off the end while the field kept its handle, so the layout stayed right and the behaviour vanished."
+      },
       "note": "`out` and the callbacks are independent in C#, and 22 call sites use both. The rule table had only `field` OR `provider or writer`, so the bound rule won and the callback fell off the end of the template with nothing reporting it -- the field kept its handle and silently lost its behaviour. `when` is read as a disjunction of conjunctions, which is why this can be stated at all.",
       "negative": [
         {
@@ -77,19 +93,40 @@
       "name": "WITH_FLAG_BOUND",
       "matches": "WithFlag|DefineFlagField",
       "when": "field",
-      "emit": ".with_flag({pos}, &mut f.{field}, {mode})"
+      "emit": ".with_flag({pos}, &mut f.{field}, {mode})",
+      "postcondition": {
+        "emits_call": "with_flag",
+        "combinators": 1,
+        "arity": 3,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "A bound one-bit field, stored. Reaching any reserved emitter would drop its writes -- reserved fields are skipped on write -- and nothing in a trace can see a write that never happened."
+      }
     },
     {
       "name": "WITH_FLAG_COMPUTED",
       "matches": "WithFlag|DefineFlagField",
       "when": "provider or writer",
       "emit": ".with_value_cb({pos}, 1, {mode}, {provider_fn}, {writer_fn})",
+      "postcondition": {
+        "emits_call": "with_value_cb",
+        "combinators": 1,
+        "arity": 5,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "A computed flag is a one-bit computed value and goes through the value combinator; the literal 1 in the template is that width. If this ever emits a different call the two paths have diverged, which is what the note above says must not happen."
+      },
       "note": "A flag is a 1-bit value, so a computed flag routes through the same combinator rather than needing a parallel with_flag_cb."
     },
     {
       "name": "WITH_FLAG_ANONYMOUS",
       "matches": "WithFlag|DefineFlagField",
       "emit": ".with_flag_anon({pos}, {mode})",
+      "postcondition": {
+        "emits_call": "with_flag_anon",
+        "combinators": 1,
+        "arity": 2,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "The exact regression this rule was written for, now checked on the OUTPUT rather than only on the template. An anonymous field must reach a STORING combinator; every forbidden name pushes reserved, and a reserved bit is write-ignored and read-as-zero. It also must keep its mode: the tagged form hardcodes read-write, which is why the arity is 2 and not 1."
+      },
       "note": "A `WithFlag` that binds no `out` and carries no callback is still a STORED field -- the C# overload calls DefineFlagField, which appends to `registerFields`. It is anonymous, not tagged. This used to emit `.with_tagged_flag({pos})`, which is reserved, so `Bank::write` skipped it and the bit became write-ignored and read-as-zero. It also discarded `mode`: the tagged form hardcodes READ_WRITE, so five STM32F4_RTC `Read | WriteZeroToClear` flags and one write-only flag all lost their mode as well. `DefineFlagField` is the INSTANCE form of the same method -- literally the one the note above names -- so a call whose result nothing binds is the same anonymous stored field and takes the same arm; routing it anywhere reserved would reintroduce the defect through the door the instance combinators opened.",
       "negative": [
         {
@@ -117,6 +154,13 @@
       "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "when": "field and provider or field and writer",
       "emit": ".with_value_out_cb({pos}, {width}, &mut f.{field}, {mode}, {provider_fn}, {writer_fn})",
+      "postcondition": {
+        "emits_call": "with_value_out_cb",
+        "combinators": 1,
+        "arity": 6,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "The multi-bit counterpart of WITH_FLAG_BOUND_COMPUTED, and the same argument: one call carrying handle, width, mode and both callbacks, or a site loses part of itself where no test can see."
+      },
       "note": "The multi-bit counterpart of WITH_FLAG_BOUND_COMPUTED; see its note.",
       "negative": [
         {
@@ -130,19 +174,40 @@
       "name": "WITH_VALUE_BOUND",
       "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "when": "field",
-      "emit": ".with_value({pos}, {width}, &mut f.{field}, {mode})"
+      "emit": ".with_value({pos}, {width}, &mut f.{field}, {mode})",
+      "postcondition": {
+        "emits_call": "with_value",
+        "combinators": 1,
+        "arity": 4,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "A bound multi-bit field, stored, with its declared width. The width slot is why the arity is 4: dropping it would place a field of the wrong size at the right offset, which reads correctly for every value that happens to fit."
+      }
     },
     {
       "name": "WITH_VALUE_COMPUTED",
       "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "when": "provider or writer",
       "emit": ".with_value_cb({pos}, {width}, {mode}, {provider_fn}, {writer_fn})",
+      "postcondition": {
+        "emits_call": "with_value_cb",
+        "combinators": 1,
+        "arity": 5,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "A computed field with no storage. Both callback slots are present even when one is None, because the free fns are emitted alongside and a template with one slot would silently discard whichever callback it did not name."
+      },
       "note": "The callbacks become free fns emitted alongside; see peripheral_methods for why they cannot be closures."
     },
     {
       "name": "WITH_VALUE_ANONYMOUS",
       "matches": "WithValueField|WithEnumField|DefineValueField|DefineEnumField",
       "emit": ".with_value_anon({pos}, {width}, {mode})",
+      "postcondition": {
+        "emits_call": "with_value_anon",
+        "combinators": 1,
+        "arity": 3,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "The site the bug was found at. A blank read-write scratch field that fell to a tag became write-ignored and read-as-zero, and the trace for that peripheral has no writes at all, so it scored zero divergences throughout."
+      },
       "note": "The value-field counterpart of WITH_FLAG_ANONYMOUS, and the site the bug was found at: STM32F4_EXTI's `WithValueField(0, 32, name: \"EMR\")`, whose C# comment calls it a blank implementation kept for backwards compatibility. It is a read-write scratch register, and emitting `.with_tag(0, 32)` made it write-ignored and read-as-zero. The exti trace has no writes at all, so the oracle scored it 0 divergences throughout. `DefineValueField` / `DefineEnumField` are the INSTANCE forms the extension overloads forward to, so an unbound one is the same anonymous stored field and must not fall to a tag either.",
       "negative": [
         {
@@ -169,6 +234,13 @@
       "matches": "WithValueFields|WithEnumFields|WithFlags",
       "when": "field",
       "emit": ".with_fields_cb({pos}, {width}, {count}, &mut f.{field}, {mode}, None, None)",
+      "postcondition": {
+        "emits_call": "with_fields_cb",
+        "combinators": 1,
+        "arity": 7,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "ONE call defining the whole group. A plural combinator that emitted one call per element would produce the right bits and the wrong handles, and a chain of them is exactly what the combinator count forbids."
+      },
       "bindings": {
         "count": "count"
       }
@@ -178,6 +250,13 @@
       "matches": "WithValueFields|WithEnumFields|WithFlags",
       "when": "provider or writer",
       "emit": ".with_values_cb({pos}, {width}, {count}, {mode}, {provider_fn}, {writer_fn})",
+      "postcondition": {
+        "emits_call": "with_values_cb",
+        "combinators": 1,
+        "arity": 6,
+        "must_not_emit": ["with_tag", "with_reserved", "with_tagged_flag"],
+        "why": "The callback form of a group. It carries `count` as well as both callbacks, and the arity is what says so: this rule was added because the group-by-callback shape matched nothing at all, which left five already-generated callbacks in a file as dead code."
+      },
       "note": "The plural combinators bind a group of fields by `out IValueRegisterField[]` OR by callback -- `(idx, val) => mode[idx]`, with the group index as the first lambda parameter and no `out` anywhere. Only the `out` form had a rule, so the callback form matched nothing at all: five registers of one peripheral located, emitting nothing, and their already-generated callbacks left in the file as dead code. This is the plural counterpart of WITH_VALUE_COMPUTED and reads its callbacks the same way; the group index the C# lambda captures arrives as renode-regs' `group_index` parameter.",
       "bindings": {
         "count": "count"
@@ -194,6 +273,13 @@
       "name": "WITH_TAGGED_FLAG",
       "matches": "WithTaggedFlag",
       "emit": ".with_tagged_flag({pos})",
+      "postcondition": {
+        "emits_call": "with_tagged_flag",
+        "combinators": 1,
+        "arity": 1,
+        "must_not_emit": ["&mut f."],
+        "why": "The mirror of every rule above. A genuine tag stores NOTHING, so it must never bind a field handle -- giving one storage would invent state the source does not have, and that is as invisible to a trace as dropping storage is."
+      },
       "note": "A GENUINE tag: `WithTaggedFlag` calls PeripheralRegister.TaggedFlag, which appends to `tags`, a list the register's read and write paths never consult. Reserved is correct here and only here.",
       "negative": [
         {
@@ -207,6 +293,13 @@
       "name": "WITH_TAG",
       "matches": "WithTag",
       "emit": ".with_tag({pos}, {width})",
+      "postcondition": {
+        "emits_call": "with_tag",
+        "combinators": 1,
+        "arity": 2,
+        "must_not_emit": ["&mut f."],
+        "why": "A tag covers a WIDTH of bits and stores none of them. Binding a handle here would be the same invented state as on the flag form, one size up."
+      },
       "negative": [
         {
           "shape": "an anonymous WithFlag/WithValueField/WithEnumField, or the DefineFlagField/DefineValueField/DefineEnumField instance form of any of them -- no `out`, no assignment, no callbacks",
@@ -219,6 +312,13 @@
       "name": "WITH_RESERVED_BITS",
       "matches": "WithReservedBits",
       "emit": ".with_reserved({pos}, {width})",
+      "postcondition": {
+        "emits_call": "with_reserved",
+        "combinators": 1,
+        "arity": 2,
+        "must_not_emit": ["&mut f."],
+        "why": "The one rule allowed to emit a reserved span, and it may emit exactly ONE. The historical defect was a `.with_reserved(9, 23)` that no source construct asked for -- an extra link on a chain, behaviourally inert, and therefore invisible to the oracle. `combinators: 1` is the check that would have refused it."
+      },
       "negative": [
         {
           "shape": "an anonymous WithFlag/WithValueField/WithEnumField, or the DefineFlagField/DefineValueField/DefineEnumField instance form of any of them -- no `out`, no assignment, no callbacks",
@@ -232,6 +332,13 @@
       "matches": "WithWriteCallback",
       "when": "writer",
       "emit": ".with_write_callback({writer_fn})",
+      "postcondition": {
+        "emits_call": "with_write_callback",
+        "combinators": 1,
+        "arity": 1,
+        "must_not_emit": ["&mut f.", "with_tag", "with_reserved"],
+        "why": "A callback on the WHOLE register, not on a field within it. Binding a handle would attach it to a field this call does not have, and emitting any field combinator here would place bits the source never described."
+      },
       "callback_signatures": {
         "writeCallback": "registerWriteCallback"
       },
@@ -484,7 +591,9 @@
     "reference_note": "Emitted as the DISCRIMINANT. A register stores the numeric value, and the bank reads and writes u64, so an enum-typed field compares against its discriminant -- which is what the hardware holds. Recorded as a representation deviation: C# keeps the enum type through `.Value`, Rust keeps the number.",
     "from_u64": {
       "note": "C# casts a register value straight to the enum: `(OutputSpeed)val`. Rust has no such cast, so each generated enum gets a from_u64. DEVIATION: C# keeps an out-of-range discriminant (`(OutputSpeed)7` stays 7), which Rust cannot represent, so an unmatched value falls back to the default. In practice the field width bounds the value -- a 2-bit field over a 4-member enum is total -- but the fallback is recorded rather than assumed unreachable.",
-      "impl": "impl {name} {{\n    pub fn from_u64(v: u64) -> Self {{\n        match v {{\n{arms}\n            _ => Self::default(),\n        }}\n    }}\n}}",
+      "warning": "narrowed",
+  "warning_note": "The fallback used to be described in the note above and nowhere else, so every generated conversion read as faithful. It is a WARNING, not a gap: the conversion emits and is right for every in-range value, and only the CLAIM of equivalence was wrong. The identifier names an entry in the language layer's severity table, because closed enums are a property of the two languages and not of this corpus.",
+  "impl": "impl {name} {{\n    pub fn from_u64(v: u64) -> Self {{\n        match v {{\n{arms}\n            _ => Self::default(),\n        }}\n    }}\n}}",
       "arm": "            {value} => Self::{member},"
     },
     "typed_callback_param": {

@@ -20,6 +20,10 @@
 //!   - stream: StreamConfiguration: callback for bit 0 needs peer method(s) not yet emitted: handle_enable
 //!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - stream: state field `parent`: reference-typed, so the object-graph rule maps it to `Gc<STM32DMA>`; blocked: `STM32DMA` has no emitted Rust type yet, so there is nothing to point at
+//!
+//! WARNINGS -- these DID emit, and their semantics DIFFER from
+//! the source. Marked at every site, not only summarised here:
+//!   ! WARN(narrowed) x3: a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -144,6 +148,7 @@ pub enum DataSize {
     Reserved = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl DataSize {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -166,6 +171,7 @@ pub enum Direction {
     Reserved = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl Direction {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -188,6 +194,7 @@ pub enum FIFOThreshold {
     Full = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl FIFOThreshold {
     pub fn from_u64(v: u64) -> Self {
         match v {

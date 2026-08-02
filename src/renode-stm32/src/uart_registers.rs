@@ -15,6 +15,10 @@
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 17
+//!
+//! WARNINGS -- these DID emit, and their semantics DIFFER from
+//! the source. Marked at every site, not only summarised here:
+//!   ! WARN(narrowed) x3: a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -58,6 +62,7 @@ pub enum OversamplingMode {
     By8 = 1,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl OversamplingMode {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -76,6 +81,7 @@ pub enum ParitySelection {
     Odd = 1,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl ParitySelection {
     pub fn from_u64(v: u64) -> Self {
         match v {
@@ -96,6 +102,7 @@ pub enum StopBitsValues {
     OneAndAHalf = 3,
 }
 
+// WARN(narrowed): a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
 impl StopBitsValues {
     pub fn from_u64(v: u64) -> Self {
         match v {

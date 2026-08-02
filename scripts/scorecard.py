@@ -52,6 +52,35 @@ def sh(*args: str) -> str | None:
         return None
 
 
+def severity_stats(root: Path) -> tuple[dict, dict]:
+    """Marked deviation sites in emitted Rust, per warning identifier.
+
+    Read from the SAME table the emitter renders from, so a new deviation
+    appears here without an edit and cannot be counted under a name only this
+    script knows. Grepping for a remembered string is how the one marker that
+    already existed stayed the only one for as long as it did.
+
+    `renode-sync` is excluded for the reason the threading line already
+    excludes it: it holds a hand-written copy of the emitted shape as a test
+    fixture, which is not a translated site.
+    """
+    doc = root / "rulesdb" / "rules" / "csharp_core.json"
+    if not doc.exists():
+        return {}, {}
+    spec = json.loads(doc.read_text()).get("severity", {})
+    warnings = {k: v for k, v in spec.get("warnings", {}).items()
+                if isinstance(v, dict)}
+    default = spec.get("tiers", {}).get("warning", {}).get("default_tag", "WARN")
+    counts = {k: 0 for k in warnings}
+    for p in (root / "src").rglob("*.rs"):
+        if "renode-sync" in p.parts:
+            continue
+        text = p.read_text(errors="ignore")
+        for wid, w in warnings.items():
+            counts[wid] += text.count(f"{w.get('tag', default)}({wid})")
+    return counts, warnings
+
+
 def issue_stats(root: Path) -> dict | None:
     """Live issue state. Returns None when gh is unavailable (offline/CI)."""
     raw = sh("gh", "issue", "list", "--state", "all", "--limit", "200",
@@ -276,6 +305,40 @@ def build(root: Path) -> str:
       f"{sites if sites is not None else 'the'} lock site(s) in the corpus, "
       f"{emitted} in emitted Rust. Nothing here is evidence for or against D3.")
     a("")
+
+    # --- Severity -----------------------------------------------------------
+    # A gap withholds, so it can never be mistaken for a translation. A WARNING
+    # does not: it emitted, and its semantics differ. Those used to be
+    # describable only in prose next to a rule, which cannot be counted, cannot
+    # be grepped in the output and cannot fail a build -- so three divergences
+    # read as faithful mappings to anyone reading the Rust.
+    counts, warnings = severity_stats(root)
+    if warnings:
+        a("## Severity — translated, but the semantics differ")
+        a("")
+        a("| marker | sites in emitted Rust | what differs |")
+        a("|---|---:|---|")
+        for wid in sorted(warnings):
+            w = warnings[wid]
+            a(f"| `{w.get('tag', 'WARN')}({wid})` | {counts.get(wid, 0)} | "
+              f"{w.get('text', '')} |")
+        a(f"| **total** | **{sum(counts.values())}** | |")
+        a("")
+        a("A **gap** withholds the member, so it can never read as a "
+          "translation. A **warning** emitted and is wrong in a stated way — "
+          "the number is the count of sites carrying the marker, not the count "
+          "of deviations declared, so a deviation that is declared and never "
+          "marked reads as zero rather than as done.")
+        a("")
+        unmarked = sorted(k for k, v in counts.items() if not v)
+        if unmarked:
+            a(f"> **{len(unmarked)} declared deviation(s) mark nothing yet** "
+              f"— `{'`, `'.join(unmarked)}`. Each has sites in the corpus and "
+              f"none of those sites reaches emitted Rust today: the members "
+              f"carrying them are withheld for unrelated reasons. The zero is "
+              f"a fact about how little is emitted, not evidence that the "
+              f"deviation is gone.")
+            a("")
 
     # --- Tests --------------------------------------------------------------
     a("## Tests")
