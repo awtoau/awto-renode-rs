@@ -366,6 +366,33 @@ impl<'a, S> RegisterBuilder<'a, S> {
         self
     }
 
+    /// `WithValueField(pos, width, mode, name:)` — no `out`, no callbacks.
+    ///
+    /// **Stored, not tagged.** The C# overload without an `out` parameter still
+    /// calls `DefineValueField`, so the field is a real `RegisterField` in
+    /// `registerFields`: writes stick and reads return them. Only `Tag` /
+    /// `TaggedFlag` go to the separate `tags` list that stores nothing.
+    ///
+    /// This exists because the two were conflated. An anonymous value field was
+    /// emitted as `with_tag`, `Bank::write` skips reserved fields, and the
+    /// register silently became write-ignored / read-as-zero — the C#
+    /// `STM32F4_EXTI` EMR is a deliberate read-write scratch register and lost
+    /// exactly that. Nothing observed it: its trace has no writes.
+    ///
+    /// No handle is returned because the C# binds none; the field is reachable
+    /// only through the register it belongs to.
+    pub fn with_value_anon(mut self, pos: u32, width: u32, mode: FieldMode) -> Self {
+        self.push(pos, width, mode, false);
+        self
+    }
+
+    /// `WithFlag(pos, mode, name:)` — no `out`, no callbacks. Stored, not
+    /// tagged; see [`RegisterBuilder::with_value_anon`].
+    pub fn with_flag_anon(mut self, pos: u32, mode: FieldMode) -> Self {
+        self.push(pos, 1, mode, false);
+        self
+    }
+
     /// `WithTaggedFlag(name, pos)` — modelled but not backed by behaviour.
     pub fn with_tagged_flag(mut self, pos: u32) -> Self {
         self.push(pos, 1, FieldMode::READ_WRITE, true);
@@ -634,6 +661,67 @@ mod tests {
         bank.define(0, 0)
             .with_value_cb(0, 8, FieldMode::default(), None, Some(on_write))
             .done();
+    }
+
+    /// The bug this pair of combinators exists for. C# `WithValueField(0, 32,
+    /// name: "EMR")` binds no handle and is still a STORED field; `WithTag` is
+    /// not. Emitting the first as the second made the register write-ignored and
+    /// read-as-zero, which no trace in the cut could see.
+    #[test]
+    fn anonymous_value_field_stores_where_a_tag_drops() {
+        let mut bank: Bank<()> = Bank::new();
+        // 0x00 is the C# shape: an anonymous, handle-less, read-write field.
+        bank.define(0x00, 0).with_value_anon(0, 32, FieldMode::READ_WRITE).done();
+        // 0x04 is a genuine WithTag over the same bits, for contrast.
+        bank.define(0x04, 0).with_tag(0, 32).done();
+
+        assert_eq!(bank.write(0x00, 0xDEAD_BEEF, &mut ()), Some(0));
+        assert_eq!(
+            bank.read(0x00, &mut ()),
+            Some(0xDEAD_BEEF),
+            "an anonymous value field is stored: the write must survive"
+        );
+
+        assert_eq!(bank.write(0x04, 0xDEAD_BEEF, &mut ()), Some(0));
+        assert_eq!(
+            bank.read(0x04, &mut ()),
+            Some(0),
+            "a tag stores nothing, and that is the difference"
+        );
+    }
+
+    /// The mode was being discarded as well: every anonymous field became a
+    /// READ_WRITE tag regardless of what the C# asked for. Five `STM32F4_RTC`
+    /// flags are `Read | WriteZeroToClear` and one is write-only.
+    #[test]
+    fn anonymous_flag_honours_its_mode() {
+        let mut bank: Bank<()> = Bank::new();
+        bank.define(0, 0x1)
+            .with_flag_anon(0, FieldMode::READ)
+            .with_flag_anon(1, FieldMode::WRITE)
+            .done();
+        // Bit 0 is read-only: it reports its reset value and ignores the write.
+        // Bit 1 is write-only: it stores the write and reports nothing.
+        assert_eq!(bank.read(0, &mut ()), Some(0b01));
+        bank.write(0, 0b10, &mut ());
+        assert_eq!(bank.read(0, &mut ()), Some(0b01));
+    }
+
+    /// Anonymous fields allocate a slot, exactly as tags already did, so they
+    /// neither create nor close a gap in the arena. `ValueId::offset(n)` still
+    /// addresses a plural group consecutively with one in front of it.
+    #[test]
+    fn an_anonymous_field_does_not_break_consecutive_handles() {
+        let mut bank: Bank<()> = Bank::new();
+        let mut first = ValueId::default();
+        bank.define(0, 0)
+            .with_value_anon(0, 4, FieldMode::READ_WRITE)
+            .with_value_fields(4, 2, 4, &mut first, FieldMode::READ_WRITE)
+            .done();
+        bank.write(0, 0b11 << 8, &mut ()); // group index 2
+        assert_eq!(bank.value(first.offset(2)), 0b11);
+        assert_eq!(bank.value(first.offset(0)), 0);
+        assert_eq!(bank.read(0, &mut ()), Some(0b11 << 8));
     }
 
     #[test]

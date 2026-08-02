@@ -83,7 +83,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::EVENT_MASK, 0)
-        .with_tag(0, 32)
+        .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();
 
     bank.define(reg::RISING_TRIGGER_SELECTION, 0)
