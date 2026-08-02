@@ -39,23 +39,31 @@ keeping the traversal and adding the recording. See docs/rule-engine-readiness.m
 Run:  python3 scripts/gap_census.py --db rulesdb/patterns.db
       python3 scripts/gap_census.py --db tmp/breadth.db --limit 400
       python3 scripts/gap_census.py --db rulesdb/patterns.db --blocking
+      python3 scripts/gap_census.py -j1        # serial, for the byte oracle
 Log:  ./tmp/logs/gap_census.log
+
+Emission runs on every core (scripts/emit_pool.py). STDOUT IS BYTE-IDENTICAL
+AT EVERY `-j`, and that is load-bearing rather than tidy: `check_refactor.py`
+records this script's stdout as a golden artefact, so a report that depended on
+scheduling would make every refactor look like a change. Wall-clock is reported
+on stderr for the same reason.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
-import contextlib
-import io
 import logging
 import re
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import emit_pool
 
 # Gap text -> a stable category. Ordered: first match wins, so put the specific
 # patterns above the general ones.
@@ -135,6 +143,7 @@ def main() -> int:
     ap.add_argument("--filter", default="", help="only types whose name matches")
     ap.add_argument("--blocking", action="store_true",
                     help="rank ROOT CAUSES by how many gaps each one blocks")
+    emit_pool.add_jobs_arg(ap)
     args = ap.parse_args()
 
     root = repo_root()
@@ -142,10 +151,21 @@ def main() -> int:
     log = logging.getLogger("gap_census")
     log.setLevel(logging.INFO)
     fmt = logging.Formatter("%(message)s")
-    for h in (logging.FileHandler(root / "tmp" / "logs" / "gap_census.log", mode="w"),
-              logging.StreamHandler(sys.stdout)):
+    fileh = logging.FileHandler(root / "tmp" / "logs" / "gap_census.log", mode="w")
+    for h in (fileh, logging.StreamHandler(sys.stdout)):
         h.setFormatter(fmt)
         log.addHandler(h)
+
+    # Wall-clock goes to the log file and to STDERR, never to stdout.
+    # `check_refactor.py` compares this script's stdout against a recorded
+    # baseline, so a timing line on stdout would make every run differ from
+    # every other run and turn the byte oracle into a clock.
+    timing = logging.getLogger("gap_census.timing")
+    timing.setLevel(logging.INFO)
+    timing.propagate = False          # or it reaches `log`'s stdout handler
+    for h in (fileh, logging.StreamHandler(sys.stderr)):
+        h.setFormatter(fmt)
+        timing.addHandler(h)
 
     db = root / args.db
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -170,10 +190,6 @@ def main() -> int:
     log.info("%d type(s) with a register-defining method", len(rows))
     log.info("")
 
-    from emit import Emitter
-    quiet = logging.getLogger("quiet")
-    quiet.addHandler(logging.NullHandler())
-
     cats: collections.Counter = collections.Counter()
     examples: dict[str, str] = {}
     per_type: list[tuple[str, int, int]] = []
@@ -181,25 +197,35 @@ def main() -> int:
     failures = 0
     emitted_lines = 0
 
-    for name, method in rows:
-        try:
-            em = Emitter(sqlite3.connect(f"file:{db}?mode=ro", uri=True), quiet)
-            with contextlib.redirect_stderr(io.StringIO()):
-                out = em.emit_file(name, method, "x")
-        except Exception as exc:                       # noqa: BLE001
+    # Emission is parallel; AGGREGATION IS NOT, and must not be. `emit_many`
+    # returns results in task order, and this loop is byte-for-byte the serial
+    # loop it replaced -- because `cats` is a Counter whose `most_common` breaks
+    # ties on insertion order, and `examples` keeps the FIRST example per
+    # category. Fold these in completion order and the totals still match while
+    # the report changes: valid output, different bytes, no test to catch it.
+    t0 = time.monotonic()
+    results = emit_pool.emit_many(db, [(n, m, "x") for n, m in rows],
+                                  args.jobs, lpt=not args.no_lpt)
+    timing.info("emitted %d type(s) in %.1fs at -j%d", len(results),
+                time.monotonic() - t0, args.jobs)
+    emit_pool.report_tail(results, timing)
+
+    for r in results:
+        if r.err_type is not None:
             failures += 1
-            cats[f"CONVERTER CRASH: {type(exc).__name__}"] += 1
-            examples.setdefault(f"CONVERTER CRASH: {type(exc).__name__}",
-                                f"{name}.{method}: {exc}")
+            cats[f"CONVERTER CRASH: {r.err_type}"] += 1
+            examples.setdefault(f"CONVERTER CRASH: {r.err_type}",
+                                f"{r.name}.{r.method}: {r.err_msg}")
             continue
+        out = r.text
         gaps = [l[8:].strip() for l in out.splitlines() if l.startswith("//!   - ")]
         emitted_lines += len(out.splitlines())
-        per_type.append((name, len(out.splitlines()), len(gaps)))
+        per_type.append((r.name, len(out.splitlines()), len(gaps)))
         all_gaps.extend(gaps)
         for g in gaps:
             c = classify(g)
             cats[c] += 1
-            examples.setdefault(c, f"{name}: {g}")
+            examples.setdefault(c, f"{r.name}: {g}")
 
     if args.blocking:
         # A gap count is not a work estimate. Most gaps are CASCADES: one
