@@ -39,6 +39,16 @@
       }
     ]
   },
+  "field_mode": {
+    "note": "The FieldMode [Flags] enum is READ FROM THE CORPUS, member by member -- `scripts/emitter/plugins/register_dsl.py:field_mode_bits`. It used to be a six-entry dict beside the emitter, against a C# enum that declares twelve, and the other six rendered as `FieldMode::default()`: a field answering neither reads nor writes, emitted as a translation. NVIC's SYS_TICK_CONTROL bit 16 is `ReadToClear` in the C# and shipped inert. Nothing here lists the members, on purpose -- listing them is what went wrong.",
+    "rust_name": "the C# member name in SCREAMING_SNAKE, e.g. `WriteOneToClear` -> `FieldMode::WRITE_ONE_TO_CLEAR`. A convention, not a per-member table, so there is nothing to fall behind. `scripts/check_field_mode.py` pins it against renode_regs' own constants in both directions.",
+    "compound": {
+      "3": "FieldMode::READ_WRITE"
+    },
+    "compound_note": "`Read | Write` is by far the commonest combination and renode_regs names it, exactly as the C# combinator default parameters spell it out. Purely how it READS; `FieldMode::READ | FieldMode::WRITE` is the same value.",
+    "unexpressible": "A mode with a bit no corpus member accounts for, or no bits at all, WITHHOLDS the field and reports a gap. `FieldMode::default()` must never be a translation: it compiles, it runs, and it answers nothing -- inert wrong code, which is the class a trace cannot see.",
+    "deviation": "C# `ReadInner` runs every value provider first and only then applies ReadToClear/ReadToSet, whereas renode_regs interleaves the two per field. The difference is observable only to a valueProviderCallback that reads a SIBLING read-to-clear field in the same register; no site in the corpus does. Recorded rather than paid for with a second pass."
+  },
   "callback_params": {
     "note": "Every callback the DSL accepts, not the two the emitter happened to read. The corpus records changeCallback, readCallback and shadowReloadCallback as fully bound DelegateCreation arguments exactly as it records writeCallback; reading only two of them meant a changeCallback on bit 0 vanished while a writeCallback on bit 30 of the same register reported a gap. Detection is by the DSL's own naming convention (`suffix`), so a callback kind added upstream is inspected without a data change; the alias map only says which template slot each one fills, and a bound callback with no slot is a GAP.",
     "suffix": "Callback",
@@ -236,7 +246,7 @@
         "writeCallback": "registerWriteCallback"
       },
       "note": "A callback on the REGISTER, not on a field: C# CallWriteHandlers fires it after every field's own write handler, on every write, whether or not anything changed. It resolves to DoubleWordRegisterExtensions rather than PeripheralRegisterExtensions, which is the only reason it was invisible -- the combinator table named one extension class. 18 sites. Its arguments are the register's whole old value and the whole written value, so the signature has no field index and is named separately from the field-level writeCallback of the same parameter name.",
-      "deviation": "The `old` argument is composed from the stored slots of the register's non-reserved fields. C# reads it from the register's single backing ulong, which also carries tag and reserved bits; renode-regs stores per field, so bits belonging to no field read back as zero here. No corpus callback reads the argument -- every one of the 18 discards both -- so the difference is recorded rather than paid for.",
+      "deviation": "RESOLVED, and kept here as the record of what it was. The `old` argument used to be composed from the stored slots of the register's non-reserved fields, so tag bits and bits belonging to no field read back as zero where C# carries whatever its single backing ulong holds. C# seeds that ulong with the reset value and lets only REGISTER FIELDS overwrite parts of it, so renode_regs now reconstructs it the same way -- reset value first, each non-tag field's slot over its own slice. No corpus callback reads the argument, which is why the difference survived; it is gone rather than documented.",
       "cost_of_dropping_it": "In STM32_UART both dropped callbacks call Update(), which recomputes the IRQ line, and they sit on registers whose flags are WriteZeroToClear. An ISR clearing RXNE/TC therefore never recomputed the line and it stayed asserted. A trace cannot observe an IRQ, so 33,164 replayed accesses at 100% said nothing about it.",
       "negative": [
         {
