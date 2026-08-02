@@ -8,7 +8,7 @@
 //!
 //! GAPS the converter reports rather than guessing:
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
-//!   - Reset: withheld, reaches state this peripheral does not have: st.gpio_pins, st.internal_receivers_cache
+//!   - Reset: withheld, reaches state this peripheral does not have: st.internal_receivers_cache
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `internalReceiversCache`: no Rust mapping for `System.Collections.Generic.Dictionary<int, Antmicro.Renode.Peripherals.Miscellaneous.STM32_SYSCFG.InternalReceiver>`
 

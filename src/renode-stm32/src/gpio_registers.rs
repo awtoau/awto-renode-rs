@@ -21,17 +21,17 @@
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
-//!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value, st.number_of_pins
+//!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
 //!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
-//!   - WriteState: withheld, reaches state this peripheral does not have: st.number_of_pins
 //!   - base_gpio_port_reset: withheld, calls withheld method(s): connections, unset
 //!   - set_connections_state_using_bits: withheld, calls withheld method(s): connections, set, unset
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `alternateFunctionOutputs`: no Rust mapping for `Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.GPIOAlternateFunction[]`
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
+//!   - write_state: withheld, calls withheld method(s): write_pin
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

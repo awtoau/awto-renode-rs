@@ -73,8 +73,24 @@ def emit_all(root: Path, db: Path, log: logging.Logger) -> list[tuple[str, int]]
     shutil.rmtree(crate, ignore_errors=True)
     (crate / "src").mkdir(parents=True)
 
+    # A sub-block has no standalone form. Its `define_registers` is typed on
+    # the PARENT's State, because that is whose bank it defines into, so
+    # emitting it as its own module produces a `self` with nothing to bind to.
+    # It is compiled -- inside its parent's module, which is the only place it
+    # exists. Counting it twice would report errors for a file the converter
+    # does not actually produce.
+    from emitter.plugins.sub_blocks import sub_blocks
+    probe = Emitter(sqlite3.connect(f"file:{db}?mode=ro", uri=True), quiet)
+    nested = {s["child"] for name, _m in rows
+              for s in sub_blocks(probe, name)[0]}
+    if nested:
+        log.info("%d type(s) emitted only inside a parent: %s",
+                 len(nested), ", ".join(sorted(nested)))
+
     mods: list[tuple[str, int]] = []
     for name, method in rows:
+        if name in nested:
+            continue
         em = Emitter(sqlite3.connect(f"file:{db}?mode=ro", uri=True), quiet)
         try:
             with contextlib.redirect_stderr(io.StringIO()):

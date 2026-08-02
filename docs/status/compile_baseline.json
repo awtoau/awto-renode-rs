@@ -1,7 +1,8 @@
 {
   "errors": 27,
-  "modules_clean": 18,
-  "modules_total": 25,
+  "modules_clean": 17,
+  "modules_total": 24,
   "note": "A RATCHET, not a target. The gate fails when errors RISE above this, never when they merely stay put. A hard zero would block every commit today; a ratchet stops the regression that actually happened -- a format-string rule that was never called survived two commits because nothing compiled the 23 modules it broke.",
-  "lower_me": "When errors fall, lower this. That is the whole mechanism."
+  "lower_me": "When errors fall, lower this. That is the whole mechanism.",
+  "why_the_totals_moved": "24 modules, not 25: `Stream` is a sub-block and has no standalone form -- its define_registers is typed on its PARENT's State, so emitting it alone produced a `self` with nothing to bind to. It is still compiled, inside the module it belongs to. The error count held at 27 across a change that added 275 lines of newly emitted code: every module that compiled before has the same count it had, and the 4 that appeared are all `cortexm`, which previously emitted nothing at all because an empty method body returned silently."
 }

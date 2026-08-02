@@ -9,23 +9,23 @@
 //! GAPS the converter reports rather than guessing:
 //!   - AddressToFilterBankIdx: withheld, cannot emit expr:SizeOf
 //!   - AddressToRegIdx: withheld, body still contains a gap marker (return ((((address - RegisterOffset::CAN_F0R1 as u64) / (/* )
-//!   - EnableFifo0Interrupt: withheld, reaches state this peripheral does not have: st.registers, st.rx_fifo0
-//!   - EnableFifo1Interrupt: withheld, reaches state this peripheral does not have: st.registers, st.rx_fifo1
+//!   - EnableFifo0Interrupt: withheld, reaches state this peripheral does not have: st.registers
+//!   - EnableFifo1Interrupt: withheld, reaches state this peripheral does not have: st.registers
 //!   - EnableSCEInterrupt: withheld, reaches state this peripheral does not have: st.registers
 //!   - EnableTransmitInterrupt: withheld, reaches state this peripheral does not have: st.registers
 //!   - FilterCANMessage: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - OnFrameReceived: parameter `message` has no Rust mapping for `Antmicro.Renode.Core.CAN.CANMessageFrame`
-//!   - PrioritizeFiFoFilters: withheld, reaches state this peripheral does not have: st.fifo_filters_prioritized, st.filter_banks, st.number_of_filter_banks
-//!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers, st.rx_fifo, st.rx_fifo0, st.rx_fifo1
+//!   - PrioritizeFiFoFilters: withheld, reaches state this peripheral does not have: st.fifo_filters_prioritized, st.filter_banks
+//!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers, st.rx_fifo
 //!   - ReceiveCANMessage: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
-//!   - Reset: withheld, reaches state this peripheral does not have: st.filter_banks, st.number_of_filter_banks, st.registers
+//!   - Reset: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
 //!   - TransmitData: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - UpdateFifo0InterruptLine: withheld, reaches state this peripheral does not have: st.connections
 //!   - UpdateFifo1InterruptLine: withheld, reaches state this peripheral does not have: st.connections
-//!   - UpdateFilterCANAssignment: withheld, reaches state this peripheral does not have: st.filter_banks, st.number_of_filter_banks, st.registers
+//!   - UpdateFilterCANAssignment: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
 //!   - UpdateSCEInterruptLine: withheld, reaches state this peripheral does not have: st.connections
 //!   - UpdateTransmitInterruptLine: withheld, reaches state this peripheral does not have: st.connections
-//!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.number_of_filter_banks, st.number_of_rx_fifos, st.registers, st.rx_fifo0, st.rx_fifo1
+//!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
 //!   - get_IsSlave: withheld, reaches state this peripheral does not have: st.master
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `FifoFiltersPrioritized`: no Rust mapping for `System.Collections.Generic.List<Antmicro.Renode.Peripherals.CAN.STMCAN.FilterBank>[]`

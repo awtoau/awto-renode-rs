@@ -313,5 +313,21 @@
     "decl": "pub trait {name} {{",
     "method": "    fn {name}(&mut self{extra}) -> {ret};",
     "omitted_header": "//! NOT the full `{name}`. {n} of {total} members are omitted because\n//! their types have no Rust mapping yet; they are listed below. Membership\n//! grows as type mappings land -- see interface_traits in the rules."
+  },
+  "sub_blocks": {
+    "note": "A child class that defines registers into its PARENT's collection, instantiated N times. `(Registers.StreamConfiguration + id * StreamStep).Define(parent)` -- one flat register map, not a bank per child, so the translation is a loop in the parent's define_registers and NOT an offset-routing dispatch.",
+    "detected_by": "the child holds a back-reference field typed as the parent, AND one of its own methods yields registers when the register forms are run over it. Both read from the corpus; neither is a name match, so the rule does not fit one corpus.",
+    "not_this": "An array of child objects with no register block of their own. Five of the six array-of-class fields in the cut are that, and they are an ordinary Vec.",
+    "module": "pub mod {module} {{",
+    "child_fields": "    /// Handles bound by this instance's `out` parameters.\n    #[derive(Default)]\n    pub struct Fields {{",
+    "child_state": "    /// The child's own state. The C# back-reference to the parent is\n    /// dropped: the parent arrives as `bank`, so storing it would be a\n    /// cycle Rust cannot express and the C# only needed for reachability.",
+    "child_fn": "    pub fn define_registers(bank: &mut Bank<super::State>, f: &mut Fields, st: &State) {{",
+    "count_const": "/// C# `const int {name}`.\npub const {rust_name}: usize = {count};",
+    "parent_field": "    /// One set of handles per `{child}`; the register map is the parent's.\n    pub {field}: Vec<{module}::Fields>,",
+    "parent_state": "    pub {field}: Vec<{module}::State>,",
+    "loop": "    f.{field}.resize_with({count}, Default::default);\n    for {ident} in 0..{count} {{\n        let st = {module}::State {{ {ident}: {ident} as {ident_ty}, ..Default::default() }};\n        {module}::define_registers(bank, &mut f.{field}[{ident} as usize], &st);\n    }}",
+    "gap_count": "sub-block `{field}`: the constructor does not give a constant instance count, so the register map cannot be replicated",
+    "state_elem": "Vec<{module}::State>",
+    "gap_identity": "sub-block `{field}`: the child takes no single instance index alongside its back-reference, so its registers cannot be placed"
   }
 }

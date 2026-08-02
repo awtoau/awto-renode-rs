@@ -9,14 +9,16 @@
 //! GAPS the converter reports rather than guessing:
 //!   - ClearIrqFlagOnCondition: parameter `flag` has no Rust mapping for `Antmicro.Renode.Core.Structure.Registers.IFlagRegisterField`
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - OnGPIO: withheld, reaches state this peripheral does not have: st.streams
-//!   - Reset: withheld, reaches state this peripheral does not have: st.streams
-//!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq, st.nr_of_streams, st.streams
+//!   - Reset: withheld, calls reset on each `Stream` -- the sub-block emits its register layout, not its methods
+//!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq
+//!   - layout: top-level `Loop` calls register combinators that were not emitted -- those fields are missing from the bank
+//!   - on_gpio: withheld, calls withheld method(s): warning_log
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 //!   - state field `engine`: no Rust mapping for `Antmicro.Renode.Peripherals.DMA.DmaEngine`
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 7
-//!   - state field `streams`: no Rust mapping for `Antmicro.Renode.Peripherals.DMA.STM32DMA.Stream[]`
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 17
+//!   - stream: StreamConfiguration: callback for bit 0 needs peer method(s) not yet emitted: handle_enable
+//!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 2
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 
@@ -26,11 +28,109 @@ pub mod reg {
     pub const HIGH_INTERRUPT_STATUS: u64 = 0x04;
     pub const LOW_INTERRUPT_CLEAR: u64 = 0x08;
     pub const HIGH_INTERRUPT_CLEAR: u64 = 0x0C;
+    pub const STREAM_CONFIGURATION: u64 = 0x10;
+    pub const STREAM_NUMBER_OF_DATA: u64 = 0x14;
+    pub const STREAM_PERIPHERAL_ADDRESS: u64 = 0x18;
+    pub const STREAM_MEMORY0_ADDRESS: u64 = 0x1C;
+    pub const STREAM_MEMORY1_ADDRESS: u64 = 0x20;
+    pub const STREAM_FIFO_CONTROL: u64 = 0x24;
 }
 
 /// Field handles bound by `out` parameters in the C#.
 #[derive(Default)]
 pub struct Fields {
+    /// One set of handles per `Stream`; the register map is the parent's.
+    pub streams: Vec<stream::Fields>,
+}
+
+/// C# `const int NrOfStreams`.
+pub const NR_OF_STREAMS: usize = 8;
+
+/// C# nested `Stream`, 8 instances. Each one
+/// defines its registers into the PARENT's bank at a computed
+/// offset, so there is one flat register map and no dispatch.
+pub mod stream {
+    use super::{Bank, FieldMode, FlagId, ValueId, reg};
+
+    /// Handles bound by this instance's `out` parameters.
+    #[derive(Default)]
+    pub struct Fields {
+        pub is_enabled: FlagId,
+        pub transfer_complete_irq_enable: FlagId,
+        pub direction: ValueId,
+        pub peripheral_increment_offset: FlagId,
+        pub memory_increment_offset: FlagId,
+        pub peripheral_data_size: ValueId,
+        pub memory_data_size: ValueId,
+        pub nr_of_data: ValueId,
+        pub peripheral_address: ValueId,
+        pub memory0_address: ValueId,
+        pub fifo_threshold: ValueId,
+        pub direct_mode: FlagId,
+    }
+
+    /// The child's own state. The C# back-reference to the parent is
+    /// dropped: the parent arrives as `bank`, so storing it would be a
+    /// cycle Rust cannot express and the C# only needed for reachability.
+    #[derive(Default)]
+    pub struct State {
+        pub data_offset: u64,
+        pub id: i32,
+    }
+
+    pub fn define_registers(bank: &mut Bank<super::State>, f: &mut Fields, st: &State) {
+        let mut stream_offset = (st.id * 24);
+
+        bank.define(reg::STREAM_CONFIGURATION + (stream_offset) as u64, 0)
+            .with_flag(0, &mut f.is_enabled, FieldMode::READ_WRITE)
+            .with_tagged_flag(1)
+            .with_tagged_flag(2)
+            .with_tagged_flag(3)
+            .with_flag(4, &mut f.transfer_complete_irq_enable, FieldMode::READ_WRITE)
+            .with_tagged_flag(5)
+            .with_value(6, 2, &mut f.direction, FieldMode::READ_WRITE)
+            .with_tagged_flag(8)
+            .with_flag(9, &mut f.peripheral_increment_offset, FieldMode::READ_WRITE)
+            .with_flag(10, &mut f.memory_increment_offset, FieldMode::READ_WRITE)
+            .with_value(11, 2, &mut f.peripheral_data_size, FieldMode::READ_WRITE)
+            .with_value(13, 2, &mut f.memory_data_size, FieldMode::READ_WRITE)
+            .with_tagged_flag(15)
+            .with_tag(16, 2)
+            .with_tagged_flag(18)
+            .with_tagged_flag(19)
+            .with_tagged_flag(20)
+            .with_tag(21, 2)
+            .with_tag(23, 2)
+            .with_reserved(25, 7)
+            .done();
+
+        bank.define(reg::STREAM_NUMBER_OF_DATA + (stream_offset) as u64, 0)
+            .with_value(0, 16, &mut f.nr_of_data, FieldMode::READ_WRITE)
+            .with_reserved(16, 16)
+            .done();
+
+        bank.define(reg::STREAM_PERIPHERAL_ADDRESS + (stream_offset) as u64, 0)
+            .with_value(0, 32, &mut f.peripheral_address, FieldMode::READ_WRITE)
+            .done();
+
+        bank.define(reg::STREAM_MEMORY0_ADDRESS + (stream_offset) as u64, 0)
+            .with_value(0, 32, &mut f.memory0_address, FieldMode::READ_WRITE)
+            .done();
+
+        bank.define(reg::STREAM_MEMORY1_ADDRESS + (stream_offset) as u64, 0)
+            .with_tag(0, 32)
+            .done();
+
+        bank.define(reg::STREAM_FIFO_CONTROL + (stream_offset) as u64, 0)
+            .with_value(0, 2, &mut f.fifo_threshold, FieldMode::READ_WRITE)
+            .with_flag(2, &mut f.direct_mode, FieldMode::READ_WRITE)
+            .with_tag(3, 3)
+            .with_reserved(6, 1)
+            .with_tagged_flag(7)
+            .with_reserved(8, 24)
+            .done();
+
+    }
 }
 
 /// C# `enum DataSize`, discriminants as declared.
@@ -106,6 +206,7 @@ impl FIFOThreshold {
 pub struct State {
     /// Register field handles, bound by the C# `out` parameters.
     pub f: Fields,
+    pub streams: Vec<stream::State>,
 }
 
 // The peripheral's own methods. C# reaches its state through
@@ -149,4 +250,9 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_reserved(28, 4)
         .done();
 
+    f.streams.resize_with(NR_OF_STREAMS, Default::default);
+    for id in 0..NR_OF_STREAMS {
+        let st = stream::State { id: id as i32, ..Default::default() };
+        stream::define_registers(bank, &mut f.streams[id as usize], &st);
+    }
 }

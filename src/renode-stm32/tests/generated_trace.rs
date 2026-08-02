@@ -21,12 +21,12 @@
 //!
 //!     usart1 33,164 accesses      0 divergences   100.0%
 //!     exti       25 accesses      0 divergences   100.0%
-//!     adc1   16,800 accesses  1,788 divergences    84.3%
+//!     dma1      183 accesses      7 divergences    92.8%
+//!     dma2   12,356 accesses    616 divergences    90.0%
+//!     adc1   16,800 accesses  1,192 divergences    89.6%
 //!     syscfg      9 accesses      2 divergences    66.7%
 //!     gpioPortA  62 accesses     14 divergences    17.6%
 //!     can1      228 accesses     99 divergences    13.9%
-//!     dma1      183 accesses     88 divergences     9.3%
-//!     dma2   12,356 accesses  6,164 divergences     0.2%
 //!
 //! USART1 IS THE RESULT THAT MATTERS. 33,164 accesses, every read matching
 //! the C#, from a module the converter produced. The hand-written uart.rs
@@ -38,10 +38,19 @@
 //! the first evidence in this project that generated code BEHAVES correctly
 //! rather than merely compiling.
 //!
-//! DMA2 is at 0.2%, and that is equally informative. Its behaviour is almost
-//! entirely withheld, so the module returns reset values while the C# returns
-//! computed ones. The register map may well be right; the trace cannot say so
-//! while the behaviour is missing.
+//! BOTH DMA ROWS MOVED, and how they moved is the point. They were 9.3% and
+//! 0.2%; the C# `Stream` class defines its own six registers into the PARENT's
+//! bank at `base + id * 0x18`, eight times over, and the register form only
+//! ever matched a CONSTANT offset -- so those 48 registers were absent, every
+//! read returned 0, and nothing reported a gap because nothing had matched.
+//!
+//! With offsets allowed to be expressions and the child emitted as a submodule,
+//! 5,629 of the 6,252 divergences disappear. What is left is attributable to
+//! ONE named gap: every remaining divergence is a read of LowInterruptStatus or
+//! HighInterruptStatus, whose per-stream flags are bound by a `for` loop that
+//! extends a register builder held in a local -- a shape the layout walker does
+//! not emit, and which now reports itself rather than vanishing. 0x20 is bit 5,
+//! TCIF0; 0x8000000 is bit 27, TCIF3. Exactly those flags, and nothing else.
 //!
 //! Neither number would be visible from the gap count, which reports the same
 //! kind of gap for both.
@@ -111,8 +120,8 @@ macro_rules! generated_replay {
 generated_replay!(syscfg_generated, renode_stm32::syscfg_registers, "syscfg", 2);
 generated_replay!(exti_generated, renode_stm32::exti_registers, "exti", 0);
 generated_replay!(adc_generated, renode_stm32::adc_registers, "adc1", 1192);
-generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 88);
-generated_replay!(dma2_generated, renode_stm32::dma_registers, "dma2", 6164);
+generated_replay!(dma1_generated, renode_stm32::dma_registers, "dma1", 7);
+generated_replay!(dma2_generated, renode_stm32::dma_registers, "dma2", 616);
 generated_replay!(can1_generated, renode_stm32::can_registers, "can1", 99);
 
 // GPIO and UART already have trace tests -- against the HAND-WRITTEN
