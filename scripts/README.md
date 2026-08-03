@@ -14,6 +14,7 @@ and negative controls are project evidence.
   multiple checks and reports.
 - `regenerate.py`: rewrites every converter-owned generated file.
 - `gates.py`: bounded-CPU validation orchestrator.
+- `gates.py --fail-fast`: stop on first failure for quick triage/fix loops.
 - `dev.py ci-determinism`: explicit issue-36 determinism proof run
   (`check_determinism.py` then `check_emit_determinism.py`).
 

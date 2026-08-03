@@ -27,9 +27,11 @@ oversubscribe the host. In the full tier, compile and gap censuses split the
 same budget and use separate scratch paths.
 
 Run:  python3 scripts/dev.py gate
+    python3 scripts/dev.py gate --fail-fast
       python3 scripts/dev.py ci
+    python3 scripts/dev.py ci --fail-fast
     python3 scripts/gates.py --full --determinism
-      python3 scripts/dev.py gates --only check-layering
+    python3 scripts/dev.py gate --only check-layering --fail-fast
 Log:  ./tmp/logs/gates.log
 Exit: 1 if any gate failed.
 """

@@ -19,7 +19,9 @@ python3 scripts/dev.py build          # compile clean set + diff (fast, ~19s)
 python3 scripts/dev.py regenerate     # rewrite converter-owned Rust
 python3 scripts/dev.py test           # cargo test --workspace
 python3 scripts/dev.py gate           # parallel everyday checks
+python3 scripts/dev.py gate --fail-fast
 python3 scripts/dev.py ci             # parallel full push-tier corpus checks
+python3 scripts/dev.py ci --fail-fast
 python3 scripts/dev.py report         # STATUS.md plus SVG and HTML
 python3 scripts/dev.py cycle          # build -> ci -> report
 python3 scripts/dev.py cycle --dry-run
