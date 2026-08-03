@@ -28,6 +28,7 @@ same budget and use separate scratch paths.
 
 Run:  python3 scripts/dev.py gate
       python3 scripts/dev.py ci
+    python3 scripts/gates.py --full --determinism
       python3 scripts/dev.py gates --only check-layering
 Log:  ./tmp/logs/gates.log
 Exit: 1 if any gate failed.
@@ -74,6 +75,13 @@ GATES: list[tuple[str, list[str]]] = [
 FULL: list[tuple[str, list[str]]] = [
     ("compile_check", ["--ratchet"]),
     ("gap_census", []),
+]
+
+# Determinism proofs stay opt-in: they are CI-grade checks and significantly
+# slower than the fast tier. Run them when proving issue-36 guarantees.
+DETERMINISM: list[tuple[str, list[str]]] = [
+    ("check_determinism", []),
+    ("check_emit_determinism", []),
 ]
 
 # NOT in either tier, and deliberately: `check_emit_determinism.py` runs each
@@ -147,6 +155,13 @@ def allocated_full(jobs: int) -> list[tuple[str, list[str]]]:
     ]
 
 
+def allocated_determinism(jobs: int) -> list[tuple[str, list[str]]]:
+    return [
+        ("check_determinism", []),
+        ("check_emit_determinism", ["--jobs", str(jobs)]),
+    ]
+
+
 def report(results: list[Result], log: logging.Logger) -> int:
     bad = 0
     log.info("")
@@ -167,6 +182,8 @@ def main() -> int:
     ap.add_argument("--only", action="append", default=[])
     ap.add_argument("--full", action="store_true",
                     help="also run the whole-corpus tier (slow, gates a push)")
+    ap.add_argument("--determinism", action="store_true",
+                    help="also run ingest/emitter determinism proofs (issue #36)")
     detected = os.cpu_count() or 1
     ap.add_argument("--jobs", type=int, default=detected,
                     help="total CPU budget (default: available online CPUs)")
@@ -192,6 +209,9 @@ def main() -> int:
         results = run_parallel(root, fast, log, args.jobs)
         if args.full:
             results += run_parallel(root, allocated_full(args.jobs), log, args.jobs)
+        if args.determinism:
+            results += run_parallel(root, allocated_determinism(args.jobs), log,
+                                    args.jobs)
 
     bad = report(results, log)
     if not args.full and not args.only:
@@ -201,6 +221,10 @@ def main() -> int:
         log.info("Nothing above says anything about the modules outside the "
                  "declared clean set.")
         log.info("    python3 scripts/gates.py --full")
+    if not args.determinism and not args.only:
+        log.info("")
+        log.info("NOT RUN: determinism proofs for ingest and emitter output.")
+        log.info("    python3 scripts/gates.py --determinism")
     log.info("%d of %d gate(s) failed", bad, len(results))
     return 1 if bad else 0
 
