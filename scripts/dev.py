@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -180,6 +181,42 @@ def cmd_ci_determinism(extra: list[str]) -> int:
         ("ingest determinism", [sys.executable, "scripts/check_determinism.py"]),
         ("emitter determinism", [sys.executable, "scripts/check_emit_determinism.py"]),
     ])
+
+
+@command("issue-62 crash census (compile + gap, fail if converter crashes)",
+         kind="aggregate")
+def cmd_issue_62(extra: list[str]) -> int:
+    if extra:
+        log("issue-62 accepts no extra arguments", "ERROR")
+        return 2
+    rc = run_sequence([
+        ("compile census", [sys.executable, "scripts/compile_check.py", "--ratchet"]),
+        ("gap census", [sys.executable, "scripts/gap_census.py"]),
+    ])
+    if rc:
+        return rc
+
+    crash_patterns = [
+        re.compile(r"emit crashed on .*: list index out of range", re.I),
+        re.compile(r"CONVERTER CRASH:\s*IndexError", re.I),
+        re.compile(r"Traceback \(most recent call last\)", re.I),
+    ]
+    offenders: list[str] = []
+    for rel in ("tmp/logs/compile_check.log", "tmp/logs/gap_census.log"):
+        p = REPO / rel
+        text = p.read_text(encoding="utf-8") if p.exists() else ""
+        hits = sum(1 for pat in crash_patterns if pat.search(text))
+        if hits:
+            offenders.append(f"{rel} ({hits} crash pattern hit(s))")
+
+    if offenders:
+        log("issue-62 FAILED: converter crash signatures still present", "ERROR")
+        for item in offenders:
+            log(f"  {item}", "ERROR")
+        return 1
+
+    log("issue-62 OK: no converter crash signatures in compile/gap logs")
+    return 0
 
 
 REPORT_STEPS = [
