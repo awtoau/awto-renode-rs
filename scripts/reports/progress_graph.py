@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Plot converter progress across git history.
 
+One report, two charts, both read from git history alone -- no rebuild.
+
+## Chart 1: generated Rust versus gaps versus correctness
+
 Three lines that must be read together:
 
   generated lines     how much Rust the converter produces
@@ -32,28 +36,45 @@ they are not:
     But eleven commits of no measured correctness change is exactly the thing
     a lines-only graph would have drawn as steady progress.
 
+## Chart 2: the compile-clean-module gate
+
+`docs/status/compile_clean_set.json` is the RATCHET (see
+`docs/decisions/two-tier-compile-gate.md`): a module in the set must never
+leave it, so the set's SIZE only grows or holds. Reading it at each commit
+that touched it is cheap -- `git show <sha>:<path>` -- and needs no rebuild,
+unlike the error TOTAL, which is a live `cargo build` measurement
+(`compile_check.py`) with no historical record: it is explicitly "a trend, not
+a gate" and was never committed per-commit, so it cannot be graphed
+retroactively without rebuilding every past commit's full corpus output.
+
+So this chart has one line, not three: clean-module count.
+
 Self-contained SVG, no plotting library: the repo has no Python dependencies
 and adding one for a chart is a poor trade.
 
-Run:  python3 scripts/progress_graph.py
-Out:  ./docs/status/progress.svg and ./docs/status/progress.html -- TRACKED.
-      A report is a deliverable, not scratch. These lived in gitignored tmp/
-      and were destroyed by every clean; the graph is the only artefact that
-      shows the correctness line falling over time, and it cannot be
-      reconstructed from a number.
+Run:  python3 scripts/reports/progress_graph.py
+Out:  ./docs/status/progress.html -- TRACKED, the only output file. A report
+      is a deliverable, not scratch: this lived in gitignored tmp/ and was
+      destroyed by every clean; the page is the only artefact that shows the
+      correctness line falling over time, and it cannot be reconstructed from
+      a number. Both charts are inline SVG in this one page -- no separate
+      .svg files, so there is one command and one committed artifact, not
+      three.
 Log:  ./tmp/logs/progress_graph.log
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import subprocess
 import sys
+from html import escape
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from check_generated import GENERATED as _GENERATED   # noqa: E402
 
 # Derived, never retyped. This list was its own hardcoded copy of two paths and
@@ -66,6 +87,8 @@ GENERATED = [path for path, _cmd in _GENERATED]
 # carry N = known divergences, committed and ratcheted.
 HARNESS = "src/renode-stm32/tests/generated_trace.rs"
 RATCHET = re.compile(r'generated_replay!\(\s*\w+\s*,[^,]+,\s*"([^"]+)"\s*,\s*(\d+)\s*\)')
+
+CLEAN_SET = "docs/status/compile_clean_set.json"
 
 
 def repo_root() -> Path:
@@ -146,7 +169,7 @@ def svg(points: list[tuple[str, str, int, int, int]]) -> str:
 
     dots = "".join(
         f'<circle cx="{x(i):.1f}" cy="{y(p[2], top):.1f}" r="3" class="d1">'
-        f'<title>{p[0]}  {p[1][:70]}\n{p[2]} lines, {p[3]} gaps'
+        f'<title>{escape(p[0])}  {escape(p[1][:70])}\n{p[2]} lines, {p[3]} gaps'
         f'{f", {p[4]} divergences" if p[4] >= 0 else ""}</title></circle>'
         for i, p in enumerate(points))
 
@@ -176,6 +199,76 @@ def svg(points: list[tuple[str, str, int, int, int]]) -> str:
 </svg>'''
 
 
+def compile_series(log: logging.Logger) -> list[tuple[str, str, int]]:
+    """(sha, subject, clean module count), oldest first, one point per commit
+    that touched the file -- most commits in between don't move this number."""
+    revs = git("log", "--reverse", "--format=%H\t%s", "--", CLEAN_SET).strip().splitlines()
+    out: list[tuple[str, str, int]] = []
+    for line in revs:
+        sha, _, subject = line.partition("\t")
+        blob = git("show", f"{sha}:{CLEAN_SET}")
+        if not blob:
+            continue
+        try:
+            data = json.loads(blob)
+        except json.JSONDecodeError:
+            continue
+        modules = data.get("modules") or data.get("clean") or []
+        if not isinstance(modules, list):
+            continue
+        out.append((sha[:7], subject, len(modules)))
+    log.info("%d commit(s) touched %s", len(out), CLEAN_SET)
+    return out
+
+
+def compile_svg(points: list[tuple[str, str, int]]) -> str:
+    W, H, PAD = 1100, 420, 64
+    if not points:
+        return "<svg/>"
+    n = len(points)
+    top = max((p[2] for p in points), default=1) or 1
+    top = ((top // 10) + 2) * 10
+
+    def x(i: int) -> float:
+        return PAD + (W - 2 * PAD) * (i / max(n - 1, 1))
+
+    def y(v: int) -> float:
+        return H - PAD - (H - 2 * PAD) * (v / top)
+
+    path = " ".join(
+        f"{'M' if i == 0 else 'L'}{x(i):.1f},{y(p[2]):.1f}"
+        for i, p in enumerate(points))
+
+    step = max(10, top // 8 // 10 * 10 or 10)
+    grid = "".join(
+        f'<line x1="{PAD}" y1="{y(v):.1f}" x2="{W-PAD}" y2="{y(v):.1f}" '
+        f'class="grid"/><text x="{PAD-10}" y="{y(v)+4:.1f}" class="ax" '
+        f'text-anchor="end">{v}</text>'
+        for v in range(0, top + 1, step))
+
+    dots = "".join(
+        f'<circle cx="{x(i):.1f}" cy="{y(p[2]):.1f}" r="3.5" class="d1">'
+        f'<title>{escape(p[0])}  {escape(p[1][:70])}\n{p[2]} clean module(s)</title></circle>'
+        for i, p in enumerate(points))
+
+    return f'''<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="img">
+<style>
+  .grid{{stroke:currentColor;opacity:.12}}
+  .ax{{fill:currentColor;opacity:.55;font:11px system-ui,sans-serif}}
+  .l1{{fill:none;stroke:#16a34a;stroke-width:2.5}}
+  .d1{{fill:#16a34a}}
+  .lg{{fill:currentColor;font:13px system-ui,sans-serif}}
+</style>
+{grid}
+<path d="{path}" class="l1"/>
+{dots}
+<circle cx="{PAD}" cy="24" r="5" fill="#16a34a"/>
+<text x="{PAD+14}" y="28" class="lg">clean modules -- a ratchet, never falls (peak {points[-1][2]})</text>
+<text x="{PAD}" y="{H-18}" class="ax">oldest commit touching the gate</text>
+<text x="{W-PAD}" y="{H-18}" class="ax" text-anchor="end">newest</text>
+</svg>'''
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.parse_args()
@@ -190,13 +283,19 @@ def main() -> int:
 
     pts = series(log)
     chart = svg(pts)
-    (root / "docs" / "status" / "progress.svg").write_text(chart)
-
     rows = "".join(
-        f"<tr><td class=m>{p[0]}</td><td>{p[1][:78]}</td>"
+        f"<tr><td class=m>{escape(p[0])}</td><td>{escape(p[1][:78])}</td>"
         f"<td class=n>{p[2]}</td><td class=n>{p[3]}</td>"
         f"<td class=n>{p[4] if p[4] >= 0 else '&mdash;'}</td></tr>"
         for p in reversed(pts))
+
+    cpts = compile_series(log)
+    cchart = compile_svg(cpts)
+    crows = "".join(
+        f"<tr><td class=m>{escape(p[0])}</td><td>{escape(p[1][:78])}</td>"
+        f"<td class=n>{p[2]}</td></tr>"
+        for p in reversed(cpts))
+
     (root / "docs" / "status" / "progress.html").write_text(f"""<!doctype html>
 <meta charset=utf-8><title>renode-rs converter progress</title>
 <style>
@@ -205,15 +304,30 @@ def main() -> int:
  th,td{{padding:.35rem .6rem;border-bottom:1px solid #8883;text-align:left}}
  .n{{text-align:right;font-variant-numeric:tabular-nums}}
  .m{{font-family:ui-monospace,monospace;opacity:.7}}
+ h2{{margin-top:2.5rem}}
  @media(prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6edf3}}}}
 </style>
 <h1>Converter progress</h1>
+
+<h2>Generated Rust versus gaps versus correctness</h2>
 <p>Generated Rust versus gaps the converter reports rather than guessing.
 Read them together: lines falling while gaps hold steady is usually the
-converter <em>withholding</em> output it should never have emitted.</p>
+converter <em>withholding</em> output it should never have emitted. Trace
+divergences are the only line of the three that measures correctness.</p>
 {chart}
 <table><tr><th>commit</th><th>subject</th><th class=n>lines</th><th class=n>gaps</th><th class=n>divergences</th></tr>
-{rows}</table>""")
+{rows}</table>
+
+<h2>Compile-clean-module gate</h2>
+<p>The two-tier compile gate's clean-module set
+(<code>docs/status/compile_clean_set.json</code>), read at each commit that
+changed it. This is a ratchet: it only grows. The error TOTAL is a live
+measurement with no historical record -- see
+<code>docs/decisions/two-tier-compile-gate.md</code> -- so it is not graphed
+here as a series, only reported as today's snapshot below.</p>
+{cchart}
+<table><tr><th>commit</th><th>subject</th><th class=n>clean modules</th></tr>
+{crows}</table>""")
 
     log.info("")
     log.info("%-9s %-56s %6s %5s %11s", "commit", "subject", "lines", "gaps",
@@ -222,7 +336,11 @@ converter <em>withholding</em> output it should never have emitted.</p>
         log.info("%-9s %-56s %6d %5d %11s", p[0], p[1][:56], p[2], p[3],
                  p[4] if p[4] >= 0 else "-")
     log.info("")
-    log.info("wrote docs/status/progress.svg and docs/status/progress.html")
+    log.info("%-9s %-56s %6s", "commit", "subject", "clean")
+    for p in cpts:
+        log.info("%-9s %-56s %6d", p[0], p[1][:56], p[2])
+    log.info("")
+    log.info("wrote docs/status/progress.html (one file, two charts)")
     return 0
 
 

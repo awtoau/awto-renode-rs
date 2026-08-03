@@ -41,6 +41,9 @@ Run:  python3 scripts/gap_census.py --db rulesdb/patterns.db
       python3 scripts/gap_census.py --db rulesdb/patterns.db --blocking
       python3 scripts/gap_census.py -j1        # serial, for the byte oracle
 Log:  ./tmp/logs/gap_census.log
+Out:  docs/status/gap_census.json (only on a canonical, unfiltered run --
+      read by scripts/reports/scorecard.py; see the note there before deciding
+      a slow report isn't worth wiring in)
 
 Emission runs on every core (scripts/emit_pool.py). STDOUT IS BYTE-IDENTICAL
 AT EVERY `-j`, and that is load-bearing rather than tidy: `check_refactor.py`
@@ -53,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import json
 import logging
 import re
 import sqlite3
@@ -226,31 +230,35 @@ def main() -> int:
             cats[c] += 1
             examples.setdefault(c, f"{r.name}: {g}")
 
+    # Root causes are computed unconditionally (cheap: one regex pass over
+    # gaps already collected) so the committed JSON artifact always carries
+    # them; --blocking only controls whether they are also PRINTED.
+    roots: collections.Counter = collections.Counter()
+    for g in all_gaps:
+        m = re.search(r"no Rust mapping for `([^`]+)`", g)
+        if m:
+            roots[f"type  {m.group(1).split('.')[-1]}"] += 1
+            continue
+        m = re.search(r"return type `([^`]+)`", g)
+        if m:
+            roots[f"type  {m.group(1).split('.')[-1]}"] += 1
+            continue
+        m = re.search(r"cannot emit (?:expr|stmt):(\w+)", g)
+        if m:
+            roots[f"construct  {m.group(1)}"] += 1
+            continue
+        m = re.search(r"base-class method `\w+` on `([^`]+)`", g)
+        if m:
+            roots[f"base class  {m.group(1)}"] += 1
+            continue
+        if "nullability" in g or "conditional access" in g:
+            roots["construct  ConditionalAccess (?.)"] += 1
+
     if args.blocking:
         # A gap count is not a work estimate. Most gaps are CASCADES: one
         # unmapped type withholds a method, which withholds its callers, which
         # withholds their callbacks. Ranking the ROOTS says what to fix; ranking
         # the gaps says how loudly the roots are complaining.
-        roots: collections.Counter = collections.Counter()
-        for g in all_gaps:
-            m = re.search(r"no Rust mapping for `([^`]+)`", g)
-            if m:
-                roots[f"type  {m.group(1).split('.')[-1]}"] += 1
-                continue
-            m = re.search(r"return type `([^`]+)`", g)
-            if m:
-                roots[f"type  {m.group(1).split('.')[-1]}"] += 1
-                continue
-            m = re.search(r"cannot emit (?:expr|stmt):(\w+)", g)
-            if m:
-                roots[f"construct  {m.group(1)}"] += 1
-                continue
-            m = re.search(r"base-class method `\w+` on `([^`]+)`", g)
-            if m:
-                roots[f"base class  {m.group(1)}"] += 1
-                continue
-            if "nullability" in g or "conditional access" in g:
-                roots["construct  ConditionalAccess (?.)"] += 1
         log.info("")
         log.info("ROOT CAUSES, ranked by gaps blocked")
         log.info("(cascades excluded -- these are the things that CAUSE them)")
@@ -283,6 +291,29 @@ def main() -> int:
         log.info("canonical corpus. It reads the same files; it exists so a")
         log.info("smoke test cannot overwrite the corpus. A crash here is a bug")
         log.info("in our tooling, not a fact about the tree.")
+
+    # Committed so scorecard.py can report this WITHOUT re-running a ~6 min
+    # full-corpus emission on every invocation. Written only for a canonical,
+    # unfiltered run -- a --limit/--filter/breadth run is a debugging slice,
+    # and overwriting the committed artifact with a slice would silently
+    # shrink what the report shows.
+    if not breadth and not args.limit and not args.filter:
+        out = {
+            "note": "python3 scripts/gap_census.py -- what the converter cannot yet "
+                     "emit, classified. NOT a correctness claim -- see the module "
+                     "docstring. Regenerate: python3 scripts/gap_census.py",
+            "types_examined": len(rows),
+            "types_emitted": len(per_type),
+            "converter_crashes": failures,
+            "emitted_lines": emitted_lines,
+            "total_gaps": total,
+            "categories": dict(cats.most_common()),
+            "root_causes": dict(roots.most_common(25)),
+            "examples": examples,
+        }
+        gap_path = root / "docs" / "status" / "gap_census.json"
+        gap_path.write_text(json.dumps(out, indent=2, sort_keys=False) + "\n")
+        log.info("wrote %s", gap_path.relative_to(root))
     return 0
 
 

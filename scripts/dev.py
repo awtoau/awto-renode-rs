@@ -227,13 +227,13 @@ def cmd_issue_62(extra: list[str]) -> int:
 
 
 REPORT_STEPS = [
-    ("scorecard", [sys.executable, "scripts/scorecard.py"]),
-    ("progress SVG and HTML", [sys.executable, "scripts/progress_graph.py"]),
-    ("compile-progress SVG and HTML", [sys.executable, "scripts/compile_progress_graph.py"]),
+    ("scorecard", [sys.executable, "scripts/reports/scorecard.py"]),
+    ("progress report (docs/status/progress.html, two charts)",
+     [sys.executable, "scripts/reports/progress_graph.py"]),
 ]
 
 
-@command("refresh STATUS.md plus progress SVG and HTML", kind="aggregate")
+@command("refresh STATUS.md plus docs/status/progress.html", kind="aggregate")
 def cmd_report(extra: list[str]) -> int:
     if extra:
         log("report accepts no extra arguments", "ERROR")
@@ -335,7 +335,9 @@ def cmd_codex(extra: list[str]) -> int:
 
 def register_tools() -> None:
     reserved = {"dev", "cycle", "run_codex"}
-    for path in sorted((REPO / "scripts").glob("*.py")):
+    paths = sorted((REPO / "scripts").glob("*.py")) + \
+        sorted((REPO / "scripts" / "reports").glob("*.py"))
+    for path in paths:
         if path.stem in reserved:
             continue
         name = path.stem.replace("_", "-")
@@ -359,8 +361,7 @@ def register_tools() -> None:
         elif path.stem in {"baseline_boot", "capture_traces", "diagnose_trace",
                            "measure_bug_switch", "mutate", "verify_emit"}:
             kind = "oracle"
-        elif path.stem in {"issue_index", "progress_graph",
-                           "compile_progress_graph", "scorecard"}:
+        elif path.stem in {"issue_index", "progress_graph", "scorecard"}:
             kind = "reporting"
         else:
             kind = "tool"

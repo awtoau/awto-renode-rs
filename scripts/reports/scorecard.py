@@ -20,6 +20,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -33,6 +34,12 @@ TESTS = "docs/status/tests.json"
 MUTANTS = "docs/status/mutants.json"
 BENCHES = "docs/status/benchmarks.json"
 SYNC_CENSUS = "docs/status/sync_census.json"
+FLOOR = "docs/status/floor.json"
+CLEAN_SET = "docs/status/compile_clean_set.json"
+GAP_CENSUS = "docs/status/gap_census.json"
+HARNESS = "src/renode-stm32/tests/generated_trace.rs"
+RULE_FILES = ["csharp_core.json", "register_dsl.json", "bug_rules.json",
+              "offset_switch.json", "constructor.json", "object_graph.json"]
 
 # The health metric that detects rule-pipeline drift. See docs/rulesdb-design.md.
 MIN_INSTANCES_PER_RULE = 3.0
@@ -97,7 +104,14 @@ def issue_stats(root: Path) -> dict | None:
         b["closed" if i["state"] == "CLOSED" else "open"] += 1
         if "gate" in names:
             gates.append((i["number"], i["title"], i["state"]))
-    return {"by_phase": by_phase, "gates": sorted(gates), "total": len(issues)}
+    by_label: dict[str, list[int]] = {}
+    for i in issues:
+        for l in i["labels"]:
+            by_label.setdefault(l["name"], []).append(i["number"])
+    open_n = sum(1 for i in issues if i["state"] != "CLOSED")
+    return {"by_phase": by_phase, "gates": sorted(gates), "total": len(issues),
+            "open": open_n, "closed": len(issues) - open_n,
+            "by_label": {k: sorted(v) for k, v in by_label.items()}}
 
 
 def rules_stats(root: Path) -> dict | None:
@@ -135,6 +149,7 @@ def rules_stats(root: Path) -> dict | None:
         return {
             "methods": count("method"),
             "operations": count("operation"),
+            "types": count("type"),
             "clusters": count("pattern_cluster"),
             "rules_committed": rules,
             "rules_general": general,
@@ -165,8 +180,43 @@ def load_json(root: Path, rel: str) -> dict | None:
         return None
 
 
-def mark(ok: bool | None) -> str:
-    return {True: "PASS", False: "FAIL", None: "—"}[ok]
+def rule_file_stats(root: Path) -> list[tuple[str, int]]:
+    """(filename, bytes) for each hand-authored JSON rule file that actually
+    ships. These, not the SQL `rule` table, are what `scripts/emit.py` reads --
+    see docs/rule-engine-readiness.md: the tree-matcher/cluster-mining pipeline
+    the SQL schema was built for was never wired up, so `rule`/`rule_instance`/
+    `pattern_cluster`/`translation` are 0 rows by design, not by defect."""
+    out = []
+    for name in RULE_FILES:
+        p = root / "rulesdb" / "rules" / name
+        if p.exists():
+            out.append((name, p.stat().st_size))
+    return out
+
+
+def oracle_trace_stats(root: Path) -> dict:
+    """Peripherals with a committed replay ratchet, read from the harness
+    itself -- the same regex progress_graph.py uses, so the two reports never
+    disagree about what the harness says."""
+    text = (root / HARNESS).read_text() if (root / HARNESS).exists() else ""
+    pat = re.compile(
+        r'generated_replay!\(\s*(\w+)\s*,\s*([\w:]+)\s*,\s*"([^"]+)"\s*,\s*(\d+)\s*\)')
+    peripherals = [{"test": t, "module": m, "trace": tr, "divergences": int(d)}
+                   for t, m, tr, d in pat.findall(text)]
+    traces_dir = root / "oracle" / "traces"
+    n_traces = len(list(traces_dir.glob("*"))) if traces_dir.is_dir() else 0
+    return {"peripherals": peripherals, "traces_captured": n_traces}
+
+
+def historical_verdict(root: Path, rel: str) -> str | None:
+    """The doc's OWN stated verdict, read rather than assumed -- census.md says
+    `Gate: FAIL` and a scorecard that reported it as `done` purely because the
+    file exists was wrong on the file's own terms."""
+    p = root / rel
+    if not p.exists():
+        return None
+    m = re.search(r'\*\*(?:Verdict|Gate):\s*([A-Za-z][\w .]*?)\.?\*\*', p.read_text())
+    return m.group(1).strip() if m else "see doc"
 
 
 def build(root: Path) -> str:
@@ -176,7 +226,11 @@ def build(root: Path) -> str:
     issues = issue_stats(root)
     rules = rules_stats(root)
     base = baseline_stats(root)
-
+    floor = load_json(root, FLOOR)
+    clean_set = load_json(root, CLEAN_SET)
+    oracle = oracle_trace_stats(root)
+    rule_files = rule_file_stats(root)
+    gaps = load_json(root, GAP_CENSUS)
     L: list[str] = []
     a = L.append
     a("# renode-rs — scorecard")
@@ -193,84 +247,138 @@ def build(root: Path) -> str:
     a("")
     a("| metric | value | target | status |")
     a("|---|---:|---:|---|")
-    # These two are reported INDEPENDENTLY. Gating the patch count on rules
-    # existing is what let the scorecard report "no translations yet" while
-    # every translated method was a hand-written patch -- the metric designed to
-    # detect drift was blind to the only drift present.
-    if rules and rules.get("rules_general"):
-        a(f"| rules at `general` | {rules['rules_general']} | — | "
-          f"emit on real code; correctness unverified (D5) |")
-    if rules and rules["rules_committed"]:
-        ipr = rules["instances_per_rule"]
-        ok = ipr >= MIN_INSTANCES_PER_RULE
-        a(f"| **instances per rule** | {ipr:.2f} | ≥ {MIN_INSTANCES_PER_RULE:.0f} | {mark(ok)} |")
+    if clean_set:
+        n = len(clean_set["modules"])
+        a(f"| **compile-clean modules (the gate)** | {n} | ratchet, may only grow | "
+          f"{'PASS' if n >= clean_set.get('min_modules', n) else 'FAIL — regression'} |")
     else:
-        a(f"| **instances per rule** | — | ≥ {MIN_INSTANCES_PER_RULE:.0f} | no committed rules |")
-
-    if rules:
-        done = rules["translated"] + rules["verified"]
-        pat = rules["patches"]
-        if done:
-            pct = 100 * pat / done
-            a(f"| **patches outstanding** | {pat} of {done} translated ({pct:.0f}%) | 0 | "
-              f"{mark(pat == 0)} |")
-        else:
-            a("| **patches outstanding** | 0 | 0 | nothing translated yet |")
+        a(f"| **compile-clean modules (the gate)** | — | — | no `{CLEAN_SET}` |")
+    if floor:
+        pf, pp = floor["platform_floor"], floor["platform_peripherals"]
+        a(f"| platform floor (peripherals reachable end-to-end) | {pf} / {pp} | "
+          f"{pp} | {pf*100/pp:.0f}% |")
+        cd = floor["modules_clean_and_drivable"]
+        a(f"| modules clean *and* drivable | {cd} / {floor['modules_emitted']} | "
+          f"— | {cd*100/floor['modules_emitted']:.0f}% |")
     else:
-        a("| **patches outstanding** | — | 0 | corpus not ingested |")
+        a(f"| platform floor | — | — | no `{FLOOR}` |")
+    if oracle["peripherals"]:
+        n_100 = sum(1 for p in oracle["peripherals"] if p["divergences"] == 0)
+        a(f"| oracle trace replay: peripherals at 0 divergence | {n_100} / "
+          f"{len(oracle['peripherals'])} | {len(oracle['peripherals'])} | "
+          f"{'PASS' if n_100 == len(oracle['peripherals']) else 'partial'} |")
+    else:
+        a(f"| oracle trace replay | — | — | no `{HARNESS}` |")
     a("")
-    if rules and rules["patches"]:
-        a(f"> **{rules['patches']} of {rules['translated'] + rules['verified']} translated "
-          "methods are hand-written patches, not rule output.** No rule is committed and no")
-        a("> emitter exists, so nothing translated so far would regenerate. Recorded rather")
-        a("> than implied: this is the metric that detects exactly this drift, and it read")
-        a('> "no translations yet" until the translations were entered.')
-        a("")
+    a("> **The `rule` / `rule_instance` / `pattern_cluster` / `translation` SQL tables are")
+    a("> 0 rows by design, not by defect.** The tree-matcher/cluster-mining pipeline those")
+    a("> tables were built for (see `docs/rulesdb-design.md`) was superseded by")
+    a("> hand-authored JSON rule files read directly by `scripts/emit.py` — see")
+    a("> [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md) and")
+    a("> [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md). A scorecard")
+    a("> that reported `instances per rule` and `patches outstanding` from those tables")
+    a("> read \"0 rules committed, nothing translated\" while 283 modules compiled clean —")
+    a("> the metric measured the abandoned pipeline, not the one in use.")
+    a("")
 
     # --- Corpus -------------------------------------------------------------
     a("## Corpus")
     a("")
     if rules:
-        total = rules["methods"] or 1
-        done = rules["translated"] + rules["verified"]
-        a("| | count | % of corpus |")
-        a("|---|---:|---:|")
-        a(f"| methods ingested | {rules['methods']:,} | — |")
-        a(f"| operation nodes | {rules['operations']:,} | — |")
-        a(f"| pattern clusters | {rules['clusters']:,} | — |")
-        a(f"| stubbed | {rules['stubbed']:,} | {rules['stubbed']*100/total:.1f}% |")
-        a(f"| translated | {rules['translated']:,} | {rules['translated']*100/total:.1f}% |")
-        a(f"| verified | {rules['verified']:,} | {rules['verified']*100/total:.1f}% |")
-        a(f"| **rules committed** | {rules['rules_committed']:,} | — |")
-    else:
-        a(f"Not ingested — `{RULES_DB}` does not exist. This is Phase 1 (#30 R1, #31 R2).")
-        a("")
-        a("Target corpus, measured from Renode v1.16.1 `dc52b24c`:")
-        a("")
-        a("| | |")
+        a("| | count |")
         a("|---|---:|")
-        a("| peripherals in scope | ~22 types, ~13k lines |")
-        a("| ARM core bindings (C#) | 3,677 lines |")
-        a("| register DSL | 2,538 lines |")
-        a("| total Rust target | ~25–30k lines |")
+        a(f"| methods ingested | {rules['methods']:,} |")
+        a(f"| operation nodes | {rules['operations']:,} |")
+        a(f"| types ingested | {rules.get('types', 0):,} |")
+    else:
+        a(f"Not ingested — `{RULES_DB}` does not exist.")
     a("")
+    if floor:
+        a("**Emission floor** (`docs/status/floor.json`, see "
+          "[docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md)):")
+        a("")
+        a("| | count |")
+        a("|---|---:|")
+        a(f"| modules emitted | {floor['modules_emitted']:,} |")
+        a(f"| modules clean (0 rustc errors) | {floor['modules_clean']:,} |")
+        a(f"| modules drivable | {floor['modules_drivable']:,} |")
+        a(f"| modules clean and drivable | {floor['modules_clean_and_drivable']:,} |")
+        a(f"| platform peripherals in scope | {floor['platform_peripherals']:,} |")
+        a(f"| platform peripherals emitted | {floor['platform_emitted']:,} |")
+        a(f"| platform floor | {floor['platform_floor']:,} |")
+        a("")
+    if rule_files:
+        a("**Hand-authored rule files** actually read by the emitter (not the SQL "
+          "`rule` table — see the note above):")
+        a("")
+        a("| file | size |")
+        a("|---|---:|")
+        for name, size in rule_files:
+            a(f"| `rulesdb/rules/{name}` | {size:,} bytes |")
+        a("")
+    if gaps:
+        a(f"**What the converter cannot yet emit** ({gaps['total_gaps']:,} gaps over "
+          f"{gaps['types_examined']:,} types, {gaps['types_emitted']:,} emitted, "
+          f"{gaps['converter_crashes']} converter crash(es) — "
+          "not a correctness claim, see "
+          "[docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); "
+          "regenerate with `python3 scripts/gap_census.py`):")
+        a("")
+        a("| gap category | count | share |")
+        a("|---|---:|---:|")
+        total_g = gaps["total_gaps"] or 1
+        for cat, n in list(gaps["categories"].items())[:15]:
+            a(f"| {cat} | {n:,} | {100*n/total_g:.1f}% |")
+        a("")
+        a("Top root causes (cascades excluded):")
+        a("")
+        a("| root cause | gaps blocked |")
+        a("|---|---:|")
+        for r, n in list(gaps["root_causes"].items())[:10]:
+            a(f"| {r} | {n:,} |")
+        a("")
+    else:
+        a(f"Gap census not recorded — run `python3 scripts/gap_census.py` "
+          f"to produce `{GAP_CENSUS}` (full-corpus emission, ~6 min).")
+        a("")
 
     # --- Gates --------------------------------------------------------------
     a("## Gates")
     a("")
     a("Genuine stop points. A failed gate means stop, not retry.")
     a("")
+    a("### Current")
+    a("")
     a("| gate | status | evidence |")
     a("|---|---|---|")
-    perf = (root / "docs/perf-spike.md").exists()
-    a(f"| **P1** — is the Rust MMIO path faster? | {'PASS' if perf else '—'} | "
-      f"{'[docs/perf-spike.md](docs/perf-spike.md)' if perf else 'not run'} |")
-    census = (root / "docs/census.md").exists()
-    a(f"| **R3** — does the corpus collapse into clusters? | {'done' if census else '—'} | "
-      f"{'[docs/census.md](docs/census.md)' if census else 'blocked on R2'} |")
-    gate10 = (root / "docs/phase1-gate.md").exists()
-    a(f"| **10** — do one peripheral's rules cover an unseen second? | {'done' if gate10 else '—'} | "
-      f"{'[docs/phase1-gate.md](docs/phase1-gate.md)' if gate10 else 'blocked on R6'} |")
+    if clean_set:
+        n = len(clean_set["modules"])
+        a(f"| **two-tier compile gate** — modules with 0 rustc errors | {n} "
+          f"(ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md]"
+          f"(docs/decisions/two-tier-compile-gate.md) |")
+    else:
+        a(f"| **two-tier compile gate** | — | no `{CLEAN_SET}` |")
+    if floor:
+        a(f"| **the floor that runs** — peripherals reachable end-to-end | "
+          f"{floor['platform_floor']} / {floor['platform_peripherals']} | "
+          f"[docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md) |")
+    else:
+        a(f"| **the floor that runs** | — | no `{FLOOR}` |")
+    a("")
+    a("### Historical (Phase 0/1)")
+    a("")
+    a("| gate | doc's own verdict | evidence |")
+    a("|---|---|---|")
+    perf_v = historical_verdict(root, "docs/perf-spike.md")
+    a(f"| **P1** — is the Rust MMIO path faster? | {perf_v or '—'} | "
+      f"{'[docs/perf-spike.md](docs/perf-spike.md)' if perf_v else 'not run'} |")
+    census_v = historical_verdict(root, "docs/census.md")
+    a(f"| **R3** — does the corpus collapse into clusters? | {census_v or '—'} | "
+      "[docs/census.md](docs/census.md) — coverage metric itself disputed by "
+      "open issue #37 (\"R3b — bare leaves are not rule failures\") |")
+    gate10_v = historical_verdict(root, "docs/phase1-gate.md")
+    a(f"| **10** — do one peripheral's rules cover an unseen second? | {gate10_v or '—'} | "
+      f"{'[docs/phase1-gate.md](docs/phase1-gate.md)' if gate10_v else 'blocked on R6'} |")
     a("")
 
     # --- Oracle -------------------------------------------------------------
@@ -280,8 +388,13 @@ def build(root: Path) -> str:
     a("|---|---|---|")
     crate = (root / "Cargo.toml").exists() or (root / "src").exists()
     a(f"| 1 — compiles | the crate builds | {'built' if crate else 'no crate yet'} |")
-    a(f"| 2 — trace replay | per-peripheral register behaviour | "
-      f"{'built' if (root/'oracle').exists() else 'not built (#6)'} |")
+    if oracle["peripherals"]:
+        a(f"| 2 — trace replay | per-peripheral register behaviour | built — "
+          f"{len(oracle['peripherals'])} peripherals, {oracle['traces_captured']} traces "
+          "captured |")
+    else:
+        a(f"| 2 — trace replay | per-peripheral register behaviour | "
+          f"{'built' if (root/'oracle').exists() else 'not built (#6)'} |")
     sync = (root / "src" / "renode-sync").exists()
     a(f"| 2.5 — interleaving | a critical section is not observed part-way "
       f"through | {'built (#52)' if sync else 'not built (#52)'} |")
@@ -290,6 +403,16 @@ def build(root: Path) -> str:
       f"{'**C# reference pinned**' if base else 'not built'} |")
     a("| 5 — CLI suite | commands behave identically | not built (#25) |")
     a("")
+    if oracle["peripherals"]:
+        a("**Tier-2 replay, per peripheral** (from `generated_replay!()` in "
+          f"`{HARNESS}`):")
+        a("")
+        a("| module | trace | divergences | status |")
+        a("|---|---|---:|---|")
+        for p in oracle["peripherals"]:
+            a(f"| `{p['module']}` | `{p['trace']}` | {p['divergences']} | "
+              f"{'PASS' if p['divergences'] == 0 else 'diverges'} |")
+        a("")
     # Tier 2 is single-threaded by construction, so a green tier-2 run says
     # nothing about the emitted locks. Stating that here is the point: it is
     # the one place a reader would otherwise assume the tests covered it.
@@ -498,13 +621,38 @@ def build(root: Path) -> str:
     a("## Issues")
     a("")
     if issues:
-        a(f"{issues['total']} total.")
+        a(f"{issues['open']} open, {issues['closed']} closed, {issues['total']} total. "
+          "Full list: "
+          "[github.com/awtoau/awto-renode-rs/issues]"
+          "(https://github.com/awtoau/awto-renode-rs/issues).")
         a("")
         a("| phase | open | closed |")
         a("|---|---:|---:|")
         for phase in sorted(issues["by_phase"]):
             b = issues["by_phase"][phase]
             a(f"| {phase} | {b['open']} | {b['closed']} |")
+        a("")
+        if issues["by_label"]:
+            a("**By label** (an issue may carry more than one; counts are not additive "
+              "to the total above):")
+            a("")
+            a("| label | issues |")
+            a("|---|---:|")
+            for label in sorted(issues["by_label"]):
+                nums = issues["by_label"][label]
+                a(f"| `{label}` | {len(nums)} — "
+                  + ", ".join(f"[#{n}](https://github.com/awtoau/awto-renode-rs/issues/{n})"
+                              for n in nums[:12])
+                  + (f", +{len(nums)-12} more" if len(nums) > 12 else "")
+                  + " |")
+            a("")
+        if issues["gates"]:
+            a("**Gate-labeled**:")
+            a("")
+            for num, title, state in issues["gates"]:
+                a(f"- [#{num}](https://github.com/awtoau/awto-renode-rs/issues/{num}) "
+                  f"({state}): {title}")
+            a("")
     else:
         a("_`gh` unavailable — issue counts not collected this run._")
     a("")
