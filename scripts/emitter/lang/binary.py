@@ -76,6 +76,20 @@ def binary(em, oid):
         "SELECT symbol, type, detail FROM operation WHERE id=?", (oid,)).fetchone()
     symbol, rtype, detail = row if row else (None, None, None)
     kids = [c[0] for c in em.children(oid)]
+    if symbol in ("Equals", "NotEquals") and len(kids) == 2:
+        # `x == null` as a bare `==` needs `T: PartialEq`, which a boxed
+        # closure field (e.g. a hook) does not have -- and would not even be
+        # the right check if it did, since every nullable in this corpus is
+        # `Option<T>`. `is_none`/`is_some` works for any `T`.
+        sides = [em.con.execute(
+            "SELECT kind, const_value FROM operation WHERE id=?", (k,)).fetchone()
+            for k in kids]
+        null_at = next((i for i, s in enumerate(sides)
+                        if s and s[0] == "Literal" and s[1] == "null"), None)
+        if null_at is not None:
+            other = kids[1 - null_at]
+            method = "is_none" if symbol == "Equals" else "is_some"
+            return f"{em.emit_expr(other)}.{method}()"
     if len(kids) >= 2:
         rt = runtime_template(em, symbol, rtype, detail)
         if rt:

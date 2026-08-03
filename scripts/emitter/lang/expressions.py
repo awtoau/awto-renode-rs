@@ -165,6 +165,13 @@ class Expressions:
         an argument list, which is both wrong and syntactically invalid."""
         if const is None:
             return "0"
+        if const == "null":
+            # The `null` literal's own `type` column is never populated (it is
+            # not a typed constant), so this cannot be gated on rtype the way
+            # string/char/float are -- but every nullable field in this corpus
+            # is represented as `Option<T>`, so `None` is unconditionally the
+            # right rendering, standing bare in a comparison or an assignment.
+            return "None"
         if const in ("True", "False"):
             return const.lower()
         if rtype == "string":
