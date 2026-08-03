@@ -3,7 +3,7 @@
   "not_covered": "A module NOT listed here already fails to compile. It can get worse and nothing will notice. That is accepted deliberately -- a ratchet over a mostly-broken population carries no signal (50 new errors was a 1.6% rise against 3,072 and passed).",
   "may_only_grow": "min_modules is a floor. Shrinking the set takes two edits so it cannot happen quietly.",
   "record_with": "python3 scripts/compile_check.py --record-clean-set",
-  "min_modules": 225,
+  "min_modules": 227,
   "modules": [
     "ambiqapollo4_powercontroller",
     "ambiqapollo4_security",
@@ -25,6 +25,7 @@
     "breakpointcommand",
     "cacheresolver",
     "cachingfilefetcher",
+    "cadence_spi",
     "canhub",
     "cc2538_cryptoprocessor",
     "cc2538_gpio",
@@ -65,6 +66,7 @@
     "focaltechft9001_cpm",
     "focaltechft9001_trng",
     "gaisler_faulttolerantmemorycontroller",
+    "gaisler_gpio",
     "gaisler_gptimer",
     "hifive_pwm",
     "hostmachine",
@@ -231,5 +233,5 @@
     "xmc4xxx_uart",
     "zmod4xxx"
   ],
-  "why_the_membership_moved": "Re-recorded on 2026-08-03 when the register-owner selector stopped choosing a type's register-defining member BY NAME (scripts/register_owners.py). 68 of the previous 212 entries are no longer modules at all: byteregister, dllmap, buscontrollerproxy, canmessage, cluster and the like were only ever selected because a member's NAME contained 'Register', and none of them defines one. They compiled clean because there was nothing in them to be wrong. The set did not shrink -- 212 -> 225 -- but its MEMBERSHIP changed, which min_modules alone does not police, so it is recorded here."
+  "why_the_membership_moved": "Re-recorded on 2026-08-03 when the register-owner selector stopped choosing a type's register-defining member BY NAME (scripts/register_owners.py). 68 of the previous 212 entries are no longer modules at all: byteregister, dllmap, buscontrollerproxy, canmessage, cluster and the like were only ever selected because a member's NAME contained 'Register', and none of them defines one. They compiled clean because there was nothing in them to be wrong. The set did not shrink -- 212 -> 225 -- but its MEMBERSHIP changed, which min_modules alone does not police, so it is recorded here. Issue #54 then grew the set from 225 to 227: declaring-type-aware invocation resolution withheld unmapped external static calls instead of emitting them as bogus peer calls, making cadence_spi and gaisler_gpio compile clean."
 }

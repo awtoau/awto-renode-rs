@@ -29,7 +29,7 @@
 //!   - FilterCANMessage: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - OnFrameReceived: parameter `message` has no Rust mapping for `Antmicro.Renode.Core.CAN.CANMessageFrame`
 //!   - PrioritizeFiFoFilters: withheld, reaches state this peripheral does not have: st.fifo_filters_prioritized, st.filter_banks
-//!   - ReadDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers, st.rx_fifo
+//!   - ReadDoubleWord: withheld, cannot emit expr:StaticInvocation:Logger.LogUnhandledRead
 //!   - ReceiveCANMessage: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
 //!   - Reset: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
 //!   - STMCAN..ctor `STMCAN(STMCAN)`: no statement could be translated, so no initialiser is emitted at all
@@ -46,12 +46,12 @@
 //!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 8 withheld -- assigns `UpdateInterruptLine`, which the emitted struct has no storage for
 //!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 9 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - TransmitData: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
-//!   - UpdateFifo0InterruptLine: withheld, reaches state this peripheral does not have: st.connections
-//!   - UpdateFifo1InterruptLine: withheld, reaches state this peripheral does not have: st.connections
+//!   - UpdateFifo0InterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - UpdateFifo1InterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
 //!   - UpdateFilterCANAssignment: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
-//!   - UpdateSCEInterruptLine: withheld, reaches state this peripheral does not have: st.connections
-//!   - UpdateTransmitInterruptLine: withheld, reaches state this peripheral does not have: st.connections
-//!   - WriteDoubleWord: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
+//!   - UpdateSCEInterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - UpdateTransmitInterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - WriteDoubleWord: withheld, cannot emit expr:StaticInvocation:Logger.LogUnhandledWrite
 //!   - get_IsSlave: withheld, reaches state this peripheral does not have: st.master
 //!   - offsets 0x240..0x31C are decoded by a RANGE TEST in front of the switch, not by a case, so they are a replicated block rather than named registers. NOTHING in that range is in the bank.
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
@@ -61,6 +61,10 @@
 //!   - state field `RxFifo`: no Rust mapping for `System.Collections.Generic.Queue<Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage>[]`
 //!   - state field `master`: reference-typed, so the object-graph rule maps it to `Gc<STMCAN>`; blocked: `STMCAN` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `registers`: reference-typed, so the object-graph rule maps it to `Gc<DeviceRegisters>`; blocked: `DeviceRegisters` has no emitted Rust type yet, so there is nothing to point at
+//!   - static call `IGPIOExtensions.Set` has no Rust mapping
+//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
+//!   - static call `Logger.LogUnhandledRead` has no Rust mapping
+//!   - static call `Logger.LogUnhandledWrite` has no Rust mapping
 //!
 //! SOURCE DEFECTS -- the C# is wrong here and this reproduces
 //! the defect FAITHFULLY, which is what the oracle requires.

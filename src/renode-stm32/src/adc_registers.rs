@@ -14,7 +14,7 @@
 //!   - FeedSample: withheld, reaches state this peripheral does not have: st.channels
 //!   - IsValidChannel: withheld, cannot emit stmt:Throw
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - OnConversionFinished: withheld, reaches state this peripheral does not have: st.channels, st.current_channel, st.machine, st.sampling_timer
+//!   - OnConversionFinished: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
 //!   - Reset: withheld, reaches state this peripheral does not have: st.channels
 //!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: no statement could be translated, so no initialiser is emitted at all
 //!   - STM32_ADC..ctor `STM32_ADC(IMachine)`: statement 1 withheld -- assigns `channels`, which the emitted struct has no storage for
@@ -27,6 +27,8 @@
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - state field `samplingTimer`: reference-typed, so the object-graph rule maps it to `Gc<LimitTimer>`; blocked: `LimitTimer` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
+//!   - static call `IGPIOExtensions.Set` has no Rust mapping
+//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

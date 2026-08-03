@@ -10,8 +10,10 @@
 //!   - BasicDoubleWordPeripheral..ctor `BasicDoubleWordPeripheral(IMachine)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
 //!   - OnGPIO: withheld, cannot emit expr:DeclarationExpression
-//!   - PendingRegister: callback for bit 0 needs peer method(s) not yet emitted: foreach_active_bit
-//!   - PendingRegister: callback for bit 0 reaches state this peripheral does not have: st.connections, st.unset
+//!   - PendingRegister: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.ForeachActiveBit, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - PendingRegister: static call `BitHelper.ForeachActiveBit` has no Rust mapping
+//!   - PendingRegister: static call `IGPIOExtensions.Unset` has no Rust mapping
+//!   - Reset: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Unset
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: no statement could be translated, so no initialiser is emitted at all
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 1 withheld -- not an assignment to the type's own storage, but VariableDeclarationGroup; an initialiser can only assign the struct it is building
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 2 withheld -- not an assignment to the type's own storage, but Loop; an initialiser can only assign the struct it is building
@@ -20,14 +22,15 @@
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 5 withheld -- the assigned value contains Invocation, which an initialiser cannot evaluate
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 6 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - STM32F4_EXTI..ctor `STM32F4_EXTI(IMachine, int, int)`: statement 7 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
-//!   - SoftwareInterruptEvent: callback for bit 0 needs peer method(s) not yet emitted: foreach_active_bit
-//!   - SoftwareInterruptEvent: callback for bit 0 reaches state this peripheral does not have: st.connections, st.set
+//!   - SoftwareInterruptEvent: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.ForeachActiveBit, expr:StaticInvocation:IGPIOExtensions.Set
+//!   - SoftwareInterruptEvent: static call `BitHelper.ForeachActiveBit` has no Rust mapping
+//!   - SoftwareInterruptEvent: static call `IGPIOExtensions.Set` has no Rust mapping
 //!   - number_of_lines: withheld, calls withheld method(s): connections
-//!   - reset: withheld, calls withheld method(s): connections, unset
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `core`: reference-typed, so the object-graph rule maps it to `Gc<STM32_EXTICore>`; blocked: `STM32_EXTICore` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
+//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
 
 use renode_regs::{Bank, FieldMode, FlagId, ValueId};
 

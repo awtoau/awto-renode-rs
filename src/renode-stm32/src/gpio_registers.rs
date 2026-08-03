@@ -10,25 +10,27 @@
 //!   - AlternateFunctionHigh: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - BaseGPIOPort..ctor `BaseGPIOPort(IMachine, int)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
-//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state
-//!   - BitReset: callback for bit 0 reaches state this peripheral does not have: st.get_value_from_bits_array
-//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state
-//!   - BitSet: callback for bit 0 reaches state this peripheral does not have: st.get_value_from_bits_array
-//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state
-//!   - BitSet: callback for bit 16 reaches state this peripheral does not have: st.get_value_from_bits_array
+//!   - BitReset: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - BitReset: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
+//!   - BitSet: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - BitSet: callback for bit 16: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - BitSet: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
-//!   - GetSetConnectionBits: withheld, reaches state this peripheral does not have: st.connections
-//!   - InputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
+//!   - GetSetConnectionBits: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - InputData: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - InputData: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - Mode: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.mode[..]
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
-//!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: get_value_from_bits_array
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - OutputData: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
+//!   - OutputData: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - OutputSpeed: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.output_speed[..]
 //!   - PullUpPullDown: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
-//!   - Reset: withheld, reaches state this peripheral does not have: st.alternate_function_outputs, st.get_value
+//!   - Reset: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValue
+//!   - Reset: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Unset
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: parameter(s) `modeResetValue`, `outputSpeedResetValue`, `pullUpPullDownResetValue`, `numberOfAFs` have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 1 withheld -- not an assignment to the type's own storage, but Conditional; an initialiser can only assign the struct it is building
@@ -41,15 +43,19 @@
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 4 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 5 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 6 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
-//!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
+//!   - SetConnectionStateBit: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset, stmt:Throw
+//!   - SetConnectionsStateUsingBits: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
-//!   - base_gpio_port_reset: withheld, calls withheld method(s): connections, unset
-//!   - set_connections_state_using_bits: withheld, calls withheld method(s): connections, set, unset
+//!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `alternateFunctionOutputs`: reference-typed, so the object-graph rule maps it to `Vec<Gc<GPIOAlternateFunction>>`; blocked: `GPIOAlternateFunction` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
+//!   - static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
+//!   - static call `BitHelper.GetValue` has no Rust mapping
+//!   - static call `IGPIOExtensions.Set` has no Rust mapping
+//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
 //!   - write_state: withheld, calls withheld method(s): write_pin
 //!
 //! WARNINGS -- these DID emit, and their semantics DIFFER from
