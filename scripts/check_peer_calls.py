@@ -35,7 +35,7 @@ class FixtureEmitter:
         self.con.executescript("""
             CREATE TABLE type (id INTEGER PRIMARY KEY, name TEXT);
             CREATE TABLE member (
-                id INTEGER PRIMARY KEY, type_id INTEGER, key TEXT,
+                id INTEGER PRIMARY KEY, run_id INTEGER, type_id INTEGER, key TEXT,
                 is_static INTEGER);
             CREATE TABLE parameter (
                 method_id INTEGER, ordinal INTEGER, name TEXT,
@@ -44,8 +44,9 @@ class FixtureEmitter:
                 id INTEGER PRIMARY KEY, kind TEXT, symbol TEXT);
         """)
         self.symbol = f"N.{declaring}.Target()"
+        self._run_id = 1
         self.con.execute("INSERT INTO type VALUES (1, ?)", (declaring,))
-        self.con.execute("INSERT INTO member VALUES (1, 1, ?, ?)",
+        self.con.execute("INSERT INTO member VALUES (1, 1, 1, ?, ?)",
                          (self.symbol, int(is_static)))
         self.con.execute("INSERT INTO operation VALUES (10, 'Invocation', ?)",
                          (self.symbol,))
@@ -57,6 +58,10 @@ class FixtureEmitter:
             "stdlib": {"members": {}},
         }
         self._current_type = current
+        self._invocation_symbol_cache: dict[int, str | None] = {}
+        self._callee_cache: dict[str, tuple | None] = {}
+        self._callee_params_cache: dict[int, tuple[tuple, ...]] = {}
+        self._operation_kind_cache: dict[int, str | None] = {}
         self.unhandled: dict[str, int] = {}
         self.gaps: list[str] = []
 
