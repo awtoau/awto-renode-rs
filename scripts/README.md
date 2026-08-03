@@ -18,9 +18,10 @@ and negative controls are project evidence.
 ## Validation
 
 Every top-level `check_*.py` script is a maintained regression check. This
-includes the expensive CI-only determinism checks and `check_refactor.py`, whose
-whole-corpus compile contract currently needs repair under issue #36; it is not
-silently treated as green. `compile_check.py` is the Rust compile census and
+includes the expensive CI-only determinism checks and `check_refactor.py`, which
+now verifies byte-identical artefacts against a current baseline; refresh that
+baseline intentionally with `python3 scripts/check_refactor.py --record` after
+an intended output change. `compile_check.py` is the Rust compile census and
 `prove_postconditions.py` is the deliberate negative control for postconditions.
 
 ## Analysis and reproducible research
