@@ -454,7 +454,11 @@
       "note": "`{(long)Registers.Mode, new DoubleWordRegister(this).With...}` -- a dictionary initialiser, which desugars to Dictionary.Add(key, value). Offset is the key; the combinator chain is inside the value.",
       "symbol_contains": "Dictionary<TKey, TValue>.Add",
       "offset_from": "key",
-      "reset_from": null,
+      "reset_from": {
+        "chain_root_kind": "ObjectCreation",
+        "constant_argument": 1,
+        "follow_local_initializer": true
+      },
       "chain_from": "value"
     }
   ],
