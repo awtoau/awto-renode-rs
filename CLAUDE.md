@@ -6,6 +6,20 @@ Read [PLAN.md](PLAN.md) before touching anything. The four declared deviations
 (D1–D4) are whole-program decisions; do not make a per-file choice that
 contradicts one, and do not silently revisit one — reopen the decision issue.
 
+## Canonical build, check, report cycle
+
+Run one command before reporting progress or pushing completed work:
+
+```
+python3 scripts/cycle.py
+```
+
+It regenerates every converter-owned output, runs the full push-tier gates, and
+only after those pass refreshes `STATUS.md`, `docs/status/progress.svg`, and the
+self-contained HTML wrapper at `docs/status/progress.html`. It stops on the
+first failure, so failed or unchecked output never receives fresh-looking
+reports. `python3 scripts/cycle.py --dry-run` prints the exact ordered stages.
+
 ## This repo is PUBLIC
 
 Two rules follow from that, and they are hard errors, not preferences.
