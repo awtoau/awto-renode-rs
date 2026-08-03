@@ -38,3 +38,4 @@ flattening and argued for as though it were a fresh decision, when PLAN.md line
 | — | [prove behaviour generation on UART before widening](target-one-peripheral-end-to-end.md) | taken 2026-08-02 |
 | — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |
 | — | [define a build target: the floor that runs, and a named Renode Robot test as its acceptance criterion](the-floor-that-runs.md) | taken 2026-08-03 |
+| — | [logging: `Logger.*Log` maps to Rust's `log` crate facade](logging-facade.md) | taken 2026-07-31, **backfilled** 2026-08-03 |
