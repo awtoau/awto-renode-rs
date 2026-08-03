@@ -229,6 +229,7 @@ def cmd_issue_62(extra: list[str]) -> int:
 REPORT_STEPS = [
     ("scorecard", [sys.executable, "scripts/scorecard.py"]),
     ("progress SVG and HTML", [sys.executable, "scripts/progress_graph.py"]),
+    ("compile-progress SVG and HTML", [sys.executable, "scripts/compile_progress_graph.py"]),
 ]
 
 
@@ -358,7 +359,8 @@ def register_tools() -> None:
         elif path.stem in {"baseline_boot", "capture_traces", "diagnose_trace",
                            "measure_bug_switch", "mutate", "verify_emit"}:
             kind = "oracle"
-        elif path.stem in {"issue_index", "progress_graph", "scorecard"}:
+        elif path.stem in {"issue_index", "progress_graph",
+                           "compile_progress_graph", "scorecard"}:
             kind = "reporting"
         else:
             kind = "tool"

@@ -50,7 +50,8 @@ and decision documents. They are analysis commands, not everyday gates.
 
 ## Reporting and generated evidence
 
-- `scorecard.py`, `progress_graph.py`, `issue_index.py`: project status output.
+- `scorecard.py`, `progress_graph.py`, `compile_progress_graph.py`,
+  `issue_index.py`: project status output.
 - `parse_repl.py`, `record_translations.py`: generated platform/translation
   records.
 - `dispatch_spike.py`: despite its historical name, this is maintained; it
