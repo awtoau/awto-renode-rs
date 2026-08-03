@@ -81,11 +81,18 @@ def binary(em, oid):
         # closure field (e.g. a hook) does not have -- and would not even be
         # the right check if it did, since every nullable in this corpus is
         # `Option<T>`. `is_none`/`is_some` works for any `T`.
+        #
+        # The `null` literal is not always a bare `Literal` child: comparing
+        # against a typed reference (a delegate field, here) wraps it in an
+        # implicit `Conversion` node -- 1796 of 1902 corpus-wide instances are
+        # the Conversion form, only 106 the bare Literal, so checking `kind`
+        # here silently missed the common case. `const_value == "null"` is
+        # set on both, so that is the only check that matters.
         sides = [em.con.execute(
-            "SELECT kind, const_value FROM operation WHERE id=?", (k,)).fetchone()
+            "SELECT const_value FROM operation WHERE id=?", (k,)).fetchone()
             for k in kids]
         null_at = next((i for i, s in enumerate(sides)
-                        if s and s[0] == "Literal" and s[1] == "null"), None)
+                        if s and s[0] == "null"), None)
         if null_at is not None:
             other = kids[1 - null_at]
             method = "is_none" if symbol == "Equals" else "is_some"
