@@ -64,12 +64,20 @@ Getting this wrong is how the converter ends up with the corpus baked into it.
 | **Language mapping** — `ConditionalOr` → `\|\|`, overflow semantics | DATA, `rulesdb/rules/csharp_core.json` | Knowledge, but generic to C# and Rust. Belongs in data so it is reviewable and changeable without touching code, and reusable on any corpus. |
 | **Project idioms** — the register DSL, peripheral shapes | DATA, `rulesdb/rules/*.json` | Knowledge, Renode-only. |
 
-**A generic bug is fixed at source.** Six ingest gaps so far were properties
+**A generic bug is fixed at source.** **Ten** ingest gaps so far were properties
 Roslyn already exposed and the walker did not read — `OperatorKind`,
 `IArgumentOperation.Parameter`, `PartialImplementationPart`,
-`OriginalDefinition`, and two more. **None were Roslyn limitations.** Each fix
-belongs in `Walker.cs`, and each is recorded in `csharp_core.json` under
-`known_transpiler_bugs_fixed` so the class of mistake is visible.
+`OriginalDefinition`, `IFieldInitializerOperation`,
+`IParameterSymbol.ExplicitDefaultValue`, and four more. **None was a Roslyn
+limitation.** Each fix belongs in `Walker.cs`, and each is recorded in
+`csharp_core.json` under `known_transpiler_bugs_fixed` — count them there rather
+than trusting this sentence, which has been stale twice.
+
+Two of the ten are worth knowing as a class: a field initialiser was absent
+entirely, so `private bool x = true;` was indistinguishable from
+`private bool x;` — silently inverting the value. And the last attempt to fix
+it appeared to fail, because the re-ingest ran `--no-build` and measured the old
+binary. **When an ingest change seems not to reproduce, check the build first.**
 
 **Nothing project-specific may reach the source.** `csharp_core.json` must not
 mention Renode, a peripheral or a register; if a mapping needs project
@@ -128,15 +136,8 @@ These are hard rules for the conversion pipeline. Full rationale and schema:
 
 ### Emitting is not validating; the oracle is the only judge
 
-*Amended twice. The original rule was "breadth discovers; only the cut
-validates". The cut is gone — see [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md).
-Do not re-litigate it here; the part that survives is below, and it is the part
-that always mattered.*
-
 **The corpus is the whole Renode tree.** ~448k lines, ~1,708 files, ~55s to
-re-ingest, 308 MB. There is no file list to maintain and nothing to keep
-transitively closed by hand — the previous one was not, and truncated 69% of
-inheritance chains while looking complete.
+re-ingest, 308 MB. There is no file list to maintain.
 
 **A wider corpus is a discovery instrument, not a confidence one.**
 
@@ -156,28 +157,25 @@ So the rule DB has **two validated tiers**, enforced by triggers in
 | `general` | ≥3 instances **anywhere** in the corpus | emits on real code; correctness unknown |
 | `committed` | ≥3 instances with **`oracle_tier > 0`** | a trace checked the output |
 
-`rule_commit_threshold` counts only `rule_instance.oracle_tier > 0`.
-It used to count `corpus_run.config <> 'breadth'` — keying on *which files were
-ingested* rather than on *whether anything checked the output*, which was the
-wrong question even when the cut existed. `scripts/check_commit_tier.py` proves
-the new key refuses a rule the old key would have accepted.
+`rule_commit_threshold` counts only `rule_instance.oracle_tier > 0` — whether
+anything checked the output, never which files were ingested.
+`scripts/check_commit_tier.py` proves the key it replaced would have accepted a
+rule no trace ever saw.
 
 **Metrics report the tiers separately.** Coverage and instances-per-rule mean
 "validated", never "emitted". Blur the two and the headline metric quietly
 becomes a measure of how much we produced rather than how much works.
 
-**A bigger corpus means more gaps, and that is correct.** The gap census rose
-from 520 over 25 types to 20,321 over 569 when the cut went. Nothing got worse:
-the converter always could not emit those constructs, it was simply never asked.
-Do not "fix" a gap count by emitting something plausible.
+**A bigger corpus means more gaps, and that is correct.** The converter always
+could not emit those constructs; it was simply never asked. Do not "fix" a gap
+count by emitting something plausible.
 
-**`--all` no longer widens anything** — every run reads every file. It now
-declares the run's *purpose*: a tooling health check
-(`scripts/check_breadth.py`) whose output goes to a scratch database tagged
-`config = 'breadth'` and is refused by every rule/cluster consumer. That check
-still earns its place: it found 5,123 methods (24.7%) claiming a body while
-emitting no operations, with zero exceptions thrown, because `partial void
-Foo();` is neither abstract nor extern.
+**`--all` declares a run's PURPOSE, not its scope** — every run reads every
+file. It marks a tooling health check (`scripts/check_breadth.py`) whose output
+goes to a scratch database tagged `config = 'breadth'` and is refused by every
+rule/cluster consumer. That check earns its place: it found 5,123 methods
+(24.7%) claiming a body while emitting no operations, with zero exceptions
+thrown, because `partial void Foo();` is neither abstract nor extern.
 
 ### Corpus before translation
 
