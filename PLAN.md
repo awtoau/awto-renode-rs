@@ -441,7 +441,7 @@ Mechanical once D1–D4 are fixed. These become the initial rule DB:
 | `null` | `Option<T>` |
 | LINQ | Iterator chains (`.Where`→`.filter`, `.Select`→`.map`, `.Any`→`.any`, `.ToList()`→`.collect()`) — deferred-execution semantics match |
 | Generics + constraints | Rust generics + trait bounds; `where T : new()` → `Default` |
-| `lock(obj)` | Removed under D3; `Mutex` if D3 is reversed |
+| `lock(obj)` | `Mutex` plus `// SYNC(measure)` while D3 is unresolved; do not remove until contention/hold-time measurements from a running workload support that decision (#52) |
 | `enum : long` register offsets | `const` or `#[repr(u64)] enum` |
 | Reflection (`RegisterMapper(this.GetType())`, `.repl` loading, monitor binding) | **Not translated.** Hand-written compile-time registry — the class-1 "stays hand-written forever" bucket |
 | `[Transient]` / Migrant serialisation | Dropped in Phase 1; save/restore is out of scope |
