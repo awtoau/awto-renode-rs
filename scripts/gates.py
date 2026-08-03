@@ -137,6 +137,24 @@ def run_parallel(root: Path, gates: list[tuple[str, list[str]]],
     return [found[" ".join([name, *extra])] for name, extra in gates]
 
 
+def run_serial(root: Path, gates: list[tuple[str, list[str]]],
+               log: logging.Logger) -> list[Result]:
+    results: list[Result] = []
+    log.info("serial wave (fail-fast): %d gate(s)", len(gates))
+    for name, extra in gates:
+        label = " ".join([name, *extra])
+        log.info("    START %s", label)
+        result = run_gate(root, (name, extra))
+        results.append(result)
+        log.info("    DONE  %-36s %-14s %6.1fs", result.label,
+                 "ok" if result.returncode == 0 else f"FAILED ({result.returncode})",
+                 result.seconds)
+        if result.returncode:
+            log.info("    STOP  fail-fast at %s", result.label)
+            break
+    return results
+
+
 def allocated_fast(gates: list[tuple[str, list[str]]], jobs: int
                    ) -> list[tuple[str, list[str]]]:
     others = sum(1 for name, _extra in gates if name != "compile_check")
@@ -184,6 +202,8 @@ def main() -> int:
                     help="also run the whole-corpus tier (slow, gates a push)")
     ap.add_argument("--determinism", action="store_true",
                     help="also run ingest/emitter determinism proofs (issue #36)")
+    ap.add_argument("--fail-fast", action="store_true",
+                    help="stop at the first failing gate")
     detected = os.cpu_count() or 1
     ap.add_argument("--jobs", type=int, default=detected,
                     help="total CPU budget (default: available online CPUs)")
@@ -203,15 +223,25 @@ def main() -> int:
 
     if args.only:
         gates = [(g.replace("-", "_"), []) for g in args.only]
-        results = run_parallel(root, gates, log, args.jobs)
+        results = (run_serial(root, gates, log) if args.fail_fast
+                   else run_parallel(root, gates, log, args.jobs))
     else:
         fast = allocated_fast(GATES, args.jobs)
-        results = run_parallel(root, fast, log, args.jobs)
-        if args.full:
-            results += run_parallel(root, allocated_full(args.jobs), log, args.jobs)
-        if args.determinism:
-            results += run_parallel(root, allocated_determinism(args.jobs), log,
-                                    args.jobs)
+        run_wave = (lambda gates: run_serial(root, gates, log)) if args.fail_fast else (
+            lambda gates: run_parallel(root, gates, log, args.jobs)
+        )
+        results = run_wave(fast)
+        if args.fail_fast and any(r.returncode for r in results):
+            pass
+        elif args.full:
+            full_results = run_wave(allocated_full(args.jobs))
+            results += full_results
+            if args.fail_fast and any(r.returncode for r in full_results):
+                pass
+            elif args.determinism:
+                results += run_wave(allocated_determinism(args.jobs))
+        elif args.determinism:
+            results += run_wave(allocated_determinism(args.jobs))
 
     bad = report(results, log)
     if not args.full and not args.only:
