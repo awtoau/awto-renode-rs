@@ -46,11 +46,11 @@
 //!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 8 withheld -- assigns `UpdateInterruptLine`, which the emitted struct has no storage for
 //!   - STMCAN..ctor `STMCAN(STMCAN)`: statement 9 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - TransmitData: parameter `msg` has no Rust mapping for `Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage`
-//!   - UpdateFifo0InterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
-//!   - UpdateFifo1InterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - UpdateFifo0InterruptLine: withheld, reaches state this peripheral does not have: st.irq
+//!   - UpdateFifo1InterruptLine: withheld, reaches state this peripheral does not have: st.irq
 //!   - UpdateFilterCANAssignment: withheld, reaches state this peripheral does not have: st.filter_banks, st.registers
-//!   - UpdateSCEInterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
-//!   - UpdateTransmitInterruptLine: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - UpdateSCEInterruptLine: withheld, reaches state this peripheral does not have: st.irq
+//!   - UpdateTransmitInterruptLine: withheld, reaches state this peripheral does not have: st.irq
 //!   - WriteDoubleWord: withheld, cannot emit expr:StaticInvocation:Logger.LogUnhandledWrite
 //!   - get_IsSlave: withheld, reaches state this peripheral does not have: st.master
 //!   - offsets 0x240..0x31C are decoded by a RANGE TEST in front of the switch, not by a case, so they are a replicated block rather than named registers. NOTHING in that range is in the bank.
@@ -61,8 +61,6 @@
 //!   - state field `RxFifo`: no Rust mapping for `System.Collections.Generic.Queue<Antmicro.Renode.Peripherals.CAN.STMCAN.CANMessage>[]`
 //!   - state field `master`: reference-typed, so the object-graph rule maps it to `Gc<STMCAN>`; blocked: `STMCAN` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `registers`: reference-typed, so the object-graph rule maps it to `Gc<DeviceRegisters>`; blocked: `DeviceRegisters` has no emitted Rust type yet, so there is nothing to point at
-//!   - static call `IGPIOExtensions.Set` has no Rust mapping
-//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
 //!   - static call `Logger.LogUnhandledRead` has no Rust mapping
 //!   - static call `Logger.LogUnhandledWrite` has no Rust mapping
 //!

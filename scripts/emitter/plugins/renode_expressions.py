@@ -21,6 +21,20 @@ from emitter.core import snake
 class RenodeExpressions:
     """Mixin: corpus-specific expression handlers, tried before the language."""
 
+    @staticmethod
+    def _log_message_args(rest: list[str]) -> list[str]:
+        """Renode's message argument is a C# string, but not always a Rust
+        string LITERAL: an interpolated string arrives as `format!(..)` (unwrap
+        it, its own literal+args pass straight through) while a plain
+        expression (a local variable, a `.ToString()` call, ...) is neither --
+        the log macros require the first argument to be a literal, so that
+        case is wrapped as `"{}", expr` rather than passed bare."""
+        if len(rest) == 1 and rest[0].startswith("format!(") and rest[0].endswith(")"):
+            return [rest[0][len("format!("):-1]]
+        if rest and not rest[0].startswith('"'):
+            return [f'"{{}}", {rest[0]}', *rest[1:]]
+        return rest
+
     def plugin_expr(self, oid, kind, symbol, const, rtype, detail, kids, args, all_kids):
         """Corpus idioms. Returns Rust, or None to fall through."""
         # Project idioms first: they are more specific than the language rules.
@@ -53,6 +67,17 @@ class RenodeExpressions:
                 return tmpl.format(**fmt)
 
         logrule = self.project.get("logging", {})
+        method_levels = logrule.get("method_levels", {})
+        mname = symbol.split("(")[0].split(".")[-1] if kind == "Invocation" and symbol else None
+        if kind == "Invocation" and mname in method_levels:
+            # `this.WarningLog(msg)` etc: the level is the METHOD NAME, not an
+            # operand, so unlike Log() below there is no level arg to skip --
+            # arg 0 is still the peripheral receiver, arg 1+ is the message.
+            vals = [self.emit_expr(a) for a in args]
+            rest = self._log_message_args(vals[1:])
+            return logrule.get("emit", "log::{level}!({args})").format(
+                level=method_levels[mname], args=", ".join(rest))
+
         if (kind == "Invocation" and symbol
                 and logrule.get("symbol_contains", "\0") in symbol):
             # Renode's Log extension: (this, level, format, args...). It is
@@ -78,8 +103,7 @@ class RenodeExpressions:
                 lvl = levels.get(raw.split(".")[-1], lvl)
             # log! takes format arguments itself; a nested format!() is a
             # compile error (the macro needs a literal). See unwrap_format.
-            if len(rest) == 1 and rest[0].startswith("format!(") and rest[0].endswith(")"):
-                rest = [rest[0][len("format!("):-1]]
+            rest = self._log_message_args(rest)
             return logrule.get("emit", "log::{level}!({args})").format(
                 level=lvl, args=", ".join(rest))
 

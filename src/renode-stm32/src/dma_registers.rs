@@ -26,7 +26,6 @@
 //!   - LowInterruptClear: callback for bit 5 needs peer method(s) not yet emitted: clear_irq_flag_on_condition
 //!   - LowInterruptClear: callback for bit 5 reaches state this peripheral does not have: st.transfer_complete_irq_status
 //!   - OffsetToString: withheld, reaches state this peripheral does not have: st.mapper
-//!   - OnGPIO: withheld, cannot emit expr:StaticInvocation:Logger.WarningLog
 //!   - Reset: withheld, calls reset on each `Stream` -- the sub-block emits its register layout, not its methods
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: no statement could be translated, so no initialiser is emitted at all
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 1 withheld -- the assigned value contains Invocation, which an initialiser cannot evaluate
@@ -35,13 +34,11 @@
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 4 withheld -- assigns `transferCompleteIrqStatus`, which the emitted struct has no storage for
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 5 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
 //!   - STM32DMA..ctor `STM32DMA(IMachine)`: statement 6 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
-//!   - UpdateInterrupts: withheld, cannot emit expr:StaticInvocation:Logger.NoisyLog
+//!   - UpdateInterrupts: withheld, reaches state this peripheral does not have: st.irq
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `engine`: reference-typed, so the object-graph rule maps it to `Gc<DmaEngine>`; blocked: `DmaEngine` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
-//!   - static call `Logger.NoisyLog` has no Rust mapping
-//!   - static call `Logger.WarningLog` has no Rust mapping
 //!   - stream: StreamConfiguration: callback for bit 0 needs peer method(s) not yet emitted: handle_enable
 //!   - stream: state field `IRQ`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - stream: state field `parent`: reference-typed, so the object-graph rule maps it to `Gc<STM32DMA>`; blocked: `STM32DMA` has no emitted Rust type yet, so there is nothing to point at
@@ -248,6 +245,14 @@ pub struct State {
 // can call them -- a closure cannot borrow what it lives inside.
 pub fn basic_double_word_peripheral_reset(bank: &Bank<State>, st: &mut State) -> () {
     bank.reset();
+}
+
+pub fn on_gpio(bank: &Bank<State>, st: &mut State, number: i32, value: bool) -> () {
+    if ((number < 0) || (number >= st.streams.len())) {
+        log::warn!("Attempted to signal DMA stream {}. Maximum value is {}", number, csharp_rt::unchecked_sub(st.streams.len(), 1));
+        return;
+    }
+    st.streams[number as usize].on_gpio(value);
 }
 
 pub fn read_double_word(bank: &Bank<State>, st: &mut State, offset: i64) -> u32 {

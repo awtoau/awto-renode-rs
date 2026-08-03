@@ -14,12 +14,11 @@
 //!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
 //!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: parameter(s) `frequency` have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false
 //!   - STM32_UART..ctor `STM32_UART(IMachine, uint)`: statement 2 withheld -- not an assignment to the type's own storage, but Invocation; an initialiser can only assign the struct it is building
-//!   - WriteChar: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Blink, expr:StaticInvocation:TimeInterval.FromMicroseconds
+//!   - WriteChar: withheld, cannot emit expr:StaticInvocation:TimeInterval.FromMicroseconds
 //!   - get_ParityBit: withheld, return type `Antmicro.Renode.Peripherals.UART.Parity` has no Rust mapping
 //!   - get_StopBits: withheld, return type `Antmicro.Renode.Peripherals.UART.Bits` has no Rust mapping
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
-//!   - static call `IGPIOExtensions.Blink` has no Rust mapping
 //!   - static call `TimeInterval.FromMicroseconds` has no Rust mapping
 //!
 //! SOURCE DEFECTS -- the C# is wrong here and this reproduces

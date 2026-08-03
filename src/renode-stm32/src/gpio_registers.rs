@@ -30,7 +30,7 @@
 //!   - PullUpPullDown: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - Reset: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValue
-//!   - Reset: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - Reset: withheld, reaches state this peripheral does not have: st.irq
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: `new` is emitted but nothing calls it. What arguments a given instance is constructed with is configuration of the system being modelled, not a fact in the corpus, so the converter cannot supply them
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: parameter(s) `modeResetValue`, `outputSpeedResetValue`, `pullUpPullDownResetValue`, `numberOfAFs` have a C# default value that the corpus does not record -- `parameter.has_default` is stored, the value is not -- so `Self::default()` cannot use them and leaves those fields at 0/false
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 1 withheld -- not an assignment to the type's own storage, but Conditional; an initialiser can only assign the struct it is building
@@ -43,8 +43,8 @@
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 4 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 5 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
 //!   - STM32_GPIOPort..ctor `STM32_GPIOPort(IMachine, uint, uint, uint, uint, List<List<int>>)`: statement 6 withheld -- the assigned value contains ArrayCreation, which an initialiser cannot evaluate
-//!   - SetConnectionStateBit: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset, stmt:Throw
-//!   - SetConnectionsStateUsingBits: withheld, cannot emit expr:StaticInvocation:IGPIOExtensions.Set, expr:StaticInvocation:IGPIOExtensions.Unset
+//!   - SetConnectionStateBit: withheld, cannot emit stmt:Throw
+//!   - SetConnectionsStateUsingBits: withheld, reaches state this peripheral does not have: st.irq
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
 //!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
@@ -54,8 +54,6 @@
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - static call `BitHelper.GetValue` has no Rust mapping
-//!   - static call `IGPIOExtensions.Set` has no Rust mapping
-//!   - static call `IGPIOExtensions.Unset` has no Rust mapping
 //!   - write_state: withheld, calls withheld method(s): write_pin
 //!
 //! WARNINGS -- these DID emit, and their semantics DIFFER from
