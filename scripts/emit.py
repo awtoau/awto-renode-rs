@@ -192,7 +192,6 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         run = self.con.execute("SELECT id FROM corpus_run LIMIT 1").fetchone()
         self._run_id = run[0] if run else None
         self._params_cache: dict[str, list[str]] = {}
-        self._out_ordinals_cache: dict[str, int | None] = {}
         # The operation tree is immutable for an emitter run. Large types used
         # to execute the identical child query millions of times while walking
         # declarations from many register sites (MPFS_CAN: ~1.87m calls).

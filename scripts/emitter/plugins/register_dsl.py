@@ -109,23 +109,24 @@ class RegisterDsl:
         """Name of the `out` parameter's target, e.g. `readFifoNotEmpty`.
 
         This is D2's central pattern: `out IFlagRegisterField f` hands the
-        peripheral a handle into register storage. The corpus records which
-        parameters are `out`, so the binding is exact rather than positional
-        guesswork."""
-        if symbol not in self._out_ordinals_cache:
-            row = self.con.execute("""
-                SELECT p.ordinal FROM parameter p
-                JOIN member mb ON mb.id = p.method_id
-                WHERE mb.run_id = ? AND mb.key = ? AND p.is_out = 1
-                ORDER BY p.ordinal LIMIT 1""", (self._run_id, symbol)).fetchone()
-            self._out_ordinals_cache[symbol] = row[0] if row else None
-        ordinal = self._out_ordinals_cache[symbol]
-        if ordinal is None:
-            return None
+        peripheral a handle into register storage. Found by the ARGUMENT's OWN
+        recorded parameter -- its symbol is `out IFlagRegisterField flagField`,
+        literally prefixed `out ` -- never by the `out` parameter's DECLARED
+        ordinal indexed into the argument list. `IInvocationOperation.Arguments`
+        is recorded in WRITTEN order, not declared-parameter order, and a call
+        using named arguments out of declaration order --
+        `WithFlag(0, name: .., mode: .., flagField: out x)`, LPC_CTimer's
+        MR0INT -- has its `out` argument at a different tree position than its
+        declared ordinal. Indexing by ordinal silently returned the `mode`
+        argument instead: not a `FieldReference`, so the field looked entirely
+        unbound and the site fell to the anonymous rule with no gap reported.
+        `bind()` above already reads arguments this same self-describing way,
+        by name, for exactly this reason."""
         args = [c for c in self.children(oid) if c[1] == "Argument"]
-        if ordinal >= len(args):
+        arg = next((a for a in args if a[2] and a[2].startswith("out ")), None)
+        if arg is None:
             return None
-        inner = self.children(args[ordinal][0])
+        inner = self.children(arg[0])
         if not inner:
             return None
         node, kind, sym = inner[0][0], inner[0][1], inner[0][2]
