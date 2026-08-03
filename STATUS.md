@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-04T09:19:41+10:00 from `c5ca5b3` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-04T09:33:43+10:00 from `2a9980d` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -11,8 +11,8 @@ averaged 1.87 validation instances each.
 | metric | value | target | status |
 |---|---:|---:|---|
 | **compile-clean modules (the gate)** | 283 | ratchet, may only grow | PASS |
-| platform floor (peripherals reachable end-to-end) | 23 / 65 | 65 | 35% |
-| modules clean *and* drivable | 109 / 560 | — | 19% |
+| platform floor (peripherals reachable end-to-end) | 27 / 65 | 65 | 42% |
+| modules clean *and* drivable | 173 / 599 | — | 29% |
 | oracle trace replay: peripherals at 0 divergence | 3 / 8 | 8 | partial |
 
 > **The `rule` / `rule_instance` / `pattern_cluster` / `translation` SQL tables are
@@ -37,13 +37,13 @@ averaged 1.87 validation instances each.
 
 | | count |
 |---|---:|
-| modules emitted | 560 |
-| modules clean (0 rustc errors) | 212 |
-| modules drivable | 285 |
-| modules clean and drivable | 109 |
+| modules emitted | 599 |
+| modules clean (0 rustc errors) | 283 |
+| modules drivable | 340 |
+| modules clean and drivable | 173 |
 | platform peripherals in scope | 65 |
-| platform peripherals emitted | 49 |
-| platform floor | 23 |
+| platform peripherals emitted | 50 |
+| platform floor | 27 |
 
 **Hand-authored rule files** actually read by the emitter (not the SQL `rule` table — see the note above):
 
@@ -100,7 +100,7 @@ Genuine stop points. A failed gate means stop, not retry.
 | gate | status | evidence |
 |---|---|---|
 | **two-tier compile gate** — modules with 0 rustc errors | 283 (ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md](docs/decisions/two-tier-compile-gate.md) |
-| **the floor that runs** — peripherals reachable end-to-end | 23 / 65 | [docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md) |
+| **the floor that runs** — peripherals reachable end-to-end | 27 / 65 | [docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md) |
 
 ### Historical (Phase 0/1)
 

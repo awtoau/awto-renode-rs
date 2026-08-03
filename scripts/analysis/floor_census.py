@@ -104,43 +104,35 @@ def module_name(csharp_type: str) -> str:
 
 
 def emitted_types(db: Path) -> dict[str, str]:
-    """module name -> C# type name, for every type the converter will emit."""
+    """module name -> C# type name, for every type `register_owners.owners`
+    selects a register-defining member for -- the SAME selector
+    `compile_check.emit_all` calls, so this can never name a type the crate's
+    own file list disagrees with.
+
+    A NAME-based query used to live here (`%Register%`/`%DefineReg%` on a
+    method with a body). It dropped every type that builds its register map in
+    a constructor -- STM32F4_RCC, STM32F4_RTC, STM32_RNG all vanished this way,
+    silently, because a type absent from a work list produces no file that
+    could be noticed missing. `register_owners.py` replaced that query for the
+    real emission pipeline; this was a second, forgotten copy of the one it
+    replaced, so this census kept reporting the old defect after it was fixed.
+    """
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    rows = con.execute("""
-        SELECT t.name FROM type t
-        JOIN member mb ON mb.type_id = t.id
-        JOIN method m ON m.member_id = mb.id
-        WHERE t.kind='class' AND m.has_body=1
-          AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')
-        GROUP BY t.name ORDER BY t.name""").fetchall()
-    return {module_name(n): n for (n,) in rows}
+    from register_owners import owners
+    return {module_name(n): n for n, _m in owners(con)}
 
 
 def why_not_emitted(db: Path, csharp: str) -> str:
-    """The work list is a NAME HEURISTIC -- `compile_check.emit_all` selects
-    types with a member matching `%Register%`/`%DefineReg%` that has a body. A
-    peripheral that defines its registers inline in its constructor therefore
-    never reaches the emitter, and looks identical from outside to one the
-    emitter cannot do. They are not the same thing, so say which."""
+    """Why a platform peripheral has no emitted module, using the SAME
+    content-based selector as the real pipeline (`register_owners.candidates`),
+    not a second name-based guess at the same question."""
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     row = con.execute("SELECT id FROM type WHERE name=?", (csharp,)).fetchone()
     if row is None:
         return "not a type in the corpus (a .repl reference, not a class)"
-    tid = row[0]
-    named = con.execute(
-        """SELECT COUNT(*) FROM member mb JOIN method m ON m.member_id=mb.id
-           WHERE mb.type_id=? AND m.has_body=1
-             AND (mb.name LIKE '%Register%' OR mb.name LIKE '%DefineReg%')""",
-        (tid,)).fetchone()[0]
-    if named:
+    from register_owners import candidates
+    if candidates(con, types=[csharp]):
         return "selected but not emitted -- investigate"
-    anyreg = con.execute(
-        """SELECT COUNT(*) FROM member mb WHERE mb.type_id=?
-           AND (mb.name LIKE '%Register%' OR mb.name LIKE '%egisters%')""",
-        (tid,)).fetchone()[0]
-    if anyreg:
-        return ("HAS registers but defines them OUTSIDE a matching method "
-                "(constructor-defined) -- the work-list heuristic misses it")
     return "no register-defining member at all (memory, CPU, bus, container)"
 
 
@@ -394,10 +386,8 @@ def main() -> int:
         log.info("    %-22s %-28s 0x%08X  %s", n, i["csharp_type"],
                  i["address"], mods[i["module"]]["reset"] or "NO reset")
     log.info("")
-    log.info("On the platform and NOT emitted at all (%d), with the reason. "
-             "The work list is a", len(plat_unemitted))
-    log.info("NAME HEURISTIC, so 'not emitted' and 'cannot be emitted' are "
-             "different states:")
+    log.info("On the platform and NOT emitted at all (%d), with the reason:",
+             len(plat_unemitted))
     for n in plat_unemitted:
         why = why_not_emitted(root / args.db,
                               (on_platform[n]["csharp_type"] or "").split(".")[-1])
