@@ -37,8 +37,10 @@ def conversion(em, oid):
         num = False
     # An explicit cast to a generated enum needs from_u64: Rust has no
     # numeric-to-enum cast. See enums.from_u64.
-    if (rtype or "").split(".")[-1] in em._enum_names:
-        return f"{(rtype or '').split('.')[-1]}::from_u64({inner})"
+    ename = (rtype or "").split(".")[-1]
+    if ename in em._enum_names:
+        rust_name = getattr(em, "_enum_rust_names", {}).get(ename, ename)
+        return f"{rust_name}::from_u64({inner})"
     tgt = em.rust_type(rtype or "") if num else None
     if num and tgt:
         return em.language.get("conversions", {}).get(

@@ -32,7 +32,7 @@ def enum_member(em, oid):
     # it fell through to the field rule and emitted `st.by16`.
     parts = symbol.split("(")[0].split(".")
     if len(parts) >= 2 and parts[-2] in em._enum_names:
-        return em.project.get("enums", {}).get(
-            "reference", "{type}::{member}").format(
-            type=parts[-2], member=parts[-1])
-    return None
+            rust_name = getattr(em, "_enum_rust_names", {}).get(parts[-2], parts[-2])
+            return em.project.get("enums", {}).get(
+                "reference", "{type}::{member}").format(
+                type=rust_name, member=parts[-1])

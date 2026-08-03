@@ -550,6 +550,14 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
             n for n, m in self.nested_enums(type_name)
             if early_off_names and {x for x, _ in m} >= early_off_names}
         self._enum_names = self.enum_names(type_name) - self._offset_enum_names
+        # `State` and `Fields` are ALWAYS declared in this file (below) as the
+        # peripheral's own struct names -- a C# nested enum that happens to
+        # share either name collides (E0428) and shadows the struct's own
+        # fields at every use site (E0609). Every declaration and reference
+        # goes through this map, so the two cannot drift apart.
+        self._enum_rust_names = {
+            n: (f"{n}Enum" if n in ("State", "Fields") else n)
+            for n in self._enum_names}
         # Queued type warnings are per FILE: one left over from the previous
         # file would attach to the first declaration of this one.
         self.take_type_warnings()
@@ -575,6 +583,9 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self._sized_state = set(getattr(self, "_sub_fields", {}))
         self._current_type = type_name
         self._enum_names = self.enum_names(type_name) - self._offset_enum_names
+        self._enum_rust_names = {
+            n: (f"{n}Enum" if n in ("State", "Fields") else n)
+            for n in self._enum_names}
         self.gaps = []
         method_gaps: list[str] = []
         names = [r[0] for r in self.con.execute(
@@ -733,9 +744,10 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         enums = [(n, m) for n, m in self.nested_enums(type_name)
                  if not (off_names and {x for x, _ in m} >= off_names)]
         for ename, members in enums:
+            rust_name = self._enum_rust_names.get(ename, ename)
             spec = self.project.get("enums", {})
             a(f"/// C# `enum {ename}`, discriminants as declared.")
-            a(spec.get("decl", "pub enum {name} {{").format(name=ename))
+            a(spec.get("decl", "pub enum {name} {{").format(name=rust_name))
             # C# allows two names for one discriminant; Rust does not (E0081).
             # First by declaration order is the variant, the rest are consts.
             seen_vals: dict[str, str] = {}
@@ -753,7 +765,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
             a("}")
             if aliases:
                 a("")
-                a(f"impl {ename} {{")
+                a(f"impl {rust_name} {{")
                 a("    // C# aliases: a second name for a discriminant already")
                 a("    // taken. Rust forbids the duplicate in the enum itself.")
                 for nm, tgt in aliases:
@@ -772,7 +784,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 # in the rule file and the generated code read as faithful.
                 for line in self.warn_line(conv.get("warning", ""), 0):
                     a(line)
-                a(conv["impl"].format(name=ename, arms=arms))
+                a(conv["impl"].format(name=rust_name, arms=arms))
                 a("")
         a("/// The peripheral's own state: every C# instance member that actually")
         a("/// stores something. Computed properties are excluded -- they hold")

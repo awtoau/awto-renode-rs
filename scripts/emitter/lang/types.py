@@ -97,7 +97,8 @@ class Types:
                     if inner else None)
         # A nested enum the translated type declares is a real Rust type.
         if cs.split(".")[-1] in self._enum_names:
-            return cs.split(".")[-1]
+            ename = cs.split(".")[-1]
+            return getattr(self, "_enum_rust_names", {}).get(ename, ename)
         if "<" in cs:
             outer = cs.split("<")[0].split(".")[-1]
             inner = cs[cs.index("<") + 1:cs.rindex(">")]

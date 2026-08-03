@@ -29,9 +29,10 @@ def parameter_reference(em, oid):
     nm = snake(symbol.split()[-1])
     ety = (rtype or "").split(".")[-1]
     if nm in em._enum_slots and ety in em._enum_names:
+        rust_name = getattr(em, "_enum_rust_names", {}).get(ety, ety)
         return em.project.get("enums", {}).get(
             "typed_callback_param", {}).get(
-            "emit", "{type}::from_u64({name})").format(type=ety, name=nm)
+            "emit", "{type}::from_u64({name})").format(type=rust_name, name=nm)
     # A WithFlag callback slot is likewise declared u64 in Rust (the
     # signature is width-uniform across flag and value fields) but typed
     # bool in C#; convert the same way -- see bool_callback_param.
