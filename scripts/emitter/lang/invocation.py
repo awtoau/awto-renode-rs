@@ -63,7 +63,8 @@ def invocation(em, oid):
             # Argument node's symbol.  That matters for named arguments, whose
             # source order need not be parameter order.  Fall back to ordinal
             # only for older corpus rows that lack the binding fact.
-            bound = (arg_row[2] or "").split()[-1]
+            parts = (arg_row[2] or "").split()
+            bound = parts[-1] if parts else ""
             is_by_ref = by_name.get(bound, by_ordinal.get(i, False))
             borrowed.append(f"&mut {rendered}" if is_by_ref else rendered)
         rendered_args = borrowed
