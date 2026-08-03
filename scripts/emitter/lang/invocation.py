@@ -28,12 +28,39 @@ def invocation(em, oid):
     if not symbol:
         return None
     all_kids = em.children(oid)
-    args = [c[0] for c in all_kids if c[1] == "Argument"]
+    args = [c for c in all_kids if c[1] == "Argument"]
     # Generic call. Project rules were tried above, so reaching here
     # means no idiom claimed it.
     inv = em.language.get("invocations", {})
     method = snake(symbol.split("(")[0].split(".")[-1])
-    arg_txt = ", ".join(em.emit_expr(a) for a in args)
+    rendered_args = [em.emit_expr(a[0]) for a in args]
+    # Preserve ref/out at call boundaries too.  Roslyn's invocation symbol is
+    # the same key stored for an in-corpus member, so this is semantic lookup,
+    # not name matching.  A ref parameter forwarded to another ref parameter
+    # is already rendered as `*x` and therefore correctly becomes `&mut *x`.
+    callee = em.con.execute(
+        "SELECT mb.id, mb.is_static, t.name "
+        "FROM member mb JOIN type t ON t.id=mb.type_id "
+        "WHERE mb.key=? LIMIT 1", (symbol,)).fetchone()
+    if callee:
+        params = list(em.con.execute(
+            "SELECT ordinal, name, is_out, is_ref FROM parameter "
+            "WHERE method_id=? ORDER BY ordinal", (callee[0],)))
+        by_ordinal = {ordinal: bool(is_out or is_ref)
+                      for ordinal, _name, is_out, is_ref in params}
+        by_name = {name: bool(is_out or is_ref)
+                   for _ordinal, name, is_out, is_ref in params}
+        borrowed = []
+        for i, (arg_row, rendered) in enumerate(zip(args, rendered_args)):
+            # Roslyn records the parameter an argument bound to in the
+            # Argument node's symbol.  That matters for named arguments, whose
+            # source order need not be parameter order.  Fall back to ordinal
+            # only for older corpus rows that lack the binding fact.
+            bound = (arg_row[2] or "").split()[-1]
+            is_by_ref = by_name.get(bound, by_ordinal.get(i, False))
+            borrowed.append(f"&mut {rendered}" if is_by_ref else rendered)
+        rendered_args = borrowed
+    arg_txt = ", ".join(rendered_args)
     receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
     key = em.stdlib_member(symbol)
     if key and receiver is not None:

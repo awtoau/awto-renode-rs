@@ -541,6 +541,13 @@
     },
     "padded_hex": "0{width}{spec}"
   },
+  "mutable_statics": {
+    "note": "A C# static field is one value per closed type, not one value per peripheral instance. Const-valued fields remain constants and static readonly fields are initialization-only storage. A non-readonly, non-const static with a recorded write outside .cctor is genuinely mutable process-wide state.",
+    "representation": "OnceLock plus a lock owned by the runtime; putting the value in generated State would duplicate it per instance and is forbidden.",
+    "current_action": "withhold an ordinary method that accesses a genuinely mutable static and emit a named gap",
+    "why_refusal_is_a_rule": "The emitter previously sent a receiver-less FieldReference through the implicit-this form, producing plausible per-instance state. A general semantic guard is faithful refusal: every corpus gets the same classification query, no type or field name is special-cased, and no wrong Rust is published while runtime storage is absent.",
+    "census": "scripts/semantic_differences_census.py"
+  },
   "linq": {
     "note": "LINQ operators are STATIC extension methods -- `Enumerable.Select(source, f)` -- so argument 0 is the receiver and there is no receiver child at all. The generic invocation rule saw none, emitted the self-call form, and produced `st.select(...)`: a LINQ call read as a state field. Identical failure to `this.Log`, which is also a static extension.",
     "symbol_contains": "System.Linq.Enumerable.",

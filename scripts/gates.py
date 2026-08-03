@@ -48,7 +48,7 @@ GATES: list[tuple[str, list[str]]] = [
     ("check_paths", []), ("check_derived", []), ("check_layering", []),
     ("check_generated", []), ("check_ingest", []),
     ("check_rule_negatives", []), ("check_sync_harness", []),
-    ("check_peer_calls", []),
+    ("check_peer_calls", []), ("check_semantic_differences", []),
     # Source defects are data with their own evidence; this refuses one that
     # has lost its authority, its default or its measured switch-impact.
     # `--prove` is separate and deliberate: it is the mutation proof that the

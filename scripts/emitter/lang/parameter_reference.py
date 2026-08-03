@@ -34,4 +34,8 @@ def parameter_reference(em, oid):
             "emit", "{type}::from_u64({name})").format(type=ety, name=nm)
     # The symbol is "byte value" -- type then name. Splitting on "."
     # returned the whole thing and emitted `enqueue(byte value)`.
-    return snake(symbol.split()[-1])
+    if nm in getattr(em, "_by_ref_params", set()):
+        # The signature carries `ref`/`out` as `&mut T`; ordinary reads and
+        # assignment targets operate on the referred-to C# value.
+        return f"*{nm}"
+    return nm

@@ -11,6 +11,7 @@ for work in progress, which is why `docs/issues-draft.md` was deleted earlier.
 | file | what |
 |---|---|
 | [0-close-55](0-close-55.md) | comment to close #55 with the measured result |
+| [0-status-58](0-status-58.md) | implementation/status record for #58 with current full-tree counts |
 | [1-dsl-families](1-dsl-families.md) | **LANDED** — four register-DSL families |
 | [2-tag-overmatch](2-tag-overmatch.md) | **LANDED** — 171 anonymous fields emitted as tags |
 | [3-loop-builder](3-loop-builder.md) | **LANDED, premise wrong** — see the note at the top |

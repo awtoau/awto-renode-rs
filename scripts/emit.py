@@ -1037,6 +1037,9 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
 
         Distinct from emit_method, which walks a fluent register chain; this
         emits an ordinary body, so a callback can call it."""
+        # Do not let a previously emitted method's ref/out context leak into a
+        # method that returns early while resolving its signature.
+        self._by_ref_params = set()
         row = self.con.execute("""
             SELECT m.member_id, m.return_type FROM method m
             JOIN member mb ON mb.id = m.member_id
@@ -1080,8 +1083,10 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 return []
 
         extra = ""
-        for pname, ptype in self.con.execute(
-                "SELECT name, type FROM parameter WHERE method_id=? ORDER BY ordinal",
+        by_ref: set[str] = set()
+        for pname, ptype, is_out, is_ref in self.con.execute(
+                "SELECT name, type, is_out, is_ref FROM parameter "
+                "WHERE method_id=? ORDER BY ordinal",
                 (method_id,)):
             rt = (self.project.get("state_struct", {}).get("type_map", {})
                   .get((ptype or "").strip()) or self.rust_type(ptype or ""))
@@ -1090,7 +1095,32 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                     f"{method_name}: parameter `{pname}` has no Rust mapping "
                     f"for `{ptype}`")
                 return []
-            extra += f", {snake(pname)}: {rt}"
+            pn = snake(pname)
+            if is_out or is_ref:
+                rt = self.language.get("interface_traits", {}).get(
+                    "by_ref", "&mut {inner}").format(inner=rt)
+                by_ref.add(pn)
+            extra += f", {pn}: {rt}"
+
+        # ParameterReference needs to distinguish a C# value from the Rust
+        # reference used to carry it.  This is method-local context, just like
+        # `_current_type`; without it `ref int` was silently emitted as `int`.
+        self._by_ref_params = by_ref
+
+        # A mutable C# static is process-wide state.  Treating a receiver-less
+        # FieldReference as `self.foo` (the generic implicit-this fallback)
+        # changes both its lifetime and sharing.  Until the runtime owns a
+        # lock/OnceLock representation, refuse every ordinary method that
+        # reaches one.  The rule is corpus-independent and the census lists
+        # every current instance.
+        from emitter.lang.mutable_static import accessed_mutable_statics
+        mutable_statics = accessed_mutable_statics(self, method_id)
+        if mutable_statics:
+            self.gaps.append(
+                f"{method_name}: withheld, accesses mutable static "
+                + ", ".join(f"`{s}`" for s in mutable_statics)
+                + " -- process-wide lock/OnceLock storage is not emitted")
+            return []
 
         # Normalise before emitting: rewrite the tree into shapes the emit
         # rules already handle. Ordered by data, run to a fixpoint, capped.
