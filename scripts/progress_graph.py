@@ -36,7 +36,11 @@ Self-contained SVG, no plotting library: the repo has no Python dependencies
 and adding one for a chart is a poor trade.
 
 Run:  python3 scripts/progress_graph.py
-Out:  ./tmp/progress.svg  and  ./tmp/progress.html
+Out:  ./docs/status/progress.svg and ./docs/status/progress.html -- TRACKED.
+      A report is a deliverable, not scratch. These lived in gitignored tmp/
+      and were destroyed by every clean; the graph is the only artefact that
+      shows the correctness line falling over time, and it cannot be
+      reconstructed from a number.
 Log:  ./tmp/logs/progress_graph.log
 """
 
@@ -186,14 +190,14 @@ def main() -> int:
 
     pts = series(log)
     chart = svg(pts)
-    (root / "tmp" / "progress.svg").write_text(chart)
+    (root / "docs" / "status" / "progress.svg").write_text(chart)
 
     rows = "".join(
         f"<tr><td class=m>{p[0]}</td><td>{p[1][:78]}</td>"
         f"<td class=n>{p[2]}</td><td class=n>{p[3]}</td>"
         f"<td class=n>{p[4] if p[4] >= 0 else '&mdash;'}</td></tr>"
         for p in reversed(pts))
-    (root / "tmp" / "progress.html").write_text(f"""<!doctype html>
+    (root / "docs" / "status" / "progress.html").write_text(f"""<!doctype html>
 <meta charset=utf-8><title>renode-rs converter progress</title>
 <style>
  body{{font:15px/1.55 system-ui,sans-serif;margin:2rem auto;max-width:1160px;padding:0 1rem}}
@@ -218,7 +222,7 @@ converter <em>withholding</em> output it should never have emitted.</p>
         log.info("%-9s %-56s %6d %5d %11s", p[0], p[1][:56], p[2], p[3],
                  p[4] if p[4] >= 0 else "-")
     log.info("")
-    log.info("wrote tmp/progress.svg and tmp/progress.html")
+    log.info("wrote docs/status/progress.svg and docs/status/progress.html")
     return 0
 
 
