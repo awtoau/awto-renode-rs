@@ -75,6 +75,7 @@ from html import escape
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 from check_generated import GENERATED as _GENERATED   # noqa: E402
 
 # Derived, never retyped. This list was its own hardcoded copy of two paths and

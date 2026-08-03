@@ -148,7 +148,7 @@ def cmd_selftest(_extra: list[str]) -> int:
 
 @command("compile the known-clean set plus types touched by the diff", kind="step")
 def cmd_build(extra: list[str]) -> int:
-    return run([sys.executable, "scripts/compile_check.py",
+    return run([sys.executable, "scripts/validation/compile_check.py",
                 "--working-set", "--ratchet", *extra])
 
 
@@ -185,8 +185,8 @@ def cmd_ci_determinism(extra: list[str]) -> int:
         log("ci-determinism accepts no extra arguments", "ERROR")
         return 2
     return run_sequence([
-        ("ingest determinism", [sys.executable, "scripts/check_determinism.py"]),
-        ("emitter determinism", [sys.executable, "scripts/check_emit_determinism.py"]),
+        ("ingest determinism", [sys.executable, "scripts/validation/check_determinism.py"]),
+        ("emitter determinism", [sys.executable, "scripts/validation/check_emit_determinism.py"]),
     ])
 
 
@@ -197,8 +197,8 @@ def cmd_issue_62(extra: list[str]) -> int:
         log("issue-62 accepts no extra arguments", "ERROR")
         return 2
     rc = run_sequence([
-        ("compile census", [sys.executable, "scripts/compile_check.py", "--ratchet"]),
-        ("gap census", [sys.executable, "scripts/gap_census.py"]),
+        ("compile census", [sys.executable, "scripts/validation/compile_check.py", "--ratchet"]),
+        ("gap census", [sys.executable, "scripts/analysis/gap_census.py"]),
     ])
     if rc:
         return rc
@@ -335,8 +335,10 @@ def cmd_codex(extra: list[str]) -> int:
 
 def register_tools() -> None:
     reserved = {"dev", "cycle", "run_codex"}
-    paths = sorted((REPO / "scripts").glob("*.py")) + \
-        sorted((REPO / "scripts" / "reports").glob("*.py"))
+    subdirs = ("reports", "core", "validation", "analysis", "oracle")
+    paths = sorted((REPO / "scripts").glob("*.py"))
+    for sub in subdirs:
+        paths += sorted((REPO / "scripts" / sub).glob("*.py"))
     for path in paths:
         if path.stem in reserved:
             continue

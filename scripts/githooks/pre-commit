@@ -47,16 +47,16 @@ def main() -> int:
     # buys the confidence without doing the work, which is this project's whole
     # recurring failure. Everything claimed as a gate is now actually a gate.
     for script, why in (
-        ("scripts/check_paths.py", "absolute path(s) in tracked files"),
-        ("scripts/check_derived.py", "derived value(s) copied into source"),
-        ("scripts/check_layering.py", "corpus knowledge in the generic layer"),
-        ("scripts/check_generated.py", "a generated file was hand-edited"),
-        ("scripts/check_ingest.py", "an operation kind lost its extraction"),
+        ("scripts/validation/check_paths.py", "absolute path(s) in tracked files"),
+        ("scripts/validation/check_derived.py", "derived value(s) copied into source"),
+        ("scripts/validation/check_layering.py", "corpus knowledge in the generic layer"),
+        ("scripts/core/check_generated.py", "a generated file was hand-edited"),
+        ("scripts/validation/check_ingest.py", "an operation kind lost its extraction"),
         # Both guards fail SILENTLY if they regress: a trait forwarding to a
         # base body compiles and passes its trace, and a field-collision guard
         # that stops firing is indistinguishable from a corpus that stopped
         # colliding. Neither is visible in a diff.
-        ("scripts/check_inheritance.py",
+        ("scripts/validation/check_inheritance.py",
          "dispatch stopped resolving strictly, or the collision guard stopped "
          "being able to fire"),
         # Cheap (in-memory SQLite, no corpus) and it guards the one claim the
@@ -64,7 +64,7 @@ def main() -> int:
         # checked the output. The key it replaced counted which files were
         # ingested, which stopped meaning anything the moment the corpus cut
         # was removed -- and nothing would have said so.
-        ("scripts/check_commit_tier.py",
+        ("scripts/validation/check_commit_tier.py",
          "`committed` is no longer keyed on the oracle"),
     ):
         if subprocess.run([py, script], cwd=root).returncode != 0:
@@ -93,7 +93,7 @@ def main() -> int:
     #       have passed. It is now per-module over the clean set.
     #
     #     The fast tier prints what it did NOT check, every run.
-    ratchet = subprocess.run([py, "scripts/compile_check.py",
+    ratchet = subprocess.run([py, "scripts/validation/compile_check.py",
                               "--working-set", "--ratchet"],
                              cwd=root, capture_output=True, text=True)
     if ratchet.returncode != 0:
@@ -106,7 +106,7 @@ def main() -> int:
     #     Cheap (two cached `cargo test` runs) and it guards the one thing a
     #     concurrency harness cannot be trusted to prove about itself: that its
     #     green tick is not unconditional.
-    sync = subprocess.run([py, "scripts/check_sync_harness.py"],
+    sync = subprocess.run([py, "scripts/validation/check_sync_harness.py"],
                           cwd=root, capture_output=True, text=True)
     if sync.returncode != 0:
         print(sync.stdout[-1200:], file=sys.stderr)
@@ -121,7 +121,7 @@ def main() -> int:
     #     scored zero divergences, because behaviourally inert wrong code is
     #     invisible to an oracle. Recording the negative as prose beside the
     #     rule would not have caught the edit that introduced it.
-    neg = subprocess.run([py, "scripts/check_rule_negatives.py"],
+    neg = subprocess.run([py, "scripts/validation/check_rule_negatives.py"],
                          cwd=root, capture_output=True, text=True)
     if neg.returncode != 0:
         print(neg.stdout[-1200:], file=sys.stderr)
@@ -135,7 +135,7 @@ def main() -> int:
     #     does not contain -- the defect that reached a translated file,
     #     survived a 33,000-access trace because it was behaviourally inert,
     #     and was found by regenerating and diffing rather than by any test.
-    post = subprocess.run([py, "scripts/check_postconditions.py"],
+    post = subprocess.run([py, "scripts/validation/check_postconditions.py"],
                           cwd=root, capture_output=True, text=True)
     if post.returncode != 0:
         print(post.stdout[-1500:], file=sys.stderr)
@@ -147,7 +147,7 @@ def main() -> int:
     #     has never rejected anything reports exactly what a check doing
     #     nothing reports. This breaks the emitter four ways on purpose and
     #     fails if any break goes unnoticed.
-    prove = subprocess.run([py, "scripts/prove_postconditions.py"],
+    prove = subprocess.run([py, "scripts/validation/prove_postconditions.py"],
                            cwd=root, capture_output=True, text=True)
     if prove.returncode != 0:
         print(prove.stdout[-1500:], file=sys.stderr)

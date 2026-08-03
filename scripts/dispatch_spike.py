@@ -62,6 +62,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "core"))
 from emitter.core import snake  # noqa: E402
 
 # The seven modules the converter owns, as (type, method, module). Same list

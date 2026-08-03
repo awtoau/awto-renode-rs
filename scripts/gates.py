@@ -18,7 +18,7 @@ only as a thing you remember to type is the same as it not existing.
 Why the split: the full compile census took ~15 min, `--ratchet` was in the
 pre-commit hook, and the hook was therefore being SKIPPED -- so the last
 several commits ran no compile gate at all. A gate slow enough to be bypassed
-is a gate that does not run. Emission is now parallel (scripts/emit_pool.py)
+is a gate that does not run. Emission is now parallel (scripts/core/emit_pool.py)
 AND the everyday tier is scoped, because either alone was not enough.
 
 Independent gates run concurrently. The compile emitter receives the CPUs left
@@ -101,9 +101,16 @@ class Result:
     output: str
 
 
+#: Directories searched, in order, for a gate's script -- so callers can name a
+#: gate by stem alone without knowing which category subdirectory it lives in.
+GATE_DIRS = ("", "validation", "core", "analysis", "oracle", "reports")
+
+
 def run_gate(root: Path, gate: tuple[str, list[str]]) -> Result:
     name, extra = gate
-    script = root / "scripts" / f"{name}.py"
+    script = next((root / "scripts" / d / f"{name}.py" for d in GATE_DIRS
+                   if (root / "scripts" / d / f"{name}.py").exists()),
+                  root / "scripts" / f"{name}.py")
     label = " ".join([name, *extra])
     if not script.exists():
         return Result(label, 127, 0.0, "script missing")

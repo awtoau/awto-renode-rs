@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-04T08:56:46+10:00 from `ffd1d29` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-04T09:19:41+10:00 from `c5ca5b3` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -18,7 +18,7 @@ averaged 1.87 validation instances each.
 > **The `rule` / `rule_instance` / `pattern_cluster` / `translation` SQL tables are
 > 0 rows by design, not by defect.** The tree-matcher/cluster-mining pipeline those
 > tables were built for (see `docs/rulesdb-design.md`) was superseded by
-> hand-authored JSON rule files read directly by `scripts/emit.py` — see
+> hand-authored JSON rule files read directly by `scripts/core/emit.py` — see
 > [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md) and
 > [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md). A scorecard
 > that reported `instances per rule` and `patches outstanding` from those tables
@@ -56,7 +56,7 @@ averaged 1.87 validation instances each.
 | `rulesdb/rules/constructor.json` | 8,226 bytes |
 | `rulesdb/rules/object_graph.json` | 7,310 bytes |
 
-**What the converter cannot yet emit** (26,084 gaps over 601 types, 601 emitted, 0 converter crash(es) — not a correctness claim, see [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); regenerate with `python3 scripts/gap_census.py`):
+**What the converter cannot yet emit** (26,084 gaps over 601 types, 601 emitted, 0 converter crash(es) — not a correctness claim, see [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); regenerate with `python3 scripts/analysis/gap_census.py`):
 
 | gap category | count | share |
 |---|---:|---:|
@@ -172,7 +172,7 @@ does not have.
 |---|---|
 | files produced by the converter | 1 (`uart_registers.rs`) |
 | peripherals still hand-written | uart behaviour, gpio layout + behaviour |
-| enforcement | `check_generated.py`, pre-commit |
+| enforcement | none |
 
 The UART's register layout is now generated and enforced byte-for-byte.
 Deleting the hand-written version removed three edits that had survived

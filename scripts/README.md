@@ -5,13 +5,30 @@
 specialised or infrequently run does not make it debris: reproducible research
 and negative controls are project evidence.
 
-## Entry point and converter machinery
+Scripts are physically organised by category, matching `dev.py`'s own kind
+classifier: `core/` (converter and shared library modules), `validation/`
+(every `check_*.py` gate plus `compile_check.py`/`prove_postconditions.py`),
+`analysis/` (census and other reproducible-research scripts), `oracle/`
+(trace acquisition and replay tooling), `reports/` (generated status output).
+A handful of top-level entry points (`dev.py`, `gates.py`, `regenerate.py`,
+`dispatch_spike.py`, `record_translations.py`, `dump_emitted.py`, `rules.py`)
+don't fit one category and stay at `scripts/` directly. `dev.py describe`
+discovers commands from every one of these directories, so a script's kind on
+the CLI and its physical directory can differ (`check_generated.py` lives in
+`core/` because `emit.py` itself imports it, but is still a `validation` gate
+by kind).
+
+## Entry point and converter machinery (`core/`)
 
 - `dev.py`: canonical command registry and workflow entry point.
-- `emit.py`, `emit_pool.py`: converter and deterministic process pool.
+- `core/emit.py`, `core/emit_pool.py`: converter and deterministic process pool.
 - `rules.py`: rule-engine storage and promotion logic.
-- `register_owners.py`, `emitted_modules.py`: shared structural queries used by
-  multiple checks and reports.
+- `core/register_owners.py`, `core/emitted_modules.py`: shared structural
+  queries used by multiple checks and reports.
+- `core/parse_repl.py`: `.repl` parser, derives `docs/status/platform.json`.
+- `core/check_generated.py`: the `GENERATED` list and the byte-identical diff
+  check; lives in `core/` (not `validation/`) because `emit.py` imports it
+  directly.
 - `regenerate.py`: rewrites every converter-owned generated file.
 - `gates.py`: bounded-CPU validation orchestrator.
 - `gates.py --fail-fast`: stop on first failure for quick triage/fix loops.
@@ -19,16 +36,17 @@ and negative controls are project evidence.
 - `dev.py ci-determinism`: explicit issue-36 determinism proof run
   (`check_determinism.py` then `check_emit_determinism.py`).
 
-## Validation
+## Validation (`validation/`)
 
-Every top-level `check_*.py` script is a maintained regression check. This
-includes the expensive CI-only determinism checks and `check_refactor.py`, which
-now verifies byte-identical artefacts against a current baseline; refresh that
-baseline intentionally with `python3 scripts/check_refactor.py --record` after
-an intended output change. `compile_check.py` is the Rust compile census and
-`prove_postconditions.py` is the deliberate negative control for postconditions.
+Every `check_*.py` script is a maintained regression check. This includes the
+expensive CI-only determinism checks and `check_refactor.py`, which now
+verifies byte-identical artefacts against a current baseline; refresh that
+baseline intentionally with `python3 scripts/validation/check_refactor.py
+--record` after an intended output change. `compile_check.py` is the Rust
+compile census and `prove_postconditions.py` is the deliberate negative
+control for postconditions.
 
-## Analysis and reproducible research
+## Analysis and reproducible research (`analysis/`)
 
 - Core pipeline/corpus: `analyse_corpus.py`, `census.py`, `gap_census.py`,
   `floor_census.py`, `prescan.py`, `oracle_coverage.py`.
@@ -41,19 +59,18 @@ an intended output change. `compile_check.py` is the Rust compile census and
 These scripts retain value because they regenerate measurements cited by issue
 and decision documents. They are analysis commands, not everyday gates.
 
-## Oracle and traces
+## Oracle and traces (`oracle/`)
 
 - `baseline_boot.py`, `capture_traces.py`: acquire the C# reference evidence.
 - `analyse_divergences.py`, `diagnose_trace.py`: explain trace failures.
 - `measure_bug_switch.py`, `mutate.py`: negative controls and oracle strength.
 - `verify_emit.py`: compare hand-written translations with converter output.
 
-## Reporting and generated evidence
+## Reporting and generated evidence (`reports/`)
 
 - `reports/scorecard.py`, `reports/progress_graph.py`,
   `reports/issue_index.py`: project status output.
-- `parse_repl.py`, `record_translations.py`: generated platform/translation
-  records.
+- `record_translations.py`: generated translation records.
 - `dispatch_spike.py`: despite its historical name, this is maintained; it
   regenerates `docs/status/dispatch.json` cited by current decision documents.
 

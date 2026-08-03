@@ -27,7 +27,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "core"))
 from check_generated import GENERATED  # noqa: E402
 
 

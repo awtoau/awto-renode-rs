@@ -182,7 +182,7 @@ def load_json(root: Path, rel: str) -> dict | None:
 
 def rule_file_stats(root: Path) -> list[tuple[str, int]]:
     """(filename, bytes) for each hand-authored JSON rule file that actually
-    ships. These, not the SQL `rule` table, are what `scripts/emit.py` reads --
+    ships. These, not the SQL `rule` table, are what `scripts/core/emit.py` reads --
     see docs/rule-engine-readiness.md: the tree-matcher/cluster-mining pipeline
     the SQL schema was built for was never wired up, so `rule`/`rule_instance`/
     `pattern_cluster`/`translation` are 0 rows by design, not by defect."""
@@ -273,7 +273,7 @@ def build(root: Path) -> str:
     a("> **The `rule` / `rule_instance` / `pattern_cluster` / `translation` SQL tables are")
     a("> 0 rows by design, not by defect.** The tree-matcher/cluster-mining pipeline those")
     a("> tables were built for (see `docs/rulesdb-design.md`) was superseded by")
-    a("> hand-authored JSON rule files read directly by `scripts/emit.py` — see")
+    a("> hand-authored JSON rule files read directly by `scripts/core/emit.py` — see")
     a("> [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md) and")
     a("> [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md). A scorecard")
     a("> that reported `instances per rule` and `patches outstanding` from those tables")
@@ -322,7 +322,7 @@ def build(root: Path) -> str:
           f"{gaps['converter_crashes']} converter crash(es) — "
           "not a correctness claim, see "
           "[docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); "
-          "regenerate with `python3 scripts/gap_census.py`):")
+          "regenerate with `python3 scripts/analysis/gap_census.py`):")
         a("")
         a("| gap category | count | share |")
         a("|---|---:|---:|")
@@ -338,7 +338,7 @@ def build(root: Path) -> str:
             a(f"| {r} | {n:,} |")
         a("")
     else:
-        a(f"Gap census not recorded — run `python3 scripts/gap_census.py` "
+        a(f"Gap census not recorded — run `python3 scripts/analysis/gap_census.py` "
           f"to produce `{GAP_CENSUS}` (full-corpus emission, ~6 min).")
         a("")
 
