@@ -3,9 +3,11 @@
 Issue #52 asks for three things: contention measured at the `// SYNC(measure)`
 sites, a verdict on D3, and an oracle tier that can see interleaving.
 
-**Only the third is deliverable today, and this is it.** The first two are
-recorded below as blocked, with what specifically blocks them. No verdict on D3
-is offered here, and PLAN.md line 444 is untouched.
+**Only the third is deliverable today, and this is it.** The runtime measurement
+and final architectural verdict are recorded below as blocked, with what
+specifically blocks them. The operational verdict in the meantime is explicit:
+do not enact D3; preserve locks as `Mutex` and keep threading uncertified.
+PLAN.md's mapping table now says the same thing.
 
 ## Why no verdict
 
@@ -15,8 +17,10 @@ instantiates a peripheral and drives it; the only oracle is a single-threaded
 replay of recorded register accesses, and #52 itself points out that a threading
 difference cannot appear in that *by construction*.
 
-Deleting 842 synchronisation points across the tree (the issue's figure; no
-breadth corpus is present here to re-derive it) is a whole-program decision. Taking it on evidence nobody can currently gather would
+Deleting 842 synchronisation points across the tree is a whole-program
+decision. The count was re-derived from the current full-tree snapshot with
+`python3 scripts/sync_census.py --db tmp/breadth.db`; it remains 842. Taking it
+on evidence nobody can currently gather would
 be the same move the project already caught once: a green tick standing in for
 an observation that was never made.
 
@@ -207,3 +211,14 @@ Until step 2 is answered, "measure contention at the marked sites" is not a
 measurement anyone can take: with one thread the answer is zero contention
 everywhere, and that number would be an artefact of the architecture rather than
 evidence about it.
+
+## Acceptance status
+
+| requirement | status | evidence |
+|---|---|---|
+| contention and hold times from a real workload | **blocked** | no runnable machine currently instantiates and drives a translated lock-bearing peripheral |
+| written D3 verdict and reconciled plan | **interim verdict complete; final verdict blocked** | locks stay pending runtime evidence; `PLAN.md` maps `lock(obj)` to `Mutex` plus `SYNC(measure)` |
+| oracle observes interleaving, or scorecard says uncertified | **complete** | tier 2.5 observes atomicity violations and the generated scorecard says **Threading is UNCERTIFIED** |
+
+Issue #52 is therefore not close-ready. The missing work is runtime integration
+and measurement, not another source-only rule or a synthetic timing number.
