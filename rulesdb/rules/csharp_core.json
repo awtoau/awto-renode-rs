@@ -297,6 +297,10 @@
       "note": "`a[i, j]` on a rectangular array. Two indices arrive as two index children, which is how a 2D access is told apart from a 1D one without consulting the declared type.",
       "emit": "{array}.get({row} as usize, {col} as usize)"
     },
+    "Indexer": {
+      "note": "`x[i]` on a collection whose C# indexer takes `int` -- List<T>, IList<T>, string, StringBuilder, and similar. Roslyn models an indexer as a property named `Type.this[KeyType]`, not a plain subscript, so without this rule the generic PropertyReference reader's dotted-name walk renders the literal text `this[int]`, which is not Rust syntax. Scoped to an `int` key deliberately: a `TKey`-keyed indexer (Dictionary and friends) is a map lookup, not a sequential index, and needs different Rust (`.get(&key)`), which this rule does not attempt.",
+      "emit": "{receiver}[{index} as usize]"
+    },
     "ConstantField": {
       "note": "A C# `const` field has NO STORAGE -- the compiler folds its value into every use site, and Roslyn reports the folded constant. Emitting a field access instead named a struct member that cannot exist. Applies only where the DECLARING TYPE is a class: an enum member is also a folded constant, and the enum rule maps it to a named Rust constant, which is better than a bare number.",
       "emit": "{value}"

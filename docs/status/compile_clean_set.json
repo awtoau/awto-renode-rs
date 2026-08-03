@@ -3,7 +3,7 @@
   "not_covered": "A module NOT listed here already fails to compile. It can get worse and nothing will notice. That is accepted deliberately -- a ratchet over a mostly-broken population carries no signal (50 new errors was a 1.6% rise against 3,072 and passed).",
   "may_only_grow": "min_modules is a floor. Shrinking the set takes two edits so it cannot happen quietly.",
   "record_with": "python3 scripts/compile_check.py --record-clean-set",
-  "min_modules": 282,
+  "min_modules": 283,
   "modules": [
     "actuallogger",
     "ambiqapollo4_powercontroller",
@@ -127,6 +127,7 @@
     "machineextensions",
     "managedcpusdictionary",
     "max30208",
+    "max32650_gcr",
     "max32650_pwrseq",
     "max32650_tpu",
     "max32650_wdt",
