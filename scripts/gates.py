@@ -48,6 +48,12 @@ GATES: list[tuple[str, list[str]]] = [
     ("check_paths", []), ("check_derived", []), ("check_layering", []),
     ("check_generated", []), ("check_ingest", []),
     ("check_rule_negatives", []), ("check_sync_harness", []),
+    # Source defects are data with their own evidence; this refuses one that
+    # has lost its authority, its default or its measured switch-impact.
+    # `--prove` is separate and deliberate: it is the mutation proof that the
+    # check itself works, and it belongs beside the check rather than inside
+    # it so the everyday tier stays fast.
+    ("check_bug_rules", []), ("check_bug_rules", ["--prove"]),
     ("check_inheritance", []), ("check_postconditions", []),
     ("prove_postconditions", []),
     # The everyday compile gate: the declared clean set plus what the diff

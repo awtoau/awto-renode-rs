@@ -797,10 +797,24 @@ class OffsetSwitchRegisters:
         for reg in sorted(regs, key=lambda r: r["offset"]):
             if reg["warn"]:
                 stmts.extend(self.warn_line(reg["warn"], 1))
+            # DEFECTS IN THE C#, declared as data in the project rules and
+            # matched here by (type, register name). The marker says the source
+            # is wrong and that this reproduces it on purpose -- the opposite
+            # direction from the WARNING above it, which says our mapping is
+            # narrower than the source. Two of these lived in a doc comment in
+            # a hand-written file, where nothing counted them and nothing
+            # stopped the next reader "fixing" one and breaking a trace.
+            stmts.extend(self.bug_lines(type_name, reg["name"], 1))
             reset = reg["reset"]
             stmts.append(emit.get("define", "    bank.define(reg::{name}, {reset})")
                          .format(name=to_const(reg["name"]),
                                  reset=f"0x{reset:X}" if reset else "0"))
+            # A no-op unless a stanza has been SWITCHED by id on the command
+            # line. Fidelity is the default because the oracle certifies
+            # equivalence with the C#, so the committed output never takes this
+            # branch.
+            reg["fields"] = self.conformance_fields(
+                type_name, reg["name"], reg["fields"])
             for f in reg["fields"]:
                 if f["width"] == 1:
                     stmts.append(emit.get("flag", "        .with_flag_anon({pos}, {mode})")

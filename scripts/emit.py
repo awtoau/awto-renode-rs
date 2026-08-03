@@ -189,6 +189,10 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self.normalised: dict[str, set[int]] = {}
         self._enum_slots: set[str] = set()
         self._current_reg: str | None = None
+        # Declared source defects switched to conformance, BY ID. Empty is the
+        # only value the committed output is ever produced with -- see the
+        # `--conformance` flag.
+        self.conformance: set[str] = set()
         # Loop variables bound while emitting a replicated register. Empty
         # outside one, which is what makes the non-loop path the same path.
         self._loop_env: dict[str, int] = {}
@@ -798,6 +802,23 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 # the bullet made twelve warnings arrive in the gap census as
                 # twelve new gaps of unknown category.
                 *[f"//!   ! {s}" for s in summary]]
+        # DEFECTS IN THE SOURCE, summarised separately from the warnings above.
+        # A warning says our mapping is narrower than the C#; this says the C#
+        # is narrower than the hardware it models. Mixing them would put a
+        # number that must NOT fall -- fidelity is the default, so these are
+        # reproduced on purpose -- into a ratchet built to make numbers fall.
+        # `?` and not `!` or `-`, so neither the gap census nor the warning
+        # ratchet counts one of these as its own.
+        bugs = self.bug_summary(L[warn_at:])
+        if bugs:
+            L[warn_at:warn_at] = [
+                "//!",
+                "//! SOURCE DEFECTS -- the C# is wrong here and this reproduces",
+                "//! the defect FAITHFULLY, which is what the oracle requires.",
+                "//! Do not `fix` one: see rulesdb/rules/bug_rules.json, which",
+                "//! carries the contradicting authority and the measured cost",
+                "//! of switching each to conformance.",
+                *[f"//!   ? {s}" for s in bugs]]
         return "\n".join(L).rstrip() + "\n"
 
     def base_chain(self, type_name: str) -> list[str]:
@@ -1214,6 +1235,19 @@ def main() -> int:
     ap.add_argument("--dispatch", action="store_true",
                     help="emit the virtual-dispatch traits over every module "
                          "the converter owns, to stdout")
+    # A DEFECT IN THE C# is data (rulesdb/rules/bug_rules.json) and switchable.
+    # FIDELITY IS THE DEFAULT and this flag is the only way off it: the oracle
+    # certifies equivalence with the C#, so a corrected output is a FAILED
+    # output and must never be what a plain `emit.py` produces. Switching is
+    # therefore an argument at the call site, never an edit to the data --
+    # nobody can leave a rule switched by forgetting to put a file back.
+    ap.add_argument("--conformance", action="append", default=[],
+                    metavar="BUG_ID",
+                    help="emit what the HARDWARE does at this declared source "
+                         "defect instead of what the C# does. Repeatable. "
+                         "Diverges from the source on purpose; expect the "
+                         "trace oracle to notice. Measured by "
+                         "scripts/measure_bug_switch.py")
     args = ap.parse_args()
     if not (args.interfaces or args.dispatch) and not (args.type and args.method):
         ap.error("--type and --method are required unless --interfaces or "
@@ -1232,6 +1266,15 @@ def main() -> int:
 
     con = sqlite3.connect(root / args.db)
     em = Emitter(con, log)
+    em.conformance = set(args.conformance)
+    unknown = em.conformance - {s.get("id") for s in em.bug_stanzas()}
+    if unknown:
+        # Loud, not ignored. A typo'd id would otherwise switch nothing and
+        # produce output identical to fidelity, which reads exactly like a
+        # defect with no measurable switch-impact -- the one thing the
+        # measurement exists to distinguish.
+        ap.error(f"--conformance names no declared source defect: "
+                 f"{', '.join(sorted(unknown))}")
     if args.interfaces:
         text, report = em.emit_interface_traits()
         con.close()

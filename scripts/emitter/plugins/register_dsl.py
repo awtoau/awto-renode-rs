@@ -1187,6 +1187,11 @@ class RegisterDsl:
             where = f"reg::{const_name}"
             if term is not None:
                 where = f"{where} + ({term}) as u64"
+            # Declared defects IN THE C# at this register, from the project
+            # rules. Same mechanism as the hand-rolled path in
+            # offset_switch_registers, so a defect is recorded once and marks
+            # whichever way the register was found.
+            stmts.extend(self.bug_lines(type_name, name, 1))
             stmts.append(f"    bank.define({where}, {reset})")
             stmts.extend(f"        {l}" for l in body)
             stmts.append("        .done();")
