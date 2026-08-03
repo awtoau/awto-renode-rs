@@ -32,12 +32,16 @@ from __future__ import annotations
 import json
 import re
 
-from emitter.core import snake
+from emitter.core import snake, snake_case
 
 
 def to_const(name: str) -> str:
-    """`Control1` -> `CONTROL1`, `BaudRate` -> `BAUD_RATE`."""
-    return snake(name).upper()
+    """`Control1` -> `CONTROL1`, `BaudRate` -> `BAUD_RATE`.
+
+    Uses the un-escaped casing: Rust keywords are all-lowercase, so an
+    upper-cased name can never collide with one.
+    """
+    return snake_case(name).upper()
 
 
 def field_mode_bits(con) -> dict[int, str]:

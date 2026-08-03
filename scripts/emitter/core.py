@@ -29,12 +29,30 @@ from __future__ import annotations
 
 from typing import Callable
 
-def snake(name: str) -> str:
-    """C# camelCase field name -> Rust snake_case.
+# Rust keywords (2015-2021 strict + reserved), generic to the target language,
+# not to any corpus. A C# identifier is a plain word (`type`, `match`, `loop`,
+# `ref`...) and collides with these purely because Rust reserved them.
+_RUST_KEYWORDS = {
+    "as", "break", "const", "continue", "else", "enum", "extern", "false",
+    "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
+    "mut", "pub", "ref", "return", "static", "struct", "trait", "true",
+    "type", "unsafe", "use", "where", "while", "async", "await", "dyn",
+    "abstract", "become", "box", "do", "final", "macro", "override", "priv",
+    "typeof", "unsized", "virtual", "yield", "try", "union", "gen",
+}
+# These cannot be escaped as `r#ident` -- they are not identifiers at all, or
+# a raw form of them is itself a syntax error -- so they need a different
+# name entirely rather than a prefix.
+_RUST_UNESCAPABLE_KEYWORDS = {"self", "Self", "super", "crate"}
 
-    A naming rule, not a cosmetic one: emitted code must be idiomatic Rust or it
-    will not survive review, and hand-fixing every name afterwards is exactly the
-    per-file patching this pipeline exists to avoid.
+def snake_case(name: str) -> str:
+    """C# camelCase field name -> Rust snake_case, no keyword handling.
+
+    Split out of `snake()` so a caller that upper-cases the result (a Rust
+    `const` name, e.g. `to_const`) can skip keyword escaping entirely --
+    Rust's keywords are all-lowercase, so an upper-cased name never collides
+    and escaping it first would corrupt the case transform (`type` -> `r#type`
+    -> `.upper()` -> `R#TYPE`, not a valid identifier).
     """
     out: list[str] = []
     for i, ch in enumerate(name):
@@ -47,6 +65,27 @@ def snake(name: str) -> str:
         else:
             out.append(ch)
     return "".join(out)
+
+
+def snake(name: str) -> str:
+    """C# camelCase field name -> Rust snake_case.
+
+    A naming rule, not a cosmetic one: emitted code must be idiomatic Rust or it
+    will not survive review, and hand-fixing every name afterwards is exactly the
+    per-file patching this pipeline exists to avoid.
+
+    Also escapes a Rust keyword a C# identifier happens to collide with (`type`,
+    `match`, `loop`, `ref`...): raw-identifier syntax where Rust allows it, a
+    trailing underscore for the handful of keywords that cannot be raw
+    identifiers at all.
+    """
+    result = snake_case(name)
+    if result in _RUST_UNESCAPABLE_KEYWORDS:
+        return f"{result}_"
+    if result in _RUST_KEYWORDS:
+        return f"r#{result}"
+    return result
+    return result
 
 
 # kind -> [(priority, handler)]. Lower priority number wins; plugins register
