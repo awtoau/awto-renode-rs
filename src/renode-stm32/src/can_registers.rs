@@ -62,6 +62,18 @@
 //!   - state field `master`: reference-typed, so the object-graph rule maps it to `Gc<STMCAN>`; blocked: `STMCAN` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `registers`: reference-typed, so the object-graph rule maps it to `Gc<DeviceRegisters>`; blocked: `DeviceRegisters` has no emitted Rust type yet, so there is nothing to point at
 //!
+//! SOURCE DEFECTS -- the C# is wrong here and this reproduces
+//! the defect FAITHFULLY, which is what the oracle requires.
+//! Do not `fix` one: see rulesdb/rules/bug_rules.json, which
+//! carries the contradicting authority and the measured cost
+//! of switching each to conformance.
+//!   ? SRCBUG(can_btr_reserved_read_write) x1: C# defect: CAN_BTR bits 10-15, 23 and 26-29 are stored and read back; ST makes them reserved.
+//!   ? SRCBUG(can_ffa1r_reserved_read_write) x1: C# defect: CAN_FFA1R bits 28-31 are stored and read back; ST makes them reserved.
+//!   ? SRCBUG(can_fm1r_reserved_read_write) x1: C# defect: CAN_FM1R bits 28-31 are stored and read back; ST makes them reserved.
+//!   ? SRCBUG(can_fmr_reserved_read_write) x1: C# defect: CAN_FMR bits 1-7 and 14-31 are stored and read back; ST makes them reserved.
+//!   ? SRCBUG(can_fs1r_reserved_read_write) x1: C# defect: CAN_FS1R bits 28-31 are stored and read back; ST makes them reserved.
+//!   ? SRCBUG(can_tsr_terr0_clears_terr1) x1: C# defect: writing 1 to CAN_TSR.TERR0 (bit 3) clears TERR1 (bit 11) and leaves TERR0 set.
+//!
 //! WARNINGS -- these DID emit, and their semantics DIFFER from
 //! the source. Marked at every site, not only summarised here:
 //!   ! WARN(condwrite) x4: the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.
@@ -178,6 +190,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_flag_anon(11, FieldMode::READ)
         .done();
 
+    // SRCBUG(can_tsr_terr0_clears_terr1): C# defect: writing 1 to CAN_TSR.TERR0 (bit 3) clears TERR1 (bit 11) and leaves TERR0 set.
     bank.define(reg::CAN_TSR, 0x1C000000)
         .with_value_anon(0, 32, FieldMode::READ)
         .done();
@@ -219,6 +232,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     // WARN(condwrite): the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.
+    // SRCBUG(can_btr_reserved_read_write): C# defect: CAN_BTR bits 10-15, 23 and 26-29 are stored and read back; ST makes them reserved.
     bank.define(reg::CAN_BTR, 0x1230000)
         .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();
@@ -274,6 +288,7 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();
 
+    // SRCBUG(can_fmr_reserved_read_write): C# defect: CAN_FMR bits 1-7 and 14-31 are stored and read back; ST makes them reserved.
     bank.define(reg::CAN_FMR, 0x2A1C0E01)
         .with_flag_anon(0, FieldMode::READ_WRITE)
         .with_value_anon(1, 7, FieldMode::READ_WRITE)
@@ -282,16 +297,19 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     // WARN(condwrite): the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.
+    // SRCBUG(can_fm1r_reserved_read_write): C# defect: CAN_FM1R bits 28-31 are stored and read back; ST makes them reserved.
     bank.define(reg::CAN_FM1R, 0)
         .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();
 
     // WARN(condwrite): the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.
+    // SRCBUG(can_fs1r_reserved_read_write): C# defect: CAN_FS1R bits 28-31 are stored and read back; ST makes them reserved.
     bank.define(reg::CAN_FS1R, 0)
         .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();
 
     // WARN(condwrite): the source performs this access only under a guard; here it is UNCONDITIONAL. The guard reads state this declaration cannot see.
+    // SRCBUG(can_ffa1r_reserved_read_write): C# defect: CAN_FFA1R bits 28-31 are stored and read back; ST makes them reserved.
     bank.define(reg::CAN_FFA1R, 0)
         .with_value_anon(0, 32, FieldMode::READ_WRITE)
         .done();

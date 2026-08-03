@@ -1,0 +1,461 @@
+{
+  "family": "BUG_RULES",
+  "layer": "project",
+  "note": "Defects in the C# BEING TRANSLATED. The fourth rule class -- see docs/decisions/bug-rules-are-a-fourth-class.md. The other three classes all answer `how do I express this construct?`; these answer `the source is wrong, and I know it`, so none of the three had anywhere to put them and all of it was going into prose. PROJECT layer: every stanza names a peripheral and a register, which is corpus knowledge. The generic half -- the severity tier, the marker templates -- is in csharp_core.json under `severity.tiers.bug`, because `a defect in the source` is a fact about translation and not about this corpus.",
+  "what_this_is_not": {
+    "not_a_debugging_aid": "A bug rule does NOT help find or fix a translation defect, and must never be described as if it does. Our Rust is wrong when it differs from THE C#; a third source adds nothing to that comparison. The datasheet says something new only where our Rust matches the C# and both differ from silicon -- and that case is not a translation defect at all. The bxCAN evidence is unambiguous: zero of the 99 divergences were diagnosed by reading ST. All 71 that cleared came from reading STMCAN.cs and finding it uses no register DSL; the 28 that remain were traced by reading STMCAN.cs again.",
+    "what_it_is_for": "Preventing a wrong `fix`. Three of the bxCAN stanzas below look exactly like OUR bug to anyone reading the datasheet -- reserved bits that accept writes. Correcting any of them toward ST breaks a passing trace, because the oracle certifies equivalence with the C#. Without a stanza the next reader has nothing to stop them, and the doc comment that used to hold two of these lived in a file `check_generated.py` does not own.",
+    "not_a_licence_to_improve": "Fidelity is the default and every stanza below is on it. A bug rule makes a deviation possible and recorded, never automatic."
+  },
+  "bug_rules": [
+    {
+      "id": "can_fmr_reserved_read_write",
+      "shape": "reserved_bits_read_write",
+      "text": "C# defect: CAN_FMR bits 1-7 and 14-31 are stored and read back; ST makes them reserved.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1755,
+        "csharp": "Reserved1 = (value >> RESERVED1SHIFT) & RESERVED1MASK;",
+        "member": "STMCAN.DeviceRegisters.FilterMasterRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_FMR"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_FMR defines exactly two fields: CAN_FMR_FINIT_Pos (0) and CAN_FMR_CAN2SB_Pos (8), CAN_FMR_CAN2SB_Msk 0x3F. No definition exists for any bit in 1-7 or 14-31.",
+        "corroborated_by": "RM0090 rev 21, CAN filter master register (CAN_FMR): bits 31:14 and 7:1 marked Reserved, must be kept at reset value.",
+        "so": "On silicon a write to those bits is ignored and a read returns the reset pattern. In the C# `Reserved1`/`Reserved2` are ordinary uint fields assigned from the written value and ORed back into GetValue(), so a write to FMR changes what a read returns across the whole 32 bits."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "The oracle certifies equivalence with the C#, and can1 has a recorded trace. Emitting these bits read-only would be a truer model of the hardware and a failed translation.",
+      "conformance": {
+        "action": "refine_fields",
+        "replace": [
+          {
+            "pos": 1,
+            "width": 7,
+            "with": [
+              {
+                "pos": 1,
+                "width": 7,
+                "mode": "FieldMode::READ"
+              }
+            ]
+          },
+          {
+            "pos": 14,
+            "width": 18,
+            "with": [
+              {
+                "pos": 14,
+                "width": 18,
+                "mode": "FieldMode::READ"
+              }
+            ]
+          }
+        ],
+        "why": "Reserved bits keep their reset value: readable, not writable. The reset value 0x2A1C0E01 already carries ST's documented reserved pattern, so READ over the same ranges reproduces silicon."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_fmr_reserved_read_write",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [
+          "src/renode-stm32/src/can_registers.rs"
+        ],
+        "reading": "The emitted code CHANGES -- three read-write slots become one read-write and two read-only -- and can1 stays at 28. The captured trace never writes FMR's reserved bits, so the defect is real and unexercised, which is exactly why it survived undetected and exactly why the stanza has to carry the measured number rather than an opinion. Zero cost is NOT a reason to switch it: the trace not reaching a difference is not the trace agreeing there is none."
+      }
+    },
+    {
+      "id": "can_btr_reserved_read_write",
+      "shape": "reserved_bits_read_write",
+      "text": "C# defect: CAN_BTR bits 10-15, 23 and 26-29 are stored and read back; ST makes them reserved.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1612,
+        "csharp": "RegValue = value;",
+        "member": "STMCAN.DeviceRegisters.BitTimingRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_BTR"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_BTR defines BRP (0, mask 0x3FF), TS1 (16, mask 0xF), TS2 (20, mask 0x7), SJW (24, mask 0x3), LBKM (30), SILM (31). Nothing is defined for bits 10-15, 23 or 26-29.",
+        "corroborated_by": "RM0090 rev 21, CAN bit timing register (CAN_BTR): those bits are Reserved, must be kept at reset value.",
+        "so": "`SetValue` stores the incoming word whole and `GetValue` returns it, so every reserved bit is read-write."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "Same oracle argument as CAN_FMR, and can1's trace does read BTR.",
+      "conformance": {
+        "action": "refine_fields",
+        "replace": [
+          {
+            "pos": 0,
+            "width": 32,
+            "with": [
+              {
+                "pos": 0,
+                "width": 10,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 10,
+                "width": 6,
+                "mode": "FieldMode::READ"
+              },
+              {
+                "pos": 16,
+                "width": 7,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 23,
+                "width": 1,
+                "mode": "FieldMode::READ"
+              },
+              {
+                "pos": 24,
+                "width": 2,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 26,
+                "width": 4,
+                "mode": "FieldMode::READ"
+              },
+              {
+                "pos": 30,
+                "width": 2,
+                "mode": "FieldMode::READ_WRITE"
+              }
+            ]
+          }
+        ],
+        "why": "The single 32-bit store splits into ST's field map: writable where ST names a field, read-only over the four reserved runs."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_btr_reserved_read_write",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [
+          "src/renode-stm32/src/can_registers.rs"
+        ],
+        "reading": "The emitted code CHANGES -- one 32-bit read-write slot becomes ST's seven-field map -- and can1 stays at 28. The trace writes BTR with the reserved runs already clear, so they are never exercised. All five reserved-bit stanzas were also switched TOGETHER once: the module still compiles and can1 is still 28, so the five do not interact."
+      }
+    },
+    {
+      "id": "can_fm1r_reserved_read_write",
+      "shape": "reserved_bits_read_write",
+      "text": "C# defect: CAN_FM1R bits 28-31 are stored and read back; ST makes them reserved.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1809,
+        "csharp": "RegValue = value;",
+        "member": "STMCAN.DeviceRegisters.FilterModeRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_FM1R"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_FM1R defines FBM0..FBM27 -- 28 bits, 0 through 27. Nothing is defined for bits 28-31.",
+        "corroborated_by": "The C# file contradicts itself: `FilterActiveRegister.SetValue` at line 1787 masks with `REGMASK = 0xFFFFFFF`, the same 28-bit register width, and this one does not. The same author masked one of the four filter registers and not the other three, which is what makes it an oversight rather than a modelling choice.",
+        "so": "Bits 28-31 accept a write and return it."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "The oracle certifies equivalence with the C#.",
+      "conformance": {
+        "action": "refine_fields",
+        "replace": [
+          {
+            "pos": 0,
+            "width": 32,
+            "with": [
+              {
+                "pos": 0,
+                "width": 28,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 28,
+                "width": 4,
+                "mode": "FieldMode::READ"
+              }
+            ]
+          }
+        ],
+        "why": "The shape the C# already uses for FA1R one class away, applied to the register that lacks it."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_fm1r_reserved_read_write",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [
+          "src/renode-stm32/src/can_registers.rs"
+        ],
+        "reading": "The emitted code CHANGES -- the single 32-bit slot splits into 0..27 read-write and 28..31 read-only, the shape FilterActiveRegister already uses one class away -- and can1 stays at 28. The trace never writes a 1 above bit 27."
+      }
+    },
+    {
+      "id": "can_fs1r_reserved_read_write",
+      "shape": "reserved_bits_read_write",
+      "text": "C# defect: CAN_FS1R bits 28-31 are stored and read back; ST makes them reserved.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1836,
+        "csharp": "RegValue = value;",
+        "member": "STMCAN.DeviceRegisters.FilterScaleRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_FS1R"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_FS1R defines FSC0..FSC27 -- 28 bits. Nothing is defined for bits 28-31.",
+        "corroborated_by": "Same in-file contradiction as CAN_FM1R: `FilterActiveRegister` masks the identical 28-bit width and this class does not.",
+        "so": "Bits 28-31 accept a write and return it."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "The oracle certifies equivalence with the C#.",
+      "conformance": {
+        "action": "refine_fields",
+        "replace": [
+          {
+            "pos": 0,
+            "width": 32,
+            "with": [
+              {
+                "pos": 0,
+                "width": 28,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 28,
+                "width": 4,
+                "mode": "FieldMode::READ"
+              }
+            ]
+          }
+        ],
+        "why": "As CAN_FM1R."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_fs1r_reserved_read_write",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [
+          "src/renode-stm32/src/can_registers.rs"
+        ],
+        "reading": "The emitted code CHANGES in the same shape as CAN_FM1R and can1 stays at 28. The trace never writes a 1 above bit 27."
+      }
+    },
+    {
+      "id": "can_ffa1r_reserved_read_write",
+      "shape": "reserved_bits_read_write",
+      "text": "C# defect: CAN_FFA1R bits 28-31 are stored and read back; ST makes them reserved.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1863,
+        "csharp": "RegValue = value;",
+        "member": "STMCAN.DeviceRegisters.FifoAssignmentRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_FFA1R"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_FFA1R defines FFA0..FFA27 -- 28 bits. Nothing is defined for bits 28-31.",
+        "corroborated_by": "Same in-file contradiction as CAN_FM1R and CAN_FS1R.",
+        "so": "Bits 28-31 accept a write and return it."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "The oracle certifies equivalence with the C#.",
+      "conformance": {
+        "action": "refine_fields",
+        "replace": [
+          {
+            "pos": 0,
+            "width": 32,
+            "with": [
+              {
+                "pos": 0,
+                "width": 28,
+                "mode": "FieldMode::READ_WRITE"
+              },
+              {
+                "pos": 28,
+                "width": 4,
+                "mode": "FieldMode::READ"
+              }
+            ]
+          }
+        ],
+        "why": "As CAN_FM1R."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_ffa1r_reserved_read_write",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [
+          "src/renode-stm32/src/can_registers.rs"
+        ],
+        "reading": "The emitted code CHANGES in the same shape as CAN_FM1R and can1 stays at 28. The trace never writes a 1 above bit 27."
+      }
+    },
+    {
+      "id": "can_tsr_terr0_clears_terr1",
+      "shape": "wrong_bit_cleared",
+      "below_threshold": "One site. It is recorded anyway because the CLASS is over the threshold and this stanza costs nothing to carry, but the shape is not a rule: a second `writing 1 to bit A clears bit B` has not been found and none was looked for. Counted as a patch on the scorecard until it reaches three, and it will most likely never reach three -- a copy-paste slip is not a pattern, which is exactly why the count has to be visible instead of averaged into the class total.",
+      "text": "C# defect: writing 1 to CAN_TSR.TERR0 (bit 3) clears TERR1 (bit 11) and leaves TERR0 set.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/CAN/STMCAN.cs",
+        "line": 1661,
+        "csharp": "RegValue &= ~(TERR1);",
+        "member": "STMCAN.DeviceRegisters.TransmitStatusRegister.SetValue",
+        "type": "STMCAN",
+        "name": "CAN_TSR"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "CAN_TSR_TERR0_Pos (3) and CAN_TSR_TERR1_Pos (11) are distinct flags for distinct mailboxes.",
+        "corroborated_by": "RM0090 rev 21, CAN transmit status register (CAN_TSR): TERR0 is rc_w1 -- `cleared by software writing a 1`. Writing 1 to bit 3 must clear bit 3. Renode's other eight branches in the same method each clear the bit they test; only this one does not, so the file is its own second witness that it is a slip and not a model.",
+        "so": "A driver clearing a mailbox-0 transmission error leaves it set and destroys mailbox 1's."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "The oracle certifies equivalence with the C#. This one is additionally unreachable through our output today -- see switch_impact -- so conformance would change a path nothing can currently take.",
+      "conformance": {
+        "action": "unavailable",
+        "why": "CAN_TSR reaches our output as `with_value_anon(0, 32, FieldMode::READ)`: the converter reports a gap for all twelve conditional write statements in `SetValue`, so no write semantics are emitted at all and there is no wrong clear to correct. Conformance becomes expressible only once write-conditional layout does, and the stanza is what will say so when it does."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py can_tsr_terr0_clears_terr1",
+        "traces": {
+          "can1": {
+            "fidelity": 28,
+            "conformance": 28
+          }
+        },
+        "generated_files_changed": [],
+        "reading": "Nothing moves and nothing can: the emitted code is byte-identical under conformance, because CAN_TSR reaches our output read-only and there is therefore no wrong clear to correct. The defect is in the source and currently outside our output. Recorded so that the day the write-conditional gap closes, this does not arrive with it unnoticed."
+      }
+    },
+    {
+      "id": "uart_sr_ore_never_set",
+      "shape": "status_flag_pinned",
+      "below_threshold": "Two sites, one short of three. Both are in the same C# method and both are `valueProviderCallback: _ => <constant>` on a hardware status flag, so the shape is real -- but two is two. No sweep was made for a third: the brief that produced these stanzas ruled a hunt across the other peripherals out of scope on the grounds that its yield is unknown and it moves nothing in the converter. Recorded as a patch-tier shape until a third arrives on its own.",
+      "text": "C# defect: USART_SR.ORE (bit 3) always reads 0 -- the C# assumes no receive overruns.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/UART/STM32_UART.cs",
+        "line": 121,
+        "csharp": ".WithFlag(3, FieldMode.Read, valueProviderCallback: _ => false, name: \"ORE\") // we assume no receive overruns",
+        "member": "STM32_UART.DefineRegisters",
+        "type": "STM32_UART",
+        "name": "Status"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "USART_SR_ORE_Pos (3), USART_SR_ORE -- OverRun Error.",
+        "corroborated_by": "RM0090 rev 21, USART status register (USART_SR): ORE is set by hardware when a received character arrives while RXNE is still 1, and cleared by a read of USART_SR followed by a read of USART_DR. The C# comment on the same line -- `we assume no receive overruns` -- is the author saying so.",
+        "so": "Firmware that polls ORE to detect and recover from an overrun never sees one."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "usart1's trace is 33,164 accesses at zero divergences and must stay there.",
+      "conformance": {
+        "action": "unavailable",
+        "why": "ORE is set by an EVENT -- a character arriving with RXNE already set -- and cleared by an SR-then-DR read sequence. Neither is a property of the register layout, so no field-mode change expresses it; it needs receive-path behaviour the converter does not emit. This is the honest form of the decision's own overturn condition: the switch exists, and for this stanza there is nothing to switch to yet."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py uart_sr_ore_never_set",
+        "traces": {
+          "usart1": {
+            "fidelity": 0,
+            "conformance": 0
+          }
+        },
+        "generated_files_changed": [],
+        "reading": "Nothing moves, and the emitted CODE is byte-identical under conformance -- only the marker relabels itself. Measured rather than assumed: the script regenerates under both settings, strips the markers, and compares, so `conformance is not expressible here` is a result and not a guess. NOT MEASURED: `uart8` is a captured trace of the same C# type and has no entry in tests/generated_trace.rs, so the switch was replayed against usart1 only. The script says so on every run rather than quietly reporting one trace as all of them."
+      }
+    },
+    {
+      "id": "uart_sr_txe_always_set",
+      "shape": "status_flag_pinned",
+      "below_threshold": "As uart_sr_ore_never_set: two sites of this shape, and no sweep was made for a third.",
+      "text": "C# defect: USART_SR.TXE (bit 7) always reads 1 -- the C# assumes the transmit register is always empty.",
+      "site": {
+        "file": "src/Infrastructure/src/Emulator/Peripherals/Peripherals/UART/STM32_UART.cs",
+        "line": 125,
+        "csharp": ".WithFlag(7, FieldMode.Read, valueProviderCallback: _ => true, name: \"TXE\") // we always assume \"transmit data register empty\"",
+        "member": "STM32_UART.DefineRegisters",
+        "type": "STM32_UART",
+        "name": "Status"
+      },
+      "authority": {
+        "source": "STMicroelectronics/cmsis_device_f4, Include/stm32f427xx.h",
+        "cites": "USART_SR_TXE_Pos (7), USART_SR_TXE -- Transmit Data Register Empty.",
+        "corroborated_by": "RM0090 rev 21, USART status register (USART_SR): TXE is set by hardware when TDR's content is transferred into the shift register, and CLEARED by a write to USART_DR. The C# comment on the same line says the same thing.",
+        "so": "Renode models no transmission rate, so the transmit register is never busy. A driver that writes DR and then checks TXE == 0 to confirm the write was taken sees the wrong answer, and this is why `Update()` ORs in transmitDataRegisterEmptyInterrupt unconditionally -- the interrupt is permanently armed."
+      },
+      "mode": "fidelity",
+      "why_this_mode": "As ORE: usart1 is at zero divergences over 33,164 accesses.",
+      "conformance": {
+        "action": "unavailable",
+        "why": "TXE is cleared by a DR write and set again when the shift register drains -- a timing model Renode does not have and the converter cannot emit. A pinned bit cannot become an unpinned one by changing a field mode."
+      },
+      "switch_impact": {
+        "measured": true,
+        "how": "scripts/measure_bug_switch.py uart_sr_txe_always_set",
+        "traces": {
+          "usart1": {
+            "fidelity": 0,
+            "conformance": 0
+          }
+        },
+        "generated_files_changed": [],
+        "reading": "Nothing moves and the emitted code is unchanged, as for ORE. `uart8` is likewise unmeasured, for the same reason."
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "id": "can_rf0r_fmp_rfom_computed",
+      "claim_as_recorded": "bxCAN: CAN_RF0R/CAN_RF1R FMP and RFOM are computed, not stored.",
+      "verdict": "NOT A BUG RULE -- the claim is true and the C# is right.",
+      "why": "ST makes FMP read-only, reflecting the number of messages pending in the FIFO, and RFOM set-by-software / cleared-by-hardware, so it reads back 0. `ReceiveFifoRegister.GetValue()` computes FMP from `RxFifo.Count` and never returns RFOM at all, which is what the hardware does. There is no contradicting authority, so there is nothing to record: a disagreement with no third source is a suspicion, and this one is not even a disagreement.",
+      "what_it_actually_is": "A fact about STORAGE, not about behaviour: there is no field to bind a handle to, which is an emitter concern. The converter already reports it as a gap -- `CAN_RF0R: ReceiveFifoRegister.GetValue() composes a term this rule cannot place`. It was already in the right place."
+    },
+    {
+      "id": "can_registers_stored_as_one_word",
+      "claim_as_recorded": "bxCAN: BTR, FM1R, FS1R, FFA1R, TDxR, TSR are stored as one 32-bit word where ST names 3-24 fields.",
+      "verdict": "REJECTED AS STATED -- a representation claim, not a defect claim.",
+      "why": "How a model stores a register says nothing about what a bus access observes. For CAN_TDL0R/TDH0R and their mailbox 1 and 2 twins the whole 32 bits ARE data, so one word is exactly right and there is no defect to record. For CAN_TSR the single word carries per-bit rc_w1 semantics implemented in `SetValue`, so it is not a blanket store either.",
+      "what_survived": "The narrower, checkable part: BTR, FM1R, FS1R and FFA1R store and read back bits ST marks reserved. That is the SAME defect as can_fmr_reserved_read_write, so it is recorded as four more stanzas of that shape rather than as a claim of its own. TDxR and TSR contribute nothing to it.",
+      "note": "This is the rejection that matters most: taken as written it would have counted six instances where the evidence supports four, and inflating the count is the failure the three-instance threshold exists to catch."
+    }
+  ],
+  "how_the_count_stands": "Eight stanzas over three shapes, from five recorded claims. Two claims were rejected outright, one of them supplying four stanzas of an existing shape after being narrowed. The decision's overturn condition -- fewer than three instances surviving scrutiny -- is not met.",
+  "why_this_is_not_a_patch_mechanism": "A patch is a file-specific hand edit. No stanza here edits a file: each one is matched by (type, register) against whatever the converter emits, and `reserved_bits_read_write` matches five registers across one peripheral with the same data shape and the same conformance action. `check_bug_rules.py` refuses a shape that reaches only one site UNLESS the stanza says why in `singleton_reason`, so the drift from rule to patch fails a build rather than passing a review."
+}

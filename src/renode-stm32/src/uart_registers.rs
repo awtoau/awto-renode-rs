@@ -20,6 +20,14 @@
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
 //!   - state field `sysbus`: needs trait `IBusController` (D1 maps the field; the trait is issue #41). IBusController declares 73 members, the corpus calls 66
 //!
+//! SOURCE DEFECTS -- the C# is wrong here and this reproduces
+//! the defect FAITHFULLY, which is what the oracle requires.
+//! Do not `fix` one: see rulesdb/rules/bug_rules.json, which
+//! carries the contradicting authority and the measured cost
+//! of switching each to conformance.
+//!   ? SRCBUG(uart_sr_ore_never_set) x1: C# defect: USART_SR.ORE (bit 3) always reads 0 -- the C# assumes no receive overruns.
+//!   ? SRCBUG(uart_sr_txe_always_set) x1: C# defect: USART_SR.TXE (bit 7) always reads 1 -- the C# assumes the transmit register is always empty.
+//!
 //! WARNINGS -- these DID emit, and their semantics DIFFER from
 //! the source. Marked at every site, not only summarised here:
 //!   ! WARN(narrowed) x3: a value outside the declared set has no variant here: the source keeps the number, this falls back to the default.
@@ -235,6 +243,8 @@ fn control1_writer(bank: &Bank<State>, st: &mut State, _old: u64, __: u64) -> ()
 
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
+    // SRCBUG(uart_sr_ore_never_set): C# defect: USART_SR.ORE (bit 3) always reads 0 -- the C# assumes no receive overruns.
+    // SRCBUG(uart_sr_txe_always_set): C# defect: USART_SR.TXE (bit 7) always reads 1 -- the C# assumes the transmit register is always empty.
     bank.define(reg::STATUS, 192)
         .with_tagged_flag(0)
         .with_tagged_flag(1)

@@ -29,14 +29,28 @@
 //! 2. **`CharReceived` is a callback slot** rather than a C# `event`. Same
 //!    single-subscriber behaviour the platform actually uses.
 //!
+//! ## Defects in the C#, reproduced faithfully
+//!
+//! `ORE` always reads 0 and `TXE` always reads 1. Both were described here, in
+//! prose, in a file `check_generated.py` does not own — so nothing counted
+//! them, nothing stopped the next reader "fixing" one, and a "fix" would break
+//! a trace that passes at zero divergences over 33,164 accesses.
+//!
+//! They are now DATA: `uart_sr_ore_never_set` and `uart_sr_txe_always_set` in
+//! `rulesdb/rules/bug_rules.json`, each carrying the ST citation that says the
+//! C# is wrong, `fidelity` as its default, and a measured switch-impact.
+//! `scripts/check_bug_rules.py` fails the commit if any of that goes missing,
+//! and the generated `uart_registers.rs` now carries a `SRCBUG(...)` marker at
+//! the register itself. This paragraph is a pointer, not a second copy.
+//!
+//! `TXE` is still why `update()` ORs in the transmit-empty interrupt
+//! unconditionally, and that is stated at `update()` where the code is.
+//!
 //! ## Faithfully reproduced quirks
 //!
-//! - `ORE` always reads 0 — the C# assumes no receive overruns.
-//! - `TXE` always reads 1 — the C# assumes the transmit register is always
-//!   empty. This is why `Update()` ORs in `transmitDataRegisterEmptyInterrupt`
-//!   unconditionally.
 //! - `BaudRate` is computed but used for nothing except the idle-line timeout.
-//!   Renode models no transmission rate at all.
+//!   Renode models no transmission rate at all. Not a defect: nothing in ST
+//!   contradicts it, so it is a modelling limit and not a bug rule.
 
 use crate::uart_registers::{define_registers, reg, Fields, State};
 use renode_regs::Bank;
@@ -137,7 +151,8 @@ impl Stm32Uart {
     }
 
     /// C# `Update()` — IRQ is the OR of the enabled-and-asserted conditions.
-    /// TXE is assumed always true, hence the unconditional term.
+    /// The transmit-empty term is UNCONDITIONAL because the C# pins TXE to 1;
+    /// that is the bug rule `uart_sr_txe_always_set`, reproduced deliberately.
     fn update(&mut self) {
         let b = &self.bank;
         self.irq = (b.flag(self.st.f.idle_line_detected_interrupt_enabled) && b.flag(self.st.f.idle_line_detected))
@@ -149,7 +164,10 @@ impl Stm32Uart {
     pub fn read(&mut self, offset: u64) -> u32 {
         match offset {
             reg::STATUS => {
-                // ORE reads 0 and TXE reads 1, neither backed by a field.
+                // TXE reads 1, unconditionally and with no field behind it.
+                // A C# DEFECT reproduced on purpose -- see the bug rule
+                // `uart_sr_txe_always_set`. ORE reads 0 the same way, but by
+                // omission: no field sets it, so the bank already returns 0.
                 let mut v = self.bank.read(offset, &mut self.st).unwrap_or(0);
                 v |= 1 << 7; // TXE
                 v as u32
