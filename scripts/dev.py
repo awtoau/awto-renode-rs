@@ -145,8 +145,14 @@ def cmd_selftest(_extra: list[str]) -> int:
     return 1 if failures else 0
 
 
-@command("regenerate every converter-owned output", kind="step")
+@command("compile the known-clean set plus types touched by the diff", kind="step")
 def cmd_build(extra: list[str]) -> int:
+    return run([sys.executable, "scripts/compile_check.py",
+                "--working-set", "--ratchet", *extra])
+
+
+@command("regenerate every converter-owned output", kind="action")
+def cmd_regenerate(extra: list[str]) -> int:
     return run([sys.executable, "scripts/regenerate.py", *extra])
 
 
@@ -183,7 +189,7 @@ def cmd_report(extra: list[str]) -> int:
 def cmd_cycle(extra: list[str]) -> int:
     if extra == ["--dry-run"]:
         for name, argv in [
-            ("build", [sys.executable, "scripts/regenerate.py"]),
+            ("regenerate", [sys.executable, "scripts/regenerate.py"]),
             ("check", [sys.executable, "scripts/gates.py", "--full"]),
             *REPORT_STEPS,
         ]:
@@ -193,7 +199,7 @@ def cmd_cycle(extra: list[str]) -> int:
         log("cycle accepts only --dry-run", "ERROR")
         return 2
     return run_sequence([
-        ("build", [sys.executable, "scripts/regenerate.py"]),
+        ("regenerate", [sys.executable, "scripts/regenerate.py"]),
         ("check", [sys.executable, "scripts/gates.py", "--full"]),
         *REPORT_STEPS,
     ])

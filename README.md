@@ -15,7 +15,8 @@ python3 scripts/dev.py describe
 The primary workflows are:
 
 ```text
-python3 scripts/dev.py build          # regenerate converter-owned Rust
+python3 scripts/dev.py build          # compile clean set + diff (fast, ~19s)
+python3 scripts/dev.py regenerate     # rewrite converter-owned Rust
 python3 scripts/dev.py test           # cargo test --workspace
 python3 scripts/dev.py gate           # parallel everyday checks
 python3 scripts/dev.py ci             # parallel full push-tier corpus checks

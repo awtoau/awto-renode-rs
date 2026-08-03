@@ -7,5 +7,7 @@ the corpus and differential oracle, not the deliverable.
 - Match rules on corpus facts, never peripheral, register, or type names.
 - Withhold and report unsupported output instead of emitting a plausible guess.
 - The sandbox has no network. Do not re-ingest, run `gh`, or fetch dependencies.
-- Before finishing, run `python3 scripts/dev.py gate`. Generated files must stay
-  byte-identical and committed trace-divergence ratchets must not rise.
+- During iteration, run `python3 scripts/dev.py build` to compile the known-clean
+  set plus touched types. Before finishing, run `python3 scripts/dev.py gate`.
+  Generated files must stay byte-identical and trace-divergence ratchets must
+  not rise.
