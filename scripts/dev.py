@@ -171,6 +171,17 @@ def cmd_ci(extra: list[str]) -> int:
     return run([sys.executable, "scripts/gates.py", "--full", *extra])
 
 
+@command("run determinism proofs (ingest and emitter)", kind="aggregate")
+def cmd_ci_determinism(extra: list[str]) -> int:
+    if extra:
+        log("ci-determinism accepts no extra arguments", "ERROR")
+        return 2
+    return run_sequence([
+        ("ingest determinism", [sys.executable, "scripts/check_determinism.py"]),
+        ("emitter determinism", [sys.executable, "scripts/check_emit_determinism.py"]),
+    ])
+
+
 REPORT_STEPS = [
     ("scorecard", [sys.executable, "scripts/scorecard.py"]),
     ("progress SVG and HTML", [sys.executable, "scripts/progress_graph.py"]),
