@@ -27,7 +27,7 @@ were taken against the 21,620-line cut; the corpus is now 448,375 lines.
 | `dynamic` | 3 | 90 | no handler and, worse, **no refusal note**. Every surveyed AOT C# compiler refuses `dynamic`; we have the precedent and never wrote it down. |
 | operator overloading | 11 | ~76 | `op_Implicit`/`op_Explicit` dominate tree-wide (30/15) — user-defined conversions, the dangerous half. Unmeasured. |
 | extension methods, general case | 220 | 567 | only LINQ is handled, via a marker match. |
-| mutable statics | 6 | 34,886 raw | 741 of 769 were const-valued; six need `OnceLock`. |
+| mutable statics | 6 | 34,886 raw | Reclassified by #58: 34,600 const-valued, 222 `static readonly`, **29** written outside `.cctor`, 2 `.cctor`-only, and 33 with no recorded write. A general guard now refuses mutable-static methods until runtime `OnceLock`/lock storage exists; see `0-status-58.md`. |
 
 ## Justified as runtime, deliberately not built
 
