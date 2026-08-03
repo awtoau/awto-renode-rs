@@ -10,8 +10,17 @@ of producing a line that compiles with the wrong operator.
 
 from __future__ import annotations
 
+import re
+
 from emitter import core
 from emitter.lang.binary import runtime_template
+
+# `Option<Box<dyn FnMut(T)>>` -- a callback slot (`stdlib.delegates` in
+# csharp_core.json). C# `+=` on one is a multicast combine, which needs state
+# (which subscriber(s) are already there) -- `docs/decisions/
+# runtime-is-the-fourth-layer.md` tell #1 -- so it is a runtime call, not an
+# operator.
+_HOOK_TYPE = re.compile(r"^Option<Box<dyn FnMut\([^()]*\)( \+ 'static)?>>$")
 
 
 @core.stmt("CompoundAssignment")
@@ -26,6 +35,21 @@ def compound_assignment_stmt(em, oid: int, indent: int) -> list[str] | None:
         return None
 
     spec = em.language.get("compound_assignment", {})
+
+    # The target is emitted twice below (once read into the call, once
+    # written), the same hazard `runtime_target_kinds_why` documents for the
+    # checked-arithmetic redirect -- a property getter call must not reach
+    # here, only a place expression may.
+    if (_symbol == "Add"
+            and em.kind_of(kids[0][0]) in spec.get("runtime_target_kinds", [])
+            and _HOOK_TYPE.match(em.rust_type(_rtype or "") or "")):
+        target = em.emit_expr(kids[0][0])
+        value = em.emit_expr(kids[1][0])
+        # `target` is a place behind `&mut State`; reading it by value to pass
+        # to the combinator would try to MOVE the field out from behind the
+        # reference (E0507). `.take()` moves it out and leaves `None` in its
+        # place for the instant before the result is written back.
+        return [pad + f"{target} = csharp_rt::combine_hook({target}.take(), {value});"]
 
     # `x += y` has exactly the overflow semantics `x + y` has, so it takes the
     # same runtime redirect -- decided by the BINARY rule's function rather

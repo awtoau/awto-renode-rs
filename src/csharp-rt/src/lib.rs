@@ -30,17 +30,21 @@
 //! * [`collections`] — `Dictionary.Add`, which throws on a duplicate key
 //!   where `insert` overwrites. Error mode. The rest of the BCL collections
 //!   are renames and stayed in the rules.
+//! * [`delegate`] — a C# delegate's `+=`. Needs state: which subscriber(s) a
+//!   single callback slot already holds.
 
 #![forbid(unsafe_code)]
 
 pub mod arith;
 pub mod collections;
+pub mod delegate;
 mod gc;
 pub mod linq;
 
 pub use arith::{checked_add, checked_mul, checked_neg, checked_sub, shl, shr,
                 unchecked_add, unchecked_mul, unchecked_neg, unchecked_sub, CsInt};
 pub use collections::dict_add;
+pub use delegate::combine_hook;
 pub use gc::{Collected, Gc, GcRaw, Heap, Trace, Tracer};
 pub use linq::{first, order_by, order_by_descending};
 
