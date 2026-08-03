@@ -45,9 +45,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-MIN_JOBS = 32
-
-
 def repo_root() -> Path:
     return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
                                capture_output=True, text=True,
@@ -170,12 +167,12 @@ def main() -> int:
     ap.add_argument("--only", action="append", default=[])
     ap.add_argument("--full", action="store_true",
                     help="also run the whole-corpus tier (slow, gates a push)")
-    detected = os.cpu_count() or MIN_JOBS
-    ap.add_argument("--jobs", type=int, default=max(MIN_JOBS, detected),
-                    help="total CPU budget (default: at least 32)")
+    detected = os.cpu_count() or 1
+    ap.add_argument("--jobs", type=int, default=detected,
+                    help="total CPU budget (default: available online CPUs)")
     args = ap.parse_args()
-    if args.jobs < MIN_JOBS:
-        ap.error(f"--jobs must be at least {MIN_JOBS}")
+    if args.jobs < 1:
+        ap.error("--jobs must be positive")
 
     root = repo_root()
     (root / "tmp" / "logs").mkdir(parents=True, exist_ok=True)

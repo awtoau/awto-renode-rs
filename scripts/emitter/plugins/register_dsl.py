@@ -112,13 +112,16 @@ class RegisterDsl:
         peripheral a handle into register storage. The corpus records which
         parameters are `out`, so the binding is exact rather than positional
         guesswork."""
-        outs = self.con.execute("""
-            SELECT p.ordinal FROM parameter p
-            JOIN member mb ON mb.id = p.method_id
-            WHERE mb.key = ? AND p.is_out = 1""", (symbol,)).fetchall()
-        if not outs:
+        if symbol not in self._out_ordinals_cache:
+            row = self.con.execute("""
+                SELECT p.ordinal FROM parameter p
+                JOIN member mb ON mb.id = p.method_id
+                WHERE mb.run_id = ? AND mb.key = ? AND p.is_out = 1
+                ORDER BY p.ordinal LIMIT 1""", (self._run_id, symbol)).fetchone()
+            self._out_ordinals_cache[symbol] = row[0] if row else None
+        ordinal = self._out_ordinals_cache[symbol]
+        if ordinal is None:
             return None
-        ordinal = outs[0][0]
         args = [c for c in self.children(oid) if c[1] == "Argument"]
         if ordinal >= len(args):
             return None

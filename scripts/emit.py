@@ -192,6 +192,16 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         run = self.con.execute("SELECT id FROM corpus_run LIMIT 1").fetchone()
         self._run_id = run[0] if run else None
         self._params_cache: dict[str, list[str]] = {}
+        self._out_ordinals_cache: dict[str, int | None] = {}
+        # The operation tree is immutable for an emitter run. Large types used
+        # to execute the identical child query millions of times while walking
+        # declarations from many register sites (MPFS_CAN: ~1.87m calls).
+        self._children_cache: dict[int, tuple[tuple, ...]] = {}
+        self._declared_in_cache: dict[int, tuple[str, ...]] = {}
+        self._invocation_symbol_cache: dict[int, str | None] = {}
+        self._callee_cache: dict[str, tuple | None] = {}
+        self._callee_params_cache: dict[int, tuple[tuple, ...]] = {}
+        self._operation_kind_cache: dict[int, str | None] = {}
         # Declared source defects switched to conformance, BY ID. Empty is the
         # only value the committed output is ever produced with -- see the
         # `--conformance` flag.
@@ -240,9 +250,13 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         return result
 
     def children(self, oid: int):
-        return self.con.execute(
-            "SELECT id, kind, symbol, const_value, type FROM operation "
-            "WHERE parent_id=? ORDER BY ordinal", (oid,)).fetchall()
+        cached = self._children_cache.get(oid)
+        if cached is None:
+            cached = tuple(self.con.execute(
+                "SELECT id, kind, symbol, const_value, type FROM operation "
+                "WHERE parent_id=? ORDER BY ordinal", (oid,)).fetchall())
+            self._children_cache[oid] = cached
+        return cached
 
     def bind(self, oid: int, symbol: str) -> dict[str, tuple]:
         """Map parameter name -> the argument's (kind, symbol, const) triple.
@@ -499,6 +513,9 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         also reads it -- `symbol` is null on a VariableDeclarator. Reading
         `symbol` found nothing, so no declaration ever matched and the offsets
         that depend on one emitted an undeclared variable."""
+        cached = self._declared_in_cache.get(oid)
+        if cached is not None:
+            return list(cached)
         out: list[str] = []
         stack = [oid]
         while stack:
@@ -513,6 +530,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                     if nm:
                         out.append(nm)
                 stack.append(cid)
+        self._declared_in_cache[oid] = tuple(out)
         return out
 
     def emit_file(self, type_name: str, method_name: str, module: str) -> str:

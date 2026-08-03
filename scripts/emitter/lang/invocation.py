@@ -22,9 +22,11 @@ def invocation(em, oid):
     Declining is not silence: the unclaimed kind is counted by the caller, which
     is where it was counted before this moved out of the built-in chain.
     """
-    row = em.con.execute(
-        "SELECT symbol FROM operation WHERE id=?", (oid,)).fetchone()
-    symbol = row[0] if row else None
+    if oid not in em._invocation_symbol_cache:
+        row = em.con.execute(
+            "SELECT symbol FROM operation WHERE id=?", (oid,)).fetchone()
+        em._invocation_symbol_cache[oid] = row[0] if row else None
+    symbol = em._invocation_symbol_cache[oid]
     if not symbol:
         return None
     all_kids = em.children(oid)
@@ -38,14 +40,19 @@ def invocation(em, oid):
     # the same key stored for an in-corpus member, so this is semantic lookup,
     # not name matching.  A ref parameter forwarded to another ref parameter
     # is already rendered as `*x` and therefore correctly becomes `&mut *x`.
-    callee = em.con.execute(
-        "SELECT mb.id, mb.is_static, t.name "
-        "FROM member mb JOIN type t ON t.id=mb.type_id "
-        "WHERE mb.key=? LIMIT 1", (symbol,)).fetchone()
+    if symbol not in em._callee_cache:
+        em._callee_cache[symbol] = em.con.execute(
+            "SELECT mb.id, mb.is_static, t.name "
+            "FROM member mb JOIN type t ON t.id=mb.type_id "
+            "WHERE mb.run_id=? AND mb.key=? LIMIT 1",
+            (em._run_id, symbol)).fetchone()
+    callee = em._callee_cache[symbol]
     if callee:
-        params = list(em.con.execute(
-            "SELECT ordinal, name, is_out, is_ref FROM parameter "
-            "WHERE method_id=? ORDER BY ordinal", (callee[0],)))
+        if callee[0] not in em._callee_params_cache:
+            em._callee_params_cache[callee[0]] = tuple(em.con.execute(
+                "SELECT ordinal, name, is_out, is_ref FROM parameter "
+                "WHERE method_id=? ORDER BY ordinal", (callee[0],)))
+        params = em._callee_params_cache[callee[0]]
         by_ordinal = {ordinal: bool(is_out or is_ref)
                       for ordinal, _name, is_out, is_ref in params}
         by_name = {name: bool(is_out or is_ref)
@@ -82,13 +89,9 @@ def invocation(em, oid):
     # emitted still become its free functions; a helper on another type needs
     # that type's emitted module or a runtime rule, neither of which this
     # language fallback may guess.
-    static_callee = em.con.execute(
-        "SELECT mb.is_static, t.name "
-        "FROM member mb JOIN type t ON t.id=mb.type_id "
-        "WHERE mb.key=? LIMIT 1", (symbol,)).fetchone()
-    if (static_callee and static_callee[0]
-            and static_callee[1] != getattr(em, "_current_type", None)):
-        declaring = static_callee[1]
+    if (callee and callee[1]
+            and callee[2] != getattr(em, "_current_type", None)):
+        declaring = callee[2]
         source_name = symbol.split("(")[0].split(".")[-1]
         reason = f"StaticInvocation:{declaring}.{source_name}"
         em.unhandled[f"expr:{reason}"] = (
@@ -99,8 +102,11 @@ def invocation(em, oid):
 
     rkind = None
     if receiver is not None:
-        rkind = em.con.execute(
-            "SELECT kind FROM operation WHERE id=?", (receiver,)).fetchone()[0]
+        if receiver not in em._operation_kind_cache:
+            row = em.con.execute(
+                "SELECT kind FROM operation WHERE id=?", (receiver,)).fetchone()
+            em._operation_kind_cache[receiver] = row[0] if row else None
+        rkind = em._operation_kind_cache[receiver]
     if receiver is None or rkind == "InstanceReference":
         return inv.get("self", "self.{method}({args})").format(
             method=method, args=arg_txt)

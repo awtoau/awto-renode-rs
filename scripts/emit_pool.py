@@ -92,11 +92,11 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-#: The project floor is 32 workers even when a container reports fewer logical
-#: CPUs. A larger host still uses all CPUs. Read at call time so affinity or a
-#: different machine is reflected without configuration.
+#: Use the CPUs actually available to this process. On the development machine
+#: one of the 32 logical CPUs is offline, so this correctly returns 31 instead
+#: of creating a worker that can never run.
 def default_jobs() -> int:
-    return max(32, os.cpu_count() or 32)
+    return os.cpu_count() or 1
 
 
 class Emitted(NamedTuple):
