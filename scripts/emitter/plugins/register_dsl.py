@@ -848,11 +848,13 @@ class RegisterDsl:
                         "count is not a compile-time constant, so its registers "
                         "cannot be placed -- none of them are in the bank")
                     break
-                reset = "0"
-                if form.get("reset_from"):
-                    v = b.get(form["reset_from"])
-                    if v and v[2] is not None:
-                        reset = v[2]
+                reset = self.register_reset(oid, form, b)
+                if reset is None:
+                    self._form_gaps.append(
+                        "layout: a register reset value is not a compile-time "
+                        "constant at the form's declared source, so the "
+                        "register is withheld")
+                    break
                 for env in envs:
                     name, offset, term = self.register_offset(oid, form, env)
                     if offset is None:
@@ -860,6 +862,87 @@ class RegisterDsl:
                     found.append((name, offset, reset, chain_key, term, env))
                 break
         return found
+
+    def register_reset(self, oid: int, form: dict, b: dict) -> str | None:
+        """Read the reset only from the source the matched form declares."""
+        source = form.get("reset_from")
+        if isinstance(source, str):
+            value = b.get(source)
+            return str(value[2]) if value and value[2] is not None else None
+        if isinstance(source, dict):
+            return self.chain_root_constant_argument(oid, form, source)
+
+        # A missing declaration must not turn a known non-zero construction
+        # into plausible output. Zero remains safe for forms whose root proves
+        # that it is the C# default.
+        probe = self.chain_root_constant_argument(oid, form, {
+            "chain_root_kind": "ObjectCreation", "constant_argument": 1,
+            "follow_local_initializer": True})
+        return "0" if probe in (None, "0") else None
+
+    def chain_root_constant_argument(self, oid: int, form: dict,
+                                     source: dict) -> str | None:
+        """Read a constant argument from the declared operation at chain root."""
+        node = oid if form["chain_from"] == "$self" else self.arg_node(
+            oid, form["chain_from"])
+        if node is None:
+            return None
+        node_kind, node_symbol, node_start = self.con.execute(
+            "SELECT kind, symbol, span_start FROM operation WHERE id=?",
+            (node,)).fetchone()
+        if node_kind == "LocalReference" and node_symbol and \
+                source.get("follow_local_initializer"):
+            method_id, = self.con.execute(
+                "SELECT method_id FROM operation WHERE id=?", (node,)).fetchone()
+            local = node_symbol.split()[-1]
+            for did, in self.con.execute(
+                    "SELECT id FROM operation WHERE method_id=? AND "
+                    "kind='VariableDeclarator' AND span_start < ? "
+                    "ORDER BY span_start DESC", (method_id, node_start)):
+                detail, = self.con.execute(
+                    "SELECT detail FROM operation WHERE id=?", (did,)).fetchone()
+                try:
+                    declared = json.loads(detail or "{}").get("local")
+                except json.JSONDecodeError:
+                    declared = None
+                if local != declared:
+                    continue
+                stack = [did]
+                while stack:
+                    current = stack.pop()
+                    kind, = self.con.execute(
+                        "SELECT kind FROM operation WHERE id=?",
+                        (current,)).fetchone()
+                    if kind == source.get("chain_root_kind"):
+                        node = current
+                        break
+                    stack.extend(c[0] for c in self.children(current))
+                break
+        root_span, = self.con.execute(
+            "SELECT span_start FROM operation WHERE id=?", (node,)).fetchone()
+        wanted = source.get("chain_root_kind")
+        stack = [node]
+        creation = None
+        while stack:
+            current = stack.pop()
+            kind, span = self.con.execute(
+                "SELECT kind, span_start FROM operation WHERE id=?",
+                (current,)).fetchone()
+            if kind == wanted and span == root_span:
+                creation = current
+                break
+            stack.extend(c[0] for c in self.children(current))
+        if creation is None:
+            return None
+        args = [c for c in self.children(creation) if c[1] == "Argument"]
+        index = source.get("constant_argument")
+        if not isinstance(index, int) or index >= len(args):
+            return None
+        value = args[index][3]
+        if value is None:
+            kids = self.children(args[index][0])
+            value = kids[0][3] if kids else None
+        return str(value) if value is not None else None
 
     def register_offset(self, oid: int, form: dict,
                         env: dict[str, int]) -> tuple[str | None, int | None, str | None]:
