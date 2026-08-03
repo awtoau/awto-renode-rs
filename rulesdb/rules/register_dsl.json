@@ -767,6 +767,10 @@
       "alias": "    pub const {name}: Self = Self::{target};"
     }
   },
+  "bool_callback_param": {
+    "note": "WithFlag gives C# a STRONGLY TYPED bool callback -- `(idx, old, new)` where old/new are already bool, with no cast node anywhere. The Rust callback signature is u64 throughout (WriteCallback<S> is deliberately width-uniform across flag and value fields, not narrowed per field), so the conversion belongs at the parameter's uses inside the body -- the same move as enums.typed_callback_param, for the same reason: `if !value` compiles against a u64 `value` (E0308, mismatched types expected bool found u64) with no cast node in the source to translate. Scoped to lambda slots: a peripheral method that genuinely takes a bool parameter (not a callback slot) is untouched.",
+    "emit": "({name} != 0)"
+  },
   "inheritance": {
     "note": "Rust has no inheritance, so a peripheral's base class is FLATTENED into it: base fields join State, base methods are emitted as free fns over the same (bank, st). This is the object-model deviation D1 applied to peripherals -- recorded here because the alternative, a trait, cannot carry the base's FIELDS, which is what the derived code actually reaches for.",
     "qualified_call": "{base}_{name}",

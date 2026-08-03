@@ -32,6 +32,12 @@ def parameter_reference(em, oid):
         return em.project.get("enums", {}).get(
             "typed_callback_param", {}).get(
             "emit", "{type}::from_u64({name})").format(type=ety, name=nm)
+    # A WithFlag callback slot is likewise declared u64 in Rust (the
+    # signature is width-uniform across flag and value fields) but typed
+    # bool in C#; convert the same way -- see bool_callback_param.
+    if nm in em._enum_slots and ety == "bool":
+        return em.project.get("bool_callback_param", {}).get(
+            "emit", "({name} != 0)").format(name=nm)
     # The symbol is "byte value" -- type then name. Splitting on "."
     # returned the whole thing and emitted `enqueue(byte value)`.
     if nm in getattr(em, "_by_ref_params", set()):
