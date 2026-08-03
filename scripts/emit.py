@@ -1203,6 +1203,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 f"for it -- nothing to translate")
             return []
         body: list[str] = []
+        self._ret_is_owned_string = (ret == "String")
         for cid, kind, _s, _c, _t in self.children(root[0]):
             body.extend(self.emit_block(cid, 1) if kind == "Block"
                         else self.emit_stmt(cid, 1))

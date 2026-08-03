@@ -22,11 +22,20 @@ def return_stmt(em, oid: int, indent: int) -> list[str]:
 
     tmpl = stmts.get("Return", {})
     if kids:
-        val = em.emit_expr(kids[0][0])
+        child_id = kids[0][0]
+        val = em.emit_expr(child_id)
         coerce = getattr(em, "_coerce_ret", None)
         if coerce:
             val = em.language.get("coercions", {}).get(
                 coerce, "{expr}").format(expr=val)
+        elif getattr(em, "_ret_is_owned_string", False):
+            # A bare string literal renders as `&'static str`; the method's
+            # declared return type is the owned `String` every other string
+            # producer in this corpus maps C# `string` to (see `rust_type`).
+            row = em.con.execute(
+                "SELECT kind, type FROM operation WHERE id=?", (child_id,)).fetchone()
+            if row and row[0] == "Literal" and row[1] == "string":
+                val = f"{val}.to_string()"
         return [pad + tmpl.get("with_value", "return {value};")
                 .format(value=val)]
     return [pad + tmpl.get("bare", "return;")]
