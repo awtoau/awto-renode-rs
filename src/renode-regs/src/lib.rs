@@ -8,7 +8,7 @@
 //!
 //! Fields live in one contiguous `Vec<Cell<u64>>` per peripheral, and a field
 //! handle is a typed index rather than a pointer. The C# maps naturally onto one
-//! `Rc<RefCell<_>>` per field, and that was measured (`spike/field-layout`):
+//! `Rc<RefCell<_>>` per field, and that was measured (`debris/code/field-layout-spike`):
 //! 1.1–1.7x slower depending on workload, roughly half of it the borrow-flag
 //! read-modify-write.
 //!

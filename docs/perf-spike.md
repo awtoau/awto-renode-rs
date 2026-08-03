@@ -19,7 +19,7 @@ its stated arguments were wrong.
 
 ## 1. The D2 field-layout question
 
-`spike/field-layout` — pinned to a P-core, 240 fields (RCC-sized), 20M reads.
+`debris/code/field-layout-spike` — pinned to a P-core, 240 fields (RCC-sized), 20M reads.
 
 | workload | `Rc<RefCell>` | `Cell` arena | speedup |
 |---|---:|---:|---:|
