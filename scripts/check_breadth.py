@@ -26,7 +26,7 @@ had 5,123 methods (24.7%) claiming a body while emitting no operations, because
 `partial void Foo();` is neither abstract nor extern. Nothing crashed. The
 assertions below are what caught it.
 
-Run:  python3 scripts/check_breadth.py [--threads 31]
+Run:  python3 scripts/check_breadth.py [--threads 32]
 Log:  ./tmp/logs/check_breadth.log
 Exit: 0 healthy, 1 a tooling defect.
 """

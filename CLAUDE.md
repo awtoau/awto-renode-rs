@@ -6,19 +6,12 @@ Read [PLAN.md](PLAN.md) before touching anything. The four declared deviations
 (D1–D4) are whole-program decisions; do not make a per-file choice that
 contradicts one, and do not silently revisit one — reopen the decision issue.
 
-## Canonical build, check, report cycle
+## Canonical development entry point
 
-Run one command before reporting progress or pushing completed work:
-
-```
-python3 scripts/cycle.py
-```
-
-It regenerates every converter-owned output, runs the full push-tier gates, and
-only after those pass refreshes `STATUS.md`, `docs/status/progress.svg`, and the
-self-contained HTML wrapper at `docs/status/progress.html`. It stops on the
-first failure, so failed or unchecked output never receives fresh-looking
-reports. `python3 scripts/cycle.py --dry-run` prints the exact ordered stages.
+All supported operations go through `python3 scripts/dev.py`. Read
+[README.md](README.md) for command examples or run
+`python3 scripts/dev.py describe` for the machine-readable registry. Raw scripts
+under `scripts/` are implementation details, not separate workflows.
 
 ## This repo is PUBLIC
 
@@ -230,9 +223,9 @@ per-file work, and it must be visible the week it starts. `linux-rs` reached
 
 ### Parallelism is a design constraint
 
-- **Every stage saturates all 31 threads, or carries a written reason why not.**
+- **Every parallel stage uses at least 32 workers, or carries a written reason why not.**
   Conversion is re-run constantly; its wall-clock is the iteration speed.
-- **Output must be byte-identical at `-j1` and `-j31`.** CI enforces this by
+- **Output must be byte-identical at `-j1` and `-j32`.** CI enforces this by
   running both and diffing. Without it, every diff against the C# reference is
   noise and the oracle is worthless. So: no timestamps or paths in generated
   code, content-derived stable IDs, sort before writing, never depend on hash-map

@@ -189,6 +189,9 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self.normalised: dict[str, set[int]] = {}
         self._enum_slots: set[str] = set()
         self._current_reg: str | None = None
+        run = self.con.execute("SELECT id FROM corpus_run LIMIT 1").fetchone()
+        self._run_id = run[0] if run else None
+        self._params_cache: dict[str, list[str]] = {}
         # Declared source defects switched to conformance, BY ID. Empty is the
         # only value the committed output is ever produced with -- see the
         # `--conformance` flag.
@@ -224,11 +227,17 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
 
     def params(self, symbol: str) -> list[str]:
         """Parameter names of the callee, in order."""
+        cached = self._params_cache.get(symbol)
+        if cached is not None:
+            return cached
         rows = self.con.execute("""
             SELECT p.name FROM parameter p
             JOIN member mb ON mb.id = p.method_id
-            WHERE mb.key = ? ORDER BY p.ordinal""", (symbol,)).fetchall()
-        return [r[0] for r in rows]
+            WHERE mb.run_id = ? AND mb.key = ? ORDER BY p.ordinal""",
+            (self._run_id, symbol)).fetchall()
+        result = [r[0] for r in rows]
+        self._params_cache[symbol] = result
+        return result
 
     def children(self, oid: int):
         return self.con.execute(

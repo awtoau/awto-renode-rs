@@ -77,7 +77,7 @@ def normalise(name: str):
     Order comes from the DATA (`normalisations.passes[].order`), never from
     registration order or dict iteration -- two passes matching the same node
     give different results depending on which ran first, and output must be
-    byte-identical at -j1 and -j31.
+    byte-identical at -j1 and -j32.
     """
     def deco(fn):
         _NORMALISE[name] = fn

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run every non-negotiable gate in one go and report exit codes.
+"""Run every non-negotiable gate with a bounded CPU budget.
 
 The gate list in CLAUDE.md and in `scripts/githooks/pre-commit` is prose; a
 person running them by hand runs the ones they remember. This is the same list
@@ -21,9 +21,14 @@ several commits ran no compile gate at all. A gate slow enough to be bypassed
 is a gate that does not run. Emission is now parallel (scripts/emit_pool.py)
 AND the everyday tier is scoped, because either alone was not enough.
 
-Run:  python3 scripts/gates.py
-      python3 scripts/gates.py --full
-      python3 scripts/gates.py --only check_layering
+Independent gates run concurrently. The compile emitter receives the CPUs left
+after reserving one for every other gate, so parallel orchestration does not
+oversubscribe the host. In the full tier, compile and gap censuses split the
+same budget and use separate scratch paths.
+
+Run:  python3 scripts/dev.py gate
+      python3 scripts/dev.py ci
+      python3 scripts/dev.py gates --only check-layering
 Log:  ./tmp/logs/gates.log
 Exit: 1 if any gate failed.
 """
@@ -31,11 +36,16 @@ Exit: 1 if any gate failed.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import logging
+import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+
+MIN_JOBS = 32
 
 
 def repo_root() -> Path:
@@ -76,12 +86,96 @@ FULL: list[tuple[str, list[str]]] = [
 # becomes the next thing people skip.
 
 
+@dataclass(frozen=True)
+class Result:
+    label: str
+    returncode: int
+    seconds: float
+    output: str
+
+
+def run_gate(root: Path, gate: tuple[str, list[str]]) -> Result:
+    name, extra = gate
+    script = root / "scripts" / f"{name}.py"
+    label = " ".join([name, *extra])
+    if not script.exists():
+        return Result(label, 127, 0.0, "script missing")
+    started = time.monotonic()
+    result = subprocess.run(
+        [sys.executable, str(script), *extra], cwd=root,
+        capture_output=True, text=True,
+    )
+    return Result(label, result.returncode, time.monotonic() - started,
+                  result.stdout + result.stderr)
+
+
+def run_parallel(root: Path, gates: list[tuple[str, list[str]]],
+                 log: logging.Logger, cpu_budget: int) -> list[Result]:
+    if not gates:
+        return []
+    workers = min(len(gates), cpu_budget)
+    log.info("parallel wave: %d gate(s), %d process slot(s), CPU budget %d",
+             len(gates), workers, cpu_budget)
+    for name, extra in gates:
+        log.info("    START %s", " ".join([name, *extra]))
+    found: dict[str, Result] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(run_gate, root, gate): " ".join([gate[0], *gate[1]])
+                   for gate in gates}
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            found[result.label] = result
+            log.info("    DONE  %-36s %-14s %6.1fs", result.label,
+                     "ok" if result.returncode == 0 else f"FAILED ({result.returncode})",
+                     result.seconds)
+    # Stable summary and failure excerpts even though completion order is not.
+    return [found[" ".join([name, *extra])] for name, extra in gates]
+
+
+def allocated_fast(gates: list[tuple[str, list[str]]], jobs: int
+                   ) -> list[tuple[str, list[str]]]:
+    others = sum(1 for name, _extra in gates if name != "compile_check")
+    compile_jobs = max(1, jobs - min(others, jobs - 1))
+    return [(name, [*extra, "--jobs", str(compile_jobs)]
+             if name == "compile_check" else extra)
+            for name, extra in gates]
+
+
+def allocated_full(jobs: int) -> list[tuple[str, list[str]]]:
+    compile_jobs = max(1, (jobs + 1) // 2)
+    gap_jobs = max(1, jobs - compile_jobs)
+    return [
+        ("compile_check", ["--ratchet", "--jobs", str(compile_jobs)]),
+        ("gap_census", ["--jobs", str(gap_jobs)]),
+    ]
+
+
+def report(results: list[Result], log: logging.Logger) -> int:
+    bad = 0
+    log.info("")
+    log.info("stable summary:")
+    for result in results:
+        log.info("%-40s %-14s %6.1fs", result.label,
+                 "ok" if result.returncode == 0 else f"FAILED ({result.returncode})",
+                 result.seconds)
+        if result.returncode:
+            bad += 1
+            for line in result.output.splitlines()[-25:]:
+                log.error("    %s", line)
+    return bad
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", action="append", default=[])
     ap.add_argument("--full", action="store_true",
                     help="also run the whole-corpus tier (slow, gates a push)")
+    detected = os.cpu_count() or MIN_JOBS
+    ap.add_argument("--jobs", type=int, default=max(MIN_JOBS, detected),
+                    help="total CPU budget (default: at least 32)")
     args = ap.parse_args()
+    if args.jobs < MIN_JOBS:
+        ap.error(f"--jobs must be at least {MIN_JOBS}")
 
     root = repo_root()
     (root / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
@@ -94,28 +188,15 @@ def main() -> int:
         log.addHandler(h)
 
     if args.only:
-        gates = [(g, []) for g in args.only]
+        gates = [(g.replace("-", "_"), []) for g in args.only]
+        results = run_parallel(root, gates, log, args.jobs)
     else:
-        gates = GATES + (FULL if args.full else [])
+        fast = allocated_fast(GATES, args.jobs)
+        results = run_parallel(root, fast, log, args.jobs)
+        if args.full:
+            results += run_parallel(root, allocated_full(args.jobs), log, args.jobs)
 
-    bad = 0
-    for g, extra in gates:
-        script = root / "scripts" / f"{g}.py"
-        label = " ".join([g, *extra])
-        if not script.exists():
-            log.error("%-40s MISSING", label)
-            bad += 1
-            continue
-        t0 = time.monotonic()
-        r = subprocess.run([sys.executable, str(script), *extra], cwd=root,
-                           capture_output=True, text=True)
-        log.info("%-40s %-14s %6.1fs", label,
-                 "ok" if r.returncode == 0 else f"FAILED ({r.returncode})",
-                 time.monotonic() - t0)
-        if r.returncode != 0:
-            bad += 1
-            for line in (r.stdout + r.stderr).splitlines()[-25:]:
-                log.error("    %s", line)
+    bad = report(results, log)
     if not args.full and not args.only:
         log.info("")
         log.info("NOT RUN: the whole-corpus tier -- all 569 emitted modules "
@@ -123,7 +204,7 @@ def main() -> int:
         log.info("Nothing above says anything about the modules outside the "
                  "declared clean set.")
         log.info("    python3 scripts/gates.py --full")
-    log.info("%d of %d gate(s) failed", bad, len(gates))
+    log.info("%d of %d gate(s) failed", bad, len(results))
     return 1 if bad else 0
 
 

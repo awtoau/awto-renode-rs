@@ -211,8 +211,10 @@ def emit_all(root: Path, db: Path, log: logging.Logger,
     t0 = time.monotonic()
     results = emit_pool.emit_many(db, [(n, m, "m") for n, m in wanted],
                                   jobs, lpt=lpt)
-    timing.info("emitted %d type(s) in %.1fs at -j%d", len(results),
-                time.monotonic() - t0, jobs)
+    elapsed = time.monotonic() - t0
+    cpu = sum(result.cpu_secs for result in results)
+    timing.info("emitted %d type(s) in %.1fs at -j%d; %.1f effective CPU cores",
+                len(results), elapsed, jobs, cpu / elapsed if elapsed else 0.0)
     emit_pool.report_tail(results, timing)
 
     mods: list[tuple[str, int]] = []

@@ -47,7 +47,7 @@ second copy of them:
 
 The winner is the candidate with the most COMBINATOR calls, then the most
 forms, then the member name ascending -- so the selection is identical at `-j1`
-and `-j31`.
+and `-j32`.
 
 Combinators rank ahead of forms because the dictionary form matches ANY
 `Dictionary<TKey, TValue>.Add`. STM32_SYSCFG's constructor adds sixteen GPIOs
@@ -184,7 +184,7 @@ def combinator_counts(con: sqlite3.Connection, member_ids: Iterable[int],
     """
     # Sorted, not set-ordered: the chunking below is what reaches sqlite, and a
     # query that varies run to run is exactly the kind of thing that makes an
-    # output differ at -j1 and -j31 for no visible reason.
+    # output differ at -j1 and -j32 for no visible reason.
     ids = sorted(member_ids)
     if not ids:
         return {}

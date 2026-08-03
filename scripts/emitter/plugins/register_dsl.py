@@ -678,6 +678,14 @@ class RegisterDsl:
         return None
 
     def loop_bounds(self, oid: int) -> tuple[str, range] | None:
+        cache = getattr(self, "_loop_bounds_cache", None)
+        if cache is None:
+            cache = self._loop_bounds_cache = {}
+        if oid not in cache:
+            cache[oid] = self._loop_bounds_uncached(oid)
+        return cache[oid]
+
+    def _loop_bounds_uncached(self, oid: int) -> tuple[str, range] | None:
         """`for(var i = C0; i < C1; ++i)` -> the variable and its values.
 
         Only the counted form, and only with CONSTANT bounds. A loop whose trip
@@ -737,6 +745,14 @@ class RegisterDsl:
         None means an enclosing loop exists whose trip count is not constant.
         That is the honest answer: the site IS replicated and we cannot say how
         many times, so nothing may be emitted for it."""
+        cache = getattr(self, "_loop_envs_cache", None)
+        if cache is None:
+            cache = self._loop_envs_cache = {}
+        if oid not in cache:
+            cache[oid] = self._loop_envs_uncached(oid)
+        return cache[oid]
+
+    def _loop_envs_uncached(self, oid: int) -> list[dict[str, int]] | None:
         loops: list[tuple[str, range]] = []
         node = oid
         while True:

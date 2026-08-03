@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the ingest produces byte-identical output at -j1 and -j31. Issue #36 (R7).
+"""Verify the ingest produces byte-identical output at -j1 and -j32. Issue #36 (R7).
 
 This is not a nicety. If a 1-thread and a 31-thread run differ, every diff
 against the C# reference becomes scheduling noise and the differential oracle --
@@ -9,7 +9,7 @@ Ingest guarantees this by walking in parallel but WRITING in sorted path order,
 with ids assigned during the serial write rather than by the workers. This script
 proves the guarantee holds rather than trusting it.
 
-Run:  python3 scripts/check_determinism.py [--threads 31]
+Run:  python3 scripts/check_determinism.py [--threads 32]
 Log:  ./tmp/logs/check_determinism.log
 Exit: 0 identical, 1 divergent.
 """

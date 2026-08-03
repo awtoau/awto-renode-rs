@@ -446,7 +446,8 @@ def main() -> int:
     log = logging.getLogger("check_bug_rules")
     log.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    for h in (logging.FileHandler(logdir / "check_bug_rules.log", mode="w"),
+    logfile = "check_bug_rules_prove.log" if args.prove else "check_bug_rules.log"
+    for h in (logging.FileHandler(logdir / logfile, mode="w"),
               logging.StreamHandler(sys.stdout)):
         h.setFormatter(fmt)
         log.addHandler(h)

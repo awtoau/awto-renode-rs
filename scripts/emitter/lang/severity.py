@@ -167,7 +167,7 @@ class Severity:
         """Every declared source defect, in a stable order.
 
         Sorted by id and not by file order: two runs must agree byte for byte,
-        and `-j1` must agree with `-j31`.
+        and `-j1` must agree with `-j32`.
         """
         got = getattr(self, "project", {}).get("bug_rules", [])
         return sorted((s for s in got if isinstance(s, dict)),

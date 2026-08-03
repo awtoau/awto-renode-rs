@@ -6,7 +6,7 @@ and -jN. This is its counterpart on the other side of the pipeline: emission
 was made parallel (scripts/emit_pool.py), so the same guarantee now has to hold
 for the two census scripts.
 
-CLAUDE.md: "Output must be byte-identical at -j1 and -j31. CI enforces this by
+CLAUDE.md: "Output must be byte-identical at -j1 and -j32. CI enforces this by
 running both and diffing." Without it every diff against the C# reference is
 scheduling noise and the differential oracle is worthless.
 

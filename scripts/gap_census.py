@@ -203,8 +203,10 @@ def main() -> int:
     t0 = time.monotonic()
     results = emit_pool.emit_many(db, [(n, m, "x") for n, m in rows],
                                   args.jobs, lpt=not args.no_lpt)
-    timing.info("emitted %d type(s) in %.1fs at -j%d", len(results),
-                time.monotonic() - t0, args.jobs)
+    elapsed = time.monotonic() - t0
+    cpu = sum(result.cpu_secs for result in results)
+    timing.info("emitted %d type(s) in %.1fs at -j%d; %.1f effective CPU cores",
+                len(results), elapsed, args.jobs, cpu / elapsed if elapsed else 0.0)
     emit_pool.report_tail(results, timing)
 
     for r in results:

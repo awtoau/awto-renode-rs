@@ -18,7 +18,7 @@ This module is the shared driver loop. It is NOT part of the emitter: it
 creates `Emitter` instances and collects what they return, and knows nothing
 about what they emit.
 
-THE CONSTRAINT: byte-identical at -j1 and -j31
+THE CONSTRAINT: byte-identical at -j1 and the parallel default
 ----------------------------------------------
 `emit_many` returns results in the order of the tasks it was given, never in
 completion order. That is the whole guarantee, and it is not an accident of
@@ -92,11 +92,11 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-#: Default worker count. `os.cpu_count()` is what CLAUDE.md means by "all 31
-#: threads" -- it is read at call time, not import time, so a machine with a
-#: different count needs no edit.
+#: The project floor is 32 workers even when a container reports fewer logical
+#: CPUs. A larger host still uses all CPUs. Read at call time so affinity or a
+#: different machine is reflected without configuration.
 def default_jobs() -> int:
-    return os.cpu_count() or 8
+    return max(32, os.cpu_count() or 32)
 
 
 class Emitted(NamedTuple):
@@ -106,16 +106,32 @@ class Emitted(NamedTuple):
     text: str | None
     err_type: str | None
     err_msg: str | None
-    #: Seconds this type took. Reported on stderr only -- see `emit_many`. It
+    #: Wall seconds this type took. Reported on stderr only -- see `emit_many`. It
     #: is what makes the tail visible: with 569 uneven tasks the pool cannot
     #: finish sooner than its single longest type, so "why is it not 31x" is a
     #: question with an answer rather than a shrug.
     secs: float = 0.0
+    #: Worker CPU seconds, distinct from wall time spent waiting on SQLite or
+    #: scheduling. The old report called summed wall time "CPU", which could
+    #: claim saturation without measuring any CPU use.
+    cpu_secs: float = 0.0
 
 
 # Set once per worker process by the initialiser, so the db path is not
 # re-pickled with every one of 569 tasks.
 _DB_URI: str | None = None
+
+
+def process_context() -> multiprocessing.context.BaseContext:
+    """Use a pool start method that works inside the repository sandbox.
+
+    ``forkserver`` needs to bind a private Unix socket. The Codex/bwrap sandbox
+    rejects that bind, so a nominal 32-worker run can fail before starting any
+    worker (or appear to work only while an older fork server happens to
+    survive). These CLI programs start the pool before creating any threads,
+    making direct ``fork`` the simple Linux path. Non-POSIX hosts use spawn.
+    """
+    return multiprocessing.get_context("fork" if os.name == "posix" else "spawn")
 
 
 def _init_worker(db_uri: str) -> None:
@@ -143,6 +159,7 @@ def _emit_one(task: tuple[str, str, str]) -> Emitted:
     name, method, tag = task
     from emit import Emitter
     t0 = time.monotonic()
+    c0 = time.process_time()
     try:
         em = Emitter(sqlite3.connect(_DB_URI, uri=True), _quiet_log())
         # The serial drivers swallowed emitter chatter on stderr; keep doing
@@ -151,8 +168,9 @@ def _emit_one(task: tuple[str, str, str]) -> Emitted:
             out = em.emit_file(name, method, tag)
     except Exception as exc:                                   # noqa: BLE001
         return Emitted(name, method, None, type(exc).__name__, str(exc),
-                       time.monotonic() - t0)
-    return Emitted(name, method, out, None, None, time.monotonic() - t0)
+                       time.monotonic() - t0, time.process_time() - c0)
+    return Emitted(name, method, out, None, None, time.monotonic() - t0,
+                   time.process_time() - c0)
 
 
 def _probe_one(name: str) -> tuple[str, list[str]]:
@@ -187,7 +205,7 @@ def probe_nested(db: Path, names: Sequence[str], jobs: int) -> set[str]:
     if jobs <= 1:
         _init_worker(db_uri)
         return {c for n in names for c in _probe_one(n)[1]}
-    ctx = multiprocessing.get_context("forkserver")
+    ctx = process_context()
     with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx,
                              initializer=_init_worker,
                              initargs=(db_uri,)) as pool:
@@ -241,7 +259,7 @@ def emit_many(db: Path, tasks: Sequence[tuple[str, str, str]], jobs: int,
         # makes a timing regression impossible to attribute.
         order = sorted(order, key=lambda i: (-costs.get(tasks[i][0], 0), i))
 
-    ctx = multiprocessing.get_context("forkserver")
+    ctx = process_context()
     results: list[Emitted | None] = [None] * len(tasks)
     with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx,
                              initializer=_init_worker,
@@ -278,11 +296,13 @@ def report_tail(results: Sequence[Emitted], log: logging.Logger,
     """
     if not results:
         return
-    total = sum(r.secs for r in results)
+    wall_sum = sum(r.secs for r in results)
+    cpu_sum = sum(r.cpu_secs for r in results)
     worst = sorted(results, key=lambda r: (-r.secs, r.name))[:top]
-    log.info("emit CPU %.0fs over %d type(s); longest single type %.0fs "
+    log.info("emit worker CPU %.0fs, summed task wall %.0fs over %d type(s); "
+             "longest single type %.0fs "
              "(the floor no worker count can go below)",
-             total, len(results), worst[0].secs)
+             cpu_sum, wall_sum, len(results), worst[0].secs)
     for r in worst:
         log.info("    %-44s %6.1fs", r.name, r.secs)
 
