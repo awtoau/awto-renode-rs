@@ -22,6 +22,7 @@ python3 scripts/dev.py gate           # parallel everyday checks
 python3 scripts/dev.py gate --fail-fast
 python3 scripts/dev.py ci             # parallel full push-tier corpus checks
 python3 scripts/dev.py ci --fail-fast
+python3 scripts/dev.py ci-fast        # alias for ci --fail-fast
 python3 scripts/dev.py report         # STATUS.md plus SVG and HTML
 python3 scripts/dev.py cycle          # build -> ci -> report
 python3 scripts/dev.py cycle --dry-run

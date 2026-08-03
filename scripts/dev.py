@@ -172,6 +172,13 @@ def cmd_ci(extra: list[str]) -> int:
     return run([sys.executable, "scripts/gates.py", "--full", *extra])
 
 
+@command("run the full push-tier validation census in fail-fast mode",
+         kind="aggregate")
+def cmd_ci_fast(extra: list[str]) -> int:
+    return run([sys.executable, "scripts/gates.py", "--full", "--fail-fast",
+                *extra])
+
+
 @command("run determinism proofs (ingest and emitter)", kind="aggregate")
 def cmd_ci_determinism(extra: list[str]) -> int:
     if extra:
