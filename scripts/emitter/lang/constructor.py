@@ -199,8 +199,9 @@ def _statement(em, stmt_id: int, params: dict, state_names: set[str],
     # The field being assigned must be one the emitted struct actually holds.
     # Anything else is storage the translated type does not have -- a computed
     # property, or a field whose type had no mapping and was dropped.
-    leaf = (target_sym or "").rsplit(".", 1)[-1].split()[-1]
-    field = snake(leaf)
+    parts = (target_sym or "").rsplit(".", 1)[-1].split()
+    leaf = parts[-1] if parts else ""
+    field = snake(leaf) if leaf else ""
     if target_kind not in ("FieldReference", "PropertyReference") or not leaf:
         return None, g["not_an_assignment"].format(kind=target_kind), []
     if field not in state_names:
