@@ -293,16 +293,31 @@ def register_tools() -> None:
         def handler(extra: list[str], script: Path = path) -> int:
             return run([sys.executable, str(script.relative_to(REPO)), *extra])
 
+        if path.stem.startswith("check_") or path.stem in {
+                "compile_check", "prove_postconditions"}:
+            kind = "validation"
+        elif ("census" in path.stem or path.stem.startswith(("analyse_", "audit_"))
+              or path.stem in {"floor_census", "gap_census", "oracle_coverage",
+                               "prescan", "query_local_builders"}):
+            kind = "analysis"
+        elif path.stem in {"baseline_boot", "capture_traces", "diagnose_trace",
+                           "measure_bug_switch", "mutate", "verify_emit"}:
+            kind = "oracle"
+        elif path.stem in {"issue_index", "progress_graph", "scorecard"}:
+            kind = "reporting"
+        else:
+            kind = "tool"
         COMMANDS[name] = {
             "summary": summary[:100], "args": "[tool arguments]",
-            "kind": "tool", "handler": handler,
+            "kind": kind, "handler": handler,
         }
 
 
 def usage() -> int:
     print(__doc__.strip())
     print("\nUsage: python3 scripts/dev.py <command> [args]\n")
-    order = ["aggregate", "step", "action", "tool", "meta"]
+    order = ["aggregate", "step", "action", "validation", "analysis",
+             "oracle", "reporting", "tool", "meta"]
     for kind in order:
         items = [(name, meta) for name, meta in sorted(COMMANDS.items())
                  if meta["kind"] == kind]

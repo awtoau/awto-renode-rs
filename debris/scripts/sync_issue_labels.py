@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-apply phase labels from docs/issues-draft.md to existing GitHub issues.
+"""HISTORICAL: apply phase labels from the removed docs/issues-draft.md.
 
 `file_issues.py` only creates issues it has not seen. When the draft's phase
 ordering changes, the labels on already-filed issues go stale. This script

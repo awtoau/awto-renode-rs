@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the project's GitHub issues from docs/issues-draft.md.
+"""HISTORICAL: create GitHub issues from the removed docs/issues-draft.md.
 
 The draft is the source of truth for issue text; this script parses it and
 creates one issue per `## <id> — <title>` heading, with the label line that
