@@ -65,23 +65,36 @@ def run(root: Path, script: str, extra: list[str],
     stderr precisely so they cannot enter this comparison -- a clock in a
     golden artefact makes every run differ from every other one.
     """
+    argv = [sys.executable, str(root / "scripts" / script), *extra]
+    label = f"{script} {' '.join(extra)}".strip()
     t0 = time.monotonic()
-    r = subprocess.run([sys.executable, str(root / "scripts" / script), *extra],
-                       capture_output=True, text=True, cwd=root)
+    log.info("START %-40s", label)
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, cwd=root,
+    )
+    while True:
+        try:
+            out, err = proc.communicate(timeout=30)
+            break
+        except subprocess.TimeoutExpired:
+            log.info("RUN   %-40s %6.1fs elapsed", label,
+                     time.monotonic() - t0)
     dt = time.monotonic() - t0
-    if r.returncode != 0:
+    log.info("DONE  %-40s %6.1fs rc=%d", label, dt, proc.returncode)
+    if proc.returncode != 0:
         # A CRASH IS NOT AN ARTEFACT. Two runs that both died compare equal and
         # prove nothing -- this repo has already recorded nine identical stack
         # traces as a green baseline once.
-        log.error("%s %s exited %d", script, " ".join(extra), r.returncode)
-        for line in (r.stderr or "(no stderr)").strip().splitlines()[-10:]:
+        log.error("%s %s exited %d", script, " ".join(extra), proc.returncode)
+        for line in (err or "(no stderr)").strip().splitlines()[-10:]:
             log.error("    %s", line)
         raise SystemExit(1)
-    if not r.stdout.strip():
+    if not out.strip():
         log.error("%s %s produced no stdout -- nothing to compare",
                   script, " ".join(extra))
         raise SystemExit(1)
-    return r.stdout, dt
+    return out, dt
 
 
 def compare(log: logging.Logger, label: str, a: str, b: str) -> bool:
@@ -119,7 +132,8 @@ def main() -> int:
     for h in (logging.FileHandler(root / "tmp" / "logs" /
                                   "check_emit_determinism.log", mode="w"),
               logging.StreamHandler(sys.stdout)):
-        h.setFormatter(logging.Formatter("%(message)s"))
+        h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s"))
         log.addHandler(h)
 
     db = root / "rulesdb" / "patterns.db"
