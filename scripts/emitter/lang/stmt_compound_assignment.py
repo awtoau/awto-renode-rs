@@ -72,6 +72,36 @@ def compound_assignment_stmt(em, oid: int, indent: int) -> list[str] | None:
         _symbol or "")
     if binop:
         op = binop.replace("{lhs}", "").replace("{rhs}", "").strip()
+        if em.kind_of(kids[0][0]) == "PropertyReference":
+            # A C# property with a custom getter/setter has no Rust lvalue --
+            # emitting the plain template puts a call expression on the left
+            # of `{op}=`, which does not parse (E0067). `emit_assignment`
+            # already resolves a plain `=` on one of these through the
+            # project's own rule for it; the compound form needs the SAME
+            # resolution, just with a computed value instead of the literal
+            # one -- read the current value (the project's read rule, same
+            # as any other expression), combine it with the operator, and
+            # write the result back through the project's write rule for
+            # this exact target, rather than assuming an operator token
+            # applies to a call.
+            trow = em.con.execute(
+                "SELECT symbol, type FROM operation WHERE id=?",
+                (kids[0][0],)).fetchone()
+            tsym, ttype = trow if trow else (None, None)
+            for rule in em.assignments:
+                if rule["target_kind"] != "PropertyReference":
+                    continue
+                if rule.get("target_symbol_contains") and (
+                        not tsym or rule["target_symbol_contains"] not in tsym):
+                    continue
+                if rule.get("target_type_is") and ttype != rule["target_type_is"]:
+                    continue
+                current = em.emit_expr(kids[0][0])
+                value = em.emit_expr(kids[1][0])
+                new_value = f"({current} {op} {value})"
+                return [pad + rule["emit"].format(
+                    field=em.receiver_field(kids[0][0]) or "UNKNOWN",
+                    value=new_value)]
         return [pad + spec.get("template", "{target} {op}= {value};")
                 .format(target=em.emit_expr(kids[0][0]), op=op,
                         value=em.emit_expr(kids[1][0]))]
