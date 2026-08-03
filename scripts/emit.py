@@ -540,7 +540,16 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         boundary rather than a convention -- which is what lets check_generated.py
         enforce it byte-for-byte.
         """
-        self._enum_names = self.enum_names(type_name)
+        # The offset enum is never declared as a Rust enum (it is `mod reg`
+        # instead -- see the exclusion below), so a peer method's reference to
+        # it must resolve there too. `register_offsets` is a read-only corpus
+        # query, safe to run this early, before the offsets used for the
+        # `mod reg` declaration itself are computed further down.
+        early_off_names = {n for n, _ in self.register_offsets(type_name, method_name)}
+        self._offset_enum_names = {
+            n for n, m in self.nested_enums(type_name)
+            if early_off_names and {x for x, _ in m} >= early_off_names}
+        self._enum_names = self.enum_names(type_name) - self._offset_enum_names
         # Queued type warnings are per FILE: one left over from the previous
         # file would attach to the first declaration of this one.
         self.take_type_warnings()
@@ -565,7 +574,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self._state_types = dict(state)
         self._sized_state = set(getattr(self, "_sub_fields", {}))
         self._current_type = type_name
-        self._enum_names = self.enum_names(type_name)
+        self._enum_names = self.enum_names(type_name) - self._offset_enum_names
         self.gaps = []
         method_gaps: list[str] = []
         names = [r[0] for r in self.con.execute(
@@ -717,7 +726,9 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 a("")
         for line in sub_mods:
             a(line.rstrip())
-        # The offset enum is already `mod reg`; identified by content.
+        # The offset enum is already `mod reg` (see `_offset_enum_names` above,
+        # computed the same way from the same offsets, so this cannot drift
+        # from what `enum_member.py` treats as already-emitted).
         off_names = {n for n, _ in offsets}
         enums = [(n, m) for n, m in self.nested_enums(type_name)
                  if not (off_names and {x for x, _ in m} >= off_names)]

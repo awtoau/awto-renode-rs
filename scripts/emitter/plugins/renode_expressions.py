@@ -16,6 +16,7 @@ the language layer.
 from __future__ import annotations
 
 from emitter.core import snake
+from emitter.plugins.register_dsl import to_const
 
 
 class RenodeExpressions:
@@ -37,6 +38,15 @@ class RenodeExpressions:
 
     def plugin_expr(self, oid, kind, symbol, const, rtype, detail, kids, args, all_kids):
         """Corpus idioms. Returns Rust, or None to fall through."""
+        # The register-offset enum (e.g. `Registers.Control`) is never declared
+        # as a Rust enum -- it is `mod reg` instead, see `_offset_enum_names` in
+        # emit_file -- so a peer method's reference to it must resolve there
+        # too, not to a type the language layer's generic enum rule would
+        # otherwise send to a name that was correctly never declared (E0433).
+        if kind == "FieldReference" and symbol and getattr(self, "_offset_enum_names", None):
+            parts = symbol.split("(")[0].split(".")
+            if len(parts) >= 2 and parts[-2] in self._offset_enum_names:
+                return f"reg::{to_const(parts[-1])}"
         # Project idioms first: they are more specific than the language rules.
         for rule in self.expressions:
             if rule["kind"] != kind:
