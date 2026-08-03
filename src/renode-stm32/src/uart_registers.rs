@@ -43,6 +43,7 @@ pub mod reg {
     pub const CONTROL1: u64 = 0x0C;
     pub const CONTROL2: u64 = 0x10;
     pub const CONTROL3: u64 = 0x14;
+    pub const GUARD_TIME_AND_PRESCALER: u64 = 0x18;
 }
 
 /// Field handles bound by `out` parameters in the C#.

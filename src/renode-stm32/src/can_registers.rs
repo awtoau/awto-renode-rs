@@ -105,11 +105,21 @@ pub mod reg {
     pub const CAN_TDT2R: u64 = 0x1A4;
     pub const CAN_TDL2R: u64 = 0x1A8;
     pub const CAN_TDH2R: u64 = 0x1AC;
+    pub const CAN_RI0R: u64 = 0x1B0;
+    pub const CAN_RDT0R: u64 = 0x1B4;
+    pub const CAN_RL0R: u64 = 0x1B8;
+    pub const CAN_RH0R: u64 = 0x1BC;
+    pub const CAN_RI1R: u64 = 0x1C0;
+    pub const CAN_RDT1R: u64 = 0x1C4;
+    pub const CAN_RL1R: u64 = 0x1C8;
+    pub const CAN_RH1R: u64 = 0x1CC;
     pub const CAN_FMR: u64 = 0x200;
     pub const CAN_FM1R: u64 = 0x204;
     pub const CAN_FS1R: u64 = 0x20C;
     pub const CAN_FFA1R: u64 = 0x214;
     pub const CAN_FA1R: u64 = 0x21C;
+    pub const CAN_F0R1: u64 = 0x240;
+    pub const CAN_F27R2: u64 = 0x31C;
 }
 
 /// Field handles bound by `out` parameters in the C#.

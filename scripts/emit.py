@@ -670,6 +670,19 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
             sub_mods.extend(mod + [""])
             gaps.extend(sub_g)
             offsets.extend((n, o) for n, o in sub_offsets if n not in seen_off)
+            seen_off.update(n for n, _ in sub_offsets)
+        # Every OTHER member of the same enum is a real, compile-time-known
+        # constant too. The layout above only visits members that were
+        # themselves the target of a `.Define*` call -- but C# code may
+        # compare an offset against one that never was (a range-check
+        # boundary, e.g. `offset <= Registers.PinConfiguration127`), and that
+        # reference must still resolve (E0425) even though nothing bound it.
+        enum_members = dict(self.nested_enums(type_name))
+        for ename in self._offset_enum_names:
+            for mname, val in enum_members.get(ename, []):
+                if mname not in seen_off:
+                    offsets.append((mname, int(val)))
+                    seen_off.add(mname)
         offsets.sort(key=lambda kv: kv[1])
 
 

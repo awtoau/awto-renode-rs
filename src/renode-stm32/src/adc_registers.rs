@@ -41,9 +41,16 @@ pub mod reg {
     pub const INJECTED_CHANNEL_DATA_OFFSET2: u64 = 0x18;
     pub const INJECTED_CHANNEL_DATA_OFFSET3: u64 = 0x1C;
     pub const INJECTED_CHANNEL_DATA_OFFSET4: u64 = 0x20;
+    pub const WATCHDOG_HIGHER_THRESHOLD: u64 = 0x24;
+    pub const WATCHDOG_LOWER_THRESHOLD: u64 = 0x28;
     pub const REGULAR_SEQUENCE1: u64 = 0x2C;
     pub const REGULAR_SEQUENCE2: u64 = 0x30;
     pub const REGULAR_SEQUENCE3: u64 = 0x34;
+    pub const INJECTED_SEQUENCE: u64 = 0x38;
+    pub const INJECTED_DATA1: u64 = 0x3C;
+    pub const INJECTED_DATA2: u64 = 0x40;
+    pub const INJECTED_DATA3: u64 = 0x44;
+    pub const INJECTED_DATA4: u64 = 0x48;
     pub const REGULAR_DATA: u64 = 0x4C;
 }
 
