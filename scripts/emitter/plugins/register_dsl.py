@@ -160,6 +160,83 @@ class RegisterDsl:
         v = self.const_eval(oid, self._loop_env) if self._loop_env else None
         return str(v) if v is not None else self.emit_expr(oid)
 
+    def local_closure_body(self, all_kids: list) -> str | None:
+        """A call on a local bound to a lambda, inlined at the call site.
+
+        A register callback is emitted as a standalone top-level Rust fn, never
+        a Rust closure (`emit_lambda`'s "free fn" in `scripts/core/emit.py`), so
+        `Func<T> virtualInterrupt = () => ...; ... virtualInterrupt()` reaches
+        the callback with nothing named `virtual_interrupt` in scope -- the
+        local's DECLARATION is the C# closure, and invoking it is only ever
+        asking for that value. Inlining the declared body is what the call
+        evaluates to; a captured loop variable folds to this iteration's value
+        the same way `index_expr` already folds one, so a peer method the body
+        reaches is plain text by the time `rewrite_this` and the missing-method
+        gap check run over it -- the same two passes every OTHER callback body
+        already goes through.
+
+        Returns None to decline, not just when nothing matches: a local whose
+        initialiser is not a bare lambda is a shape this cannot resolve, and
+        that must stay a gap rather than silently keep the generic template's
+        guess that the receiver is an `Option`-wrapped state field, which a
+        local closure never is."""
+        receiver = next((c[0] for c in all_kids if c[1] != "Argument"), None)
+        if receiver is None or self.kind_of(receiver) != "LocalReference":
+            return None
+        row = self.con.execute(
+            "SELECT method_id, span_start, symbol, detail FROM operation WHERE id=?",
+            (receiver,)).fetchone()
+        if not row:
+            return None
+        method_id, span, symbol, detail = row
+        name = None
+        if detail:
+            try:
+                name = json.loads(detail).get("local")
+            except json.JSONDecodeError:
+                name = None
+        if not name and symbol:
+            name = symbol.split()[-1]
+        if not name:
+            return None
+        for did, in self.con.execute(
+                "SELECT id FROM operation WHERE method_id=? AND "
+                "kind='VariableDeclarator' AND span_start < ? "
+                "ORDER BY span_start DESC", (method_id, span)):
+            d, = self.con.execute(
+                "SELECT detail FROM operation WHERE id=?", (did,)).fetchone()
+            try:
+                declared = json.loads(d or "{}").get("local")
+            except json.JSONDecodeError:
+                declared = None
+            if declared != name:
+                continue
+            # Nearest declaration of this name wins; if it is not a lambda the
+            # search stops here rather than risking a match on an outer local
+            # this one shadows.
+            stack, init = [did], None
+            while stack and init is None:
+                for cid, ckind, _s, _c, _t in self.children(stack.pop()):
+                    if ckind == "VariableInitializer":
+                        init = cid
+                        break
+                    stack.append(cid)
+            if init is None:
+                return None
+            init_kids = self.children(init)
+            delegate = init_kids[0][0] if init_kids else None
+            if delegate is None or self.kind_of(delegate) != "DelegateCreation":
+                return None
+            lam_kids = self.children(delegate)
+            if not lam_kids or self.kind_of(lam_kids[0][0]) != "AnonymousFunction":
+                return None
+            body = []
+            for cid, ckind, _s, _c, _t in self.children(lam_kids[0][0]):
+                body.extend(self.emit_block(cid, 0) if ckind == "Block"
+                            else self.emit_stmt(cid, 0))
+            return " ".join(l.strip() for l in body).rstrip(";")
+        return None
+
     def assigned_field(self, oid: int) -> str | None:
         """Handle bound by ASSIGNING the combinator's result, not by `out`.
 
