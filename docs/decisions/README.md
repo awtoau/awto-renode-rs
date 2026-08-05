@@ -1,9 +1,11 @@
 # Decisions
 
-PLAN.md holds the four declared deviations D1–D4. This directory holds decisions
-that are **not** one of those four but still bind the whole program — and, until
-PLAN.md is reconciled, the record of where PLAN.md and the implementation
-disagree.
+PLAN.md holds the four whole-program decisions — shared objects are
+reference-counted and never freed; a peripheral's register bits live in one flat
+array; one thread per emulator; recoverable errors become return values. This
+directory holds decisions that are **not** one of those four but still bind the
+whole program — and, until PLAN.md is reconciled, the record of where PLAN.md and
+the implementation disagree.
 
 Rules, in the order they matter:
 
@@ -23,9 +25,8 @@ Rules, in the order they matter:
 
 The rule from CLAUDE.md governs everything here:
 
-> The declared deviations are whole-program decisions; do not make a per-file
-> choice that contradicts one, and do not silently revisit one — reopen the
-> decision issue.
+> These are whole-program decisions; do not make a per-file choice that
+> contradicts one, and do not silently revisit one — reopen the decision.
 
 It is in this repo because it was broken: inheritance was implemented as
 flattening and argued for as though it were a fresh decision, when PLAN.md line
@@ -39,3 +40,4 @@ flattening and argued for as though it were a fresh decision, when PLAN.md line
 | — | [read the C# beside the Rust, one peripheral per session](audit-cadence.md) | taken 2026-08-02 |
 | — | [define a build target: the floor that runs, and a named Renode Robot test as its acceptance criterion](the-floor-that-runs.md) | taken 2026-08-03 |
 | — | [logging: `Logger.*Log` maps to Rust's `log` crate facade](logging-facade.md) | taken 2026-07-31, **backfilled** 2026-08-03 |
+| — | [C# and Renode are two problems, and mixing them is why this is slow](csharp-and-renode-are-two-problems.md) | **proposed** 2026-08-05 |
