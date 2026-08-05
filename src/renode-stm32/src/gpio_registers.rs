@@ -10,22 +10,15 @@
 //!   - AlternateFunctionHigh: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - AlternateFunctionLow: callback for bit 0 reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - BaseGPIOPort..ctor `BaseGPIOPort(IMachine, int)`: a base constructor, run by C# before the derived body and NOT inlined here -- inlining it means substituting the derived type's arguments for its parameters, so every field only this one assigns stays at Default
-//!   - BitReset: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - BitReset: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
-//!   - BitSet: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - BitSet: callback for bit 16: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - BitSet: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
+//!   - BitReset: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - BitSet: callback for bit 0 needs peer method(s) not yet emitted: write_state
+//!   - BitSet: callback for bit 16 needs peer method(s) not yet emitted: write_state
 //!   - ChangeMode: withheld, reaches state this peripheral does not have: st.alternate_function_outputs
 //!   - GetLocalReceiver: withheld, return type `Antmicro.Renode.Core.IGPIOReceiver` has no Rust mapping
-//!   - GetSetConnectionBits: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - InputData: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - InputData: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - Mode: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.mode[..]
 //!   - Mode: callback for bit 0 needs peer method(s) not yet emitted: change_mode
 //!   - OnGPIO: withheld, reaches state this peripheral does not have: st.irq
 //!   - OutputData: callback for bit 0 needs peer method(s) not yet emitted: write_state
-//!   - OutputData: callback for bit 0: withheld, cannot emit expr:StaticInvocation:BitHelper.GetValueFromBitsArray
-//!   - OutputData: static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - OutputSpeed: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.output_speed[..]
 //!   - PullUpPullDown: callback for bit 0 indexes a collection nothing sizes, so it would PANIC on the first read: st.pull_up_pull_down[..]
 //!   - Register: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
@@ -48,11 +41,11 @@
 //!   - Unregister: parameter `peripheral` has no Rust mapping for `Antmicro.Renode.Core.IGPIOSender`
 //!   - WritePin: withheld, reaches state this peripheral does not have: st.irq
 //!   - calls base-class method `Reset` on `BaseGPIOPort`, which is not translated
+//!   - get_set_connection_bits: withheld, calls withheld method(s): connections
 //!   - state field `Connections`: needs trait `IGPIO` (D1 maps the field; the trait is issue #41). IGPIO declares 11 members, the corpus calls 5
 //!   - state field `alternateFunctionOutputs`: reference-typed, so the object-graph rule maps it to `Vec<Gc<GPIOAlternateFunction>>`; blocked: `GPIOAlternateFunction` has no emitted Rust type yet, so there is nothing to point at
 //!   - state field `invertedAFPins`: no Rust mapping for `System.Collections.Generic.HashSet<Antmicro.Renode.Peripherals.GPIOPort.STM32_GPIOPort.InvertedAFPin>`
 //!   - state field `machine`: needs trait `IMachine` (D1 maps the field; the trait is issue #41). IMachine declares 112 members, the corpus calls 38
-//!   - static call `BitHelper.GetValueFromBitsArray` has no Rust mapping
 //!   - static call `BitHelper.GetValue` has no Rust mapping
 //!   - write_state: withheld, calls withheld method(s): write_pin
 //!
@@ -210,6 +203,17 @@ pub fn write_double_word(bank: &Bank<State>, st: &mut State, offset: i64, value:
     bank.write(offset as u64, value as u64, st);
 }
 
+// Callbacks for computed fields. C# writes these as lambdas capturing
+// `this`; a closure cannot live inside the object it borrows, so each
+// becomes a free fn over (bank, state). See rulesdb/rules/.
+fn input_data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
+    return (bithelper::get_value_from_bits_array(st.state) as u64);
+}
+
+fn output_data_0_provider(bank: &Bank<State>, st: &mut State, _idx: usize, _current: u64) -> u64 {
+    return (bithelper::get_value_from_bits_array(st.state) as u64);
+}
+
 /// C# `DefineRegisters()`, field for field.
 pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
     bank.define(reg::MODE, 0)
@@ -245,12 +249,12 @@ pub fn define_registers(bank: &mut Bank<State>, f: &mut Fields) {
         .done();
 
     bank.define(reg::INPUT_DATA, 0)
-        .with_value_cb(0, 16, FieldMode::READ, None, None)
+        .with_value_cb(0, 16, FieldMode::READ, Some(input_data_0_provider), None)
         .with_reserved(16, 16)
         .done();
 
     bank.define(reg::OUTPUT_DATA, 0)
-        .with_value_cb(0, 16, FieldMode::READ_WRITE, None, None)
+        .with_value_cb(0, 16, FieldMode::READ_WRITE, Some(output_data_0_provider), None)
         .with_reserved(16, 16)
         .done();
 

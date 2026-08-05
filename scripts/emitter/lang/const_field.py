@@ -25,10 +25,11 @@ from emitter import core
 def constant_field(em, oid):
     """Declines unless the reference is to a `const` field of a class."""
     row = em.con.execute(
-        "SELECT symbol, const_value FROM operation WHERE id=?", (oid,)).fetchone()
+        "SELECT symbol, const_value, type FROM operation WHERE id=?",
+        (oid,)).fetchone()
     if not row:
         return None
-    symbol, const = row
+    symbol, const, rtype = row
     if not symbol or const is None:
         return None
     spec = em.language.get("references", {}).get("ConstantField", {})
@@ -36,6 +37,13 @@ def constant_field(em, oid):
         return None
     if declaring_type_kind(em, symbol) != "class":
         return None
+    # `char`/`string` need the same quoting and control-character escaping as
+    # an ordinary literal (`emitter/lang/expressions.py`'s `literal()`) -- a
+    # bare `{value}` inserted an unquoted, unescaped ESC/BEL byte straight
+    # into the generated source, which is not a wrong value but a token
+    # rustc refuses to parse at all.
+    if rtype in ("char", "string"):
+        return em.literal(const, rtype)
     return spec["emit"].format(value=const)
 
 

@@ -241,6 +241,75 @@ def owners(con: sqlite3.Connection, rules_dir: Path | None = None,
                   owner_counts(con, rules_dir, name_filter, types).items())
 
 
+def combinator_provider_types(con: sqlite3.Connection,
+                              rules_dir: Path | None = None) -> set[str]:
+    """Declaring type names of the register DSL's own combinator providers.
+
+    These already have a home: a call into one of them is recognised by
+    `RegisterDsl.combinator` before the generic Invocation dispatch ever runs,
+    so giving them their own utility module too would either duplicate that
+    recognition or emit the wrong thing for the (separate, narrower) calls it
+    does not yet recognise -- a register_dsl.py coverage gap, not a missing
+    module."""
+    quiet = logging.getLogger("register_owners.quiet")
+    quiet.handlers.clear()
+    quiet.addHandler(logging.NullHandler())
+    from emit import Emitter
+    em = Emitter(con, quiet, rules_dir)
+    names = set()
+    for prov in em.project.get("combinator_providers", {}).get("providers", []):
+        marker = prov.get("symbol_contains", "")
+        leaf = marker.rstrip(".").rsplit(".", 1)[-1]
+        names.add(leaf.split("<")[0])
+    return names
+
+
+def utility_owners(con: sqlite3.Connection, rules_dir: Path | None = None,
+                   min_calls: int = 3) -> list[str]:
+    """Pure-static utility types worth their own emitted free-function module.
+
+    A type qualifies by CONTENT, the same principle `owners()` above uses for
+    register-defining members: every bodied method it has is static (so it
+    has no instance state a Rust module could not hold anyway), it is not one
+    of the register DSL's own combinator providers (`combinator_provider_types`
+    above), and it is actually called somewhere in the corpus at least
+    `min_calls` times -- the same instances-before-trust threshold used
+    elsewhere in this project (`min_instances_required` in the rules data),
+    so a helper nobody calls does not turn into a module nobody needed.
+    """
+    static_types = {r[0] for r in con.execute("""
+        SELECT ty.name FROM type ty
+        WHERE ty.kind = 'class'
+          AND EXISTS (
+              SELECT 1 FROM member mb JOIN method m ON m.member_id = mb.id
+              WHERE mb.type_id = ty.id AND mb.is_static = 1 AND m.has_body = 1)
+          AND NOT EXISTS (
+              SELECT 1 FROM member mb JOIN method m ON m.member_id = mb.id
+              WHERE mb.type_id = ty.id AND mb.is_static = 0 AND m.has_body = 1)
+        """).fetchall()}
+    if not static_types:
+        return []
+    static_types -= combinator_provider_types(con, rules_dir)
+    if not static_types:
+        return []
+    # A handful of static extension classes (BasicBytePeripheralExtensions and
+    # its Word/DoubleWord siblings, PixelFormatExtensions, ...) ALSO have a
+    # `Define`-shaped method `owners()` above selects them for -- they build a
+    # register map as a generic helper. `owners()` already emits that type as
+    # a peripheral module; a second, same-named utility module for it would
+    # be a duplicate `pub mod` in the compiled crate, not a second file.
+    static_types -= {t for t, _m in owners(con, rules_dir)}
+    if not static_types:
+        return []
+    called = {r[0]: r[1] for r in con.execute("""
+        SELECT owner.name, COUNT(*) FROM operation o
+        JOIN member callee ON callee.key = o.symbol
+        JOIN type owner ON owner.id = callee.type_id
+        WHERE o.kind = 'Invocation' AND callee.is_static = 1
+        GROUP BY owner.name""").fetchall()}
+    return sorted(t for t in static_types if called.get(t, 0) >= min_calls)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="rulesdb/patterns.db")

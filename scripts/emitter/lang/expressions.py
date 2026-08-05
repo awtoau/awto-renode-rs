@@ -176,11 +176,26 @@ class Expressions:
             return const.lower()
         if rtype == "string":
             escaped = const.replace("\\", "\\\\").replace('"', '\\"')
+            # A C# string constant can hold a raw control character (ESC,
+            # BEL, ...) that Roslyn already folded from `"\x1b"` into the
+            # real byte. Emitting that byte bare is not valid Rust source --
+            # rustc rejects an unescaped control character inside a string
+            # literal token, as opposed to a wrong-but-compiling value.
+            named = {"\n": "\\n", "\t": "\\t", "\r": "\\r"}
+            escaped = "".join(
+                named.get(c, c if c.isprintable() else f"\\u{{{ord(c):x}}}")
+                for c in escaped)
             # C# composite formatting is not Rust format syntax, and passing it
             # through is a compile ERROR rather than a wrong string.
             return f'"{self.csharp_format(escaped)}"'
         if rtype == "char":
-            return f"'{const}'"
+            named = {"\n": "\\n", "\t": "\\t", "\r": "\\r",
+                     "'": "\\'", "\\": "\\\\"}
+            if const in named:
+                return f"'{named[const]}'"
+            if const.isprintable():
+                return f"'{const}'"
+            return f"'\\u{{{ord(const):x}}}'"
         if rtype in ("double", "float") and "." not in const and "e" not in const.lower():
             # `16.0` arrives from Roslyn as the constant 16; emitting it bare
             # turns an f64 division into integer division and silently changes

@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-04T09:33:43+10:00 from `2a9980d` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-06T00:20:15+10:00 from `c704197` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -56,25 +56,25 @@ averaged 1.87 validation instances each.
 | `rulesdb/rules/constructor.json` | 8,226 bytes |
 | `rulesdb/rules/object_graph.json` | 7,310 bytes |
 
-**What the converter cannot yet emit** (26,084 gaps over 601 types, 601 emitted, 0 converter crash(es) — not a correctness claim, see [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); regenerate with `python3 scripts/analysis/gap_census.py`):
+**What the converter cannot yet emit** (27,889 gaps over 601 types, 601 emitted, 0 converter crash(es) — not a correctness claim, see [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md); regenerate with `python3 scripts/analysis/gap_census.py`):
 
 | gap category | count | share |
 |---|---:|---:|
-| missing state (cascade) | 3,732 | 14.3% |
-| constructor: statement not an initialiser | 3,674 | 14.1% |
-| other | 3,576 | 13.7% |
-| unhandled expression kind | 1,957 | 7.5% |
-| unmapped return type | 1,877 | 7.2% |
-| unmapped parameter type | 1,663 | 6.4% |
-| withheld dependency (cascade) | 1,338 | 5.1% |
-| missing peer method (cascade) | 1,320 | 5.1% |
-| object graph: target not emitted | 1,048 | 4.0% |
-| exceptions | 712 | 2.7% |
-| unmapped state field type | 669 | 2.6% |
-| callback with no rule | 627 | 2.4% |
-| non-constant field placement | 509 | 2.0% |
-| withheld: gap marker in body | 487 | 1.9% |
-| constructor: nothing to initialise | 466 | 1.8% |
+| missing state (cascade) | 5,077 | 18.2% |
+| constructor: statement not an initialiser | 3,674 | 13.2% |
+| other | 3,636 | 13.0% |
+| unhandled expression kind | 1,956 | 7.0% |
+| unmapped return type | 1,877 | 6.7% |
+| unmapped parameter type | 1,663 | 6.0% |
+| missing peer method (cascade) | 1,527 | 5.5% |
+| withheld dependency (cascade) | 1,338 | 4.8% |
+| object graph: target not emitted | 1,048 | 3.8% |
+| exceptions | 743 | 2.7% |
+| callback with no rule | 688 | 2.5% |
+| unmapped state field type | 669 | 2.4% |
+| non-constant field placement | 549 | 2.0% |
+| withheld: gap marker in body | 487 | 1.7% |
+| constructor: nothing to initialise | 466 | 1.7% |
 
 Top root causes (cascades excluded):
 
@@ -84,7 +84,7 @@ Top root causes (cascades excluded):
 | type  DoubleWordRegister | 526 |
 | construct  Throw | 446 |
 | construct  DefaultValue | 398 |
-| construct  DeclarationExpression | 348 |
+| construct  DeclarationExpression | 379 |
 | type  decimal | 298 |
 | construct  ArrayCreation | 293 |
 | type  object | 205 |
@@ -236,7 +236,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 
 ## Issues
 
-59 open, 9 closed, 68 total. Full list: [github.com/awtoau/awto-renode-rs/issues](https://github.com/awtoau/awto-renode-rs/issues).
+63 open, 9 closed, 72 total. Full list: [github.com/awtoau/awto-renode-rs/issues](https://github.com/awtoau/awto-renode-rs/issues).
 
 | phase | open | closed |
 |---|---:|---:|
@@ -248,7 +248,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | phase-5 | 7 | 0 |
 | phase-6 | 2 | 0 |
 | phase-7 | 3 | 0 |
-| unphased | 25 | 9 |
+| unphased | 29 | 9 |
 
 **By label** (an issue may carry more than one; counts are not additive to the total above):
 
@@ -257,14 +257,14 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | `P0` | 1 — [#61](https://github.com/awtoau/awto-renode-rs/issues/61) |
 | `blocked-decision` | 3 — [#38](https://github.com/awtoau/awto-renode-rs/issues/38), [#39](https://github.com/awtoau/awto-renode-rs/issues/39), [#41](https://github.com/awtoau/awto-renode-rs/issues/41) |
 | `blocked-on-split` | 5 — [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), [#50](https://github.com/awtoau/awto-renode-rs/issues/50) |
-| `bug` | 1 — [#64](https://github.com/awtoau/awto-renode-rs/issues/64) |
+| `bug` | 2 — [#64](https://github.com/awtoau/awto-renode-rs/issues/64), [#69](https://github.com/awtoau/awto-renode-rs/issues/69) |
 | `code` | 8 — [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), [#50](https://github.com/awtoau/awto-renode-rs/issues/50), [#54](https://github.com/awtoau/awto-renode-rs/issues/54), [#55](https://github.com/awtoau/awto-renode-rs/issues/55), [#63](https://github.com/awtoau/awto-renode-rs/issues/63) |
 | `decision` | 10 — [#8](https://github.com/awtoau/awto-renode-rs/issues/8), [#9](https://github.com/awtoau/awto-renode-rs/issues/9), [#10](https://github.com/awtoau/awto-renode-rs/issues/10), [#29](https://github.com/awtoau/awto-renode-rs/issues/29), [#50](https://github.com/awtoau/awto-renode-rs/issues/50), [#51](https://github.com/awtoau/awto-renode-rs/issues/51), [#52](https://github.com/awtoau/awto-renode-rs/issues/52), [#56](https://github.com/awtoau/awto-renode-rs/issues/56), [#57](https://github.com/awtoau/awto-renode-rs/issues/57), [#60](https://github.com/awtoau/awto-renode-rs/issues/60) |
 | `deferred` | 2 — [#4](https://github.com/awtoau/awto-renode-rs/issues/4), [#5](https://github.com/awtoau/awto-renode-rs/issues/5) |
 | `epic` | 1 — [#1](https://github.com/awtoau/awto-renode-rs/issues/1) |
-| `frontend` | 3 — [#15](https://github.com/awtoau/awto-renode-rs/issues/15), [#30](https://github.com/awtoau/awto-renode-rs/issues/30), [#33](https://github.com/awtoau/awto-renode-rs/issues/33) |
-| `gate` | 6 — [#3](https://github.com/awtoau/awto-renode-rs/issues/3), [#14](https://github.com/awtoau/awto-renode-rs/issues/14), [#16](https://github.com/awtoau/awto-renode-rs/issues/16), [#32](https://github.com/awtoau/awto-renode-rs/issues/32), [#37](https://github.com/awtoau/awto-renode-rs/issues/37), [#53](https://github.com/awtoau/awto-renode-rs/issues/53) |
-| `oracle` | 9 — [#2](https://github.com/awtoau/awto-renode-rs/issues/2), [#6](https://github.com/awtoau/awto-renode-rs/issues/6), [#23](https://github.com/awtoau/awto-renode-rs/issues/23), [#24](https://github.com/awtoau/awto-renode-rs/issues/24), [#25](https://github.com/awtoau/awto-renode-rs/issues/25), [#34](https://github.com/awtoau/awto-renode-rs/issues/34), [#44](https://github.com/awtoau/awto-renode-rs/issues/44), [#45](https://github.com/awtoau/awto-renode-rs/issues/45), [#52](https://github.com/awtoau/awto-renode-rs/issues/52) |
+| `frontend` | 4 — [#15](https://github.com/awtoau/awto-renode-rs/issues/15), [#30](https://github.com/awtoau/awto-renode-rs/issues/30), [#33](https://github.com/awtoau/awto-renode-rs/issues/33), [#70](https://github.com/awtoau/awto-renode-rs/issues/70) |
+| `gate` | 7 — [#3](https://github.com/awtoau/awto-renode-rs/issues/3), [#14](https://github.com/awtoau/awto-renode-rs/issues/14), [#16](https://github.com/awtoau/awto-renode-rs/issues/16), [#32](https://github.com/awtoau/awto-renode-rs/issues/32), [#37](https://github.com/awtoau/awto-renode-rs/issues/37), [#53](https://github.com/awtoau/awto-renode-rs/issues/53), [#72](https://github.com/awtoau/awto-renode-rs/issues/72) |
+| `oracle` | 10 — [#2](https://github.com/awtoau/awto-renode-rs/issues/2), [#6](https://github.com/awtoau/awto-renode-rs/issues/6), [#23](https://github.com/awtoau/awto-renode-rs/issues/23), [#24](https://github.com/awtoau/awto-renode-rs/issues/24), [#25](https://github.com/awtoau/awto-renode-rs/issues/25), [#34](https://github.com/awtoau/awto-renode-rs/issues/34), [#44](https://github.com/awtoau/awto-renode-rs/issues/44), [#45](https://github.com/awtoau/awto-renode-rs/issues/45), [#52](https://github.com/awtoau/awto-renode-rs/issues/52), [#72](https://github.com/awtoau/awto-renode-rs/issues/72) |
 | `perf` | 3 — [#3](https://github.com/awtoau/awto-renode-rs/issues/3), [#33](https://github.com/awtoau/awto-renode-rs/issues/33), [#36](https://github.com/awtoau/awto-renode-rs/issues/36) |
 | `peripheral` | 3 — [#13](https://github.com/awtoau/awto-renode-rs/issues/13), [#21](https://github.com/awtoau/awto-renode-rs/issues/21), [#22](https://github.com/awtoau/awto-renode-rs/issues/22) |
 | `phase-0` | 8 — [#2](https://github.com/awtoau/awto-renode-rs/issues/2), [#3](https://github.com/awtoau/awto-renode-rs/issues/3), [#6](https://github.com/awtoau/awto-renode-rs/issues/6), [#7](https://github.com/awtoau/awto-renode-rs/issues/7), [#8](https://github.com/awtoau/awto-renode-rs/issues/8), [#9](https://github.com/awtoau/awto-renode-rs/issues/9), [#10](https://github.com/awtoau/awto-renode-rs/issues/10), [#11](https://github.com/awtoau/awto-renode-rs/issues/11) |
@@ -276,9 +276,9 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | `phase-6` | 2 — [#25](https://github.com/awtoau/awto-renode-rs/issues/25), [#26](https://github.com/awtoau/awto-renode-rs/issues/26) |
 | `phase-7` | 3 — [#27](https://github.com/awtoau/awto-renode-rs/issues/27), [#28](https://github.com/awtoau/awto-renode-rs/issues/28), [#29](https://github.com/awtoau/awto-renode-rs/issues/29) |
 | `research` | 11 — [#4](https://github.com/awtoau/awto-renode-rs/issues/4), [#5](https://github.com/awtoau/awto-renode-rs/issues/5), [#38](https://github.com/awtoau/awto-renode-rs/issues/38), [#39](https://github.com/awtoau/awto-renode-rs/issues/39), [#40](https://github.com/awtoau/awto-renode-rs/issues/40), [#41](https://github.com/awtoau/awto-renode-rs/issues/41), [#42](https://github.com/awtoau/awto-renode-rs/issues/42), [#43](https://github.com/awtoau/awto-renode-rs/issues/43), [#44](https://github.com/awtoau/awto-renode-rs/issues/44), [#45](https://github.com/awtoau/awto-renode-rs/issues/45), [#59](https://github.com/awtoau/awto-renode-rs/issues/59) |
-| `rules` | 11 — [#12](https://github.com/awtoau/awto-renode-rs/issues/12), [#13](https://github.com/awtoau/awto-renode-rs/issues/13), [#16](https://github.com/awtoau/awto-renode-rs/issues/16), [#17](https://github.com/awtoau/awto-renode-rs/issues/17), [#30](https://github.com/awtoau/awto-renode-rs/issues/30), [#31](https://github.com/awtoau/awto-renode-rs/issues/31), [#32](https://github.com/awtoau/awto-renode-rs/issues/32), [#35](https://github.com/awtoau/awto-renode-rs/issues/35), [#36](https://github.com/awtoau/awto-renode-rs/issues/36), [#37](https://github.com/awtoau/awto-renode-rs/issues/37), [#51](https://github.com/awtoau/awto-renode-rs/issues/51) |
-| `tooling` | 1 — [#61](https://github.com/awtoau/awto-renode-rs/issues/61) |
-| `transpiler` | 25 — [#38](https://github.com/awtoau/awto-renode-rs/issues/38), [#39](https://github.com/awtoau/awto-renode-rs/issues/39), [#40](https://github.com/awtoau/awto-renode-rs/issues/40), [#41](https://github.com/awtoau/awto-renode-rs/issues/41), [#42](https://github.com/awtoau/awto-renode-rs/issues/42), [#43](https://github.com/awtoau/awto-renode-rs/issues/43), [#44](https://github.com/awtoau/awto-renode-rs/issues/44), [#45](https://github.com/awtoau/awto-renode-rs/issues/45), [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), +13 more |
+| `rules` | 12 — [#12](https://github.com/awtoau/awto-renode-rs/issues/12), [#13](https://github.com/awtoau/awto-renode-rs/issues/13), [#16](https://github.com/awtoau/awto-renode-rs/issues/16), [#17](https://github.com/awtoau/awto-renode-rs/issues/17), [#30](https://github.com/awtoau/awto-renode-rs/issues/30), [#31](https://github.com/awtoau/awto-renode-rs/issues/31), [#32](https://github.com/awtoau/awto-renode-rs/issues/32), [#35](https://github.com/awtoau/awto-renode-rs/issues/35), [#36](https://github.com/awtoau/awto-renode-rs/issues/36), [#37](https://github.com/awtoau/awto-renode-rs/issues/37), [#51](https://github.com/awtoau/awto-renode-rs/issues/51), [#71](https://github.com/awtoau/awto-renode-rs/issues/71) |
+| `tooling` | 3 — [#61](https://github.com/awtoau/awto-renode-rs/issues/61), [#69](https://github.com/awtoau/awto-renode-rs/issues/69), [#71](https://github.com/awtoau/awto-renode-rs/issues/71) |
+| `transpiler` | 28 — [#38](https://github.com/awtoau/awto-renode-rs/issues/38), [#39](https://github.com/awtoau/awto-renode-rs/issues/39), [#40](https://github.com/awtoau/awto-renode-rs/issues/40), [#41](https://github.com/awtoau/awto-renode-rs/issues/41), [#42](https://github.com/awtoau/awto-renode-rs/issues/42), [#43](https://github.com/awtoau/awto-renode-rs/issues/43), [#44](https://github.com/awtoau/awto-renode-rs/issues/44), [#45](https://github.com/awtoau/awto-renode-rs/issues/45), [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), +16 more |
 
 **Gate-labeled**:
 
@@ -288,5 +288,6 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 - [#32](https://github.com/awtoau/awto-renode-rs/issues/32) (OPEN): R3 — Fingerprint, cluster, and GATE the collapse
 - [#37](https://github.com/awtoau/awto-renode-rs/issues/37) (OPEN): R3b — Revisit the coverage metric: bare leaves are not rule failures
 - [#53](https://github.com/awtoau/awto-renode-rs/issues/53) (OPEN): Instrumentation: a path that emits nothing must say why -- six silent failures in one session
+- [#72](https://github.com/awtoau/awto-renode-rs/issues/72) (OPEN): Conformance harness: run the C# tests and the translated Rust, compare
 
 

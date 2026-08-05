@@ -85,7 +85,11 @@ def snake(name: str) -> str:
     if result in _RUST_KEYWORDS:
         return f"r#{result}"
     return result
-    return result
+
+
+def module_name(type_name: str) -> str:
+    """The crate module a C# type is emitted as. One definition, used by all."""
+    return "".join(c if c.isalnum() else "_" for c in type_name).lower()
 
 
 # kind -> [(priority, handler)]. Lower priority number wins; plugins register

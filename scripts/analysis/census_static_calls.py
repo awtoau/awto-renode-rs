@@ -5,7 +5,7 @@ kind, which lumps every unmapped static call under one "StaticInvocation"
 bucket. This ranks the same gaps by the actual (declaring type, method) pair,
 which is what says which specific static helper to map next.
 
-Run: python3 scripts/census_static_calls.py
+Run: python3 scripts/analysis/census_static_calls.py
 """
 import collections
 import re
@@ -21,7 +21,7 @@ PATTERN = re.compile(r"static call `([^`]+)` has no Rust mapping")
 
 
 def main():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     db = root / "rulesdb" / "patterns.db"
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = owners(con)

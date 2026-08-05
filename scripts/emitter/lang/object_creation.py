@@ -24,4 +24,8 @@ def object_creation(em, oid):
         return None
     args = [c[0] for c in em.children(oid) if c[1] == "Argument"]
     ty = symbol.split("(")[0].split(".")[-1]
+    # `new List<T>()` named its own C# type literally -- `List::new(...)`,
+    # which does not exist in Rust. The BCL correspondence table already maps
+    # `List` -> `Vec` for a field's TYPE; a constructor never consulted it.
+    ty = em.language.get("stdlib", {}).get("types", {}).get(ty, ty)
     return f"{ty}::new({', '.join(em.emit_expr(a) for a in args)})"

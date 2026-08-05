@@ -179,7 +179,10 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self.log = log
         self.unhandled: dict[str, int] = {}
         self.gaps: list[str] = []
-        self.rules = load_rules(rules_dir or repo_root() / "rulesdb" / "rules")
+        self._rules_dir = rules_dir or repo_root() / "rulesdb" / "rules"
+        self.rules = load_rules(self._rules_dir)
+        self._utility_owner_names: set[str] | None = None
+        self._utility_fn_cache: dict[str, set[str] | None] = {}
         self._flag_fields: set[str] = set()
         self._callbacks: list[str] = []
         self._emitted_fns: set[str] = set()
@@ -393,6 +396,35 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
             line = "".join(out_chars)
             line = line.replace("self.", "st.")
             rewritten.append(line)
+        return rewritten
+
+    def rewrite_static(self, body: list[str]) -> list[str]:
+        """Redirect a same-type peer call for a PURE STATIC utility method.
+
+        No `this` was ever bound -- there is no (bank, st) to thread through,
+        so a peer call becomes a bare free-fn call instead of `rewrite_this`'s
+        `{name}(bank, st, ...)`. Shares its balanced-paren scan for the same
+        reason `rewrite_this` needs one: a nested call in the arguments
+        (`self.foo(bar(x))`) defeats a flat regex.
+        """
+        rewritten: list[str] = []
+        for line in body:
+            out_chars, i = [], 0
+            while i < len(line):
+                m = re.match(r"self\.([a-z_][a-z0-9_]*)\(", line[i:])
+                if not m:
+                    out_chars.append(line[i])
+                    i += 1
+                    continue
+                j = i + m.end()
+                depth, start = 1, j
+                while j < len(line) and depth:
+                    depth += (line[j] == "(") - (line[j] == ")")
+                    j += 1
+                inner = line[start:j - 1].strip()
+                out_chars.append(f"{m.group(1)}({inner})")
+                i = j
+            rewritten.append("".join(out_chars))
         return rewritten
 
     def lambda_uses(self, oid: int) -> set[str]:
@@ -1095,11 +1127,17 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         return snake(method_name)
 
     @_core_must_explain
-    def emit_peripheral_method(self, type_name: str, method_name: str) -> list[str]:
+    def emit_peripheral_method(self, type_name: str, method_name: str,
+                              static: bool = False) -> list[str]:
         """A whole C# method as a free fn over (bank, st).
 
         Distinct from emit_method, which walks a fluent register chain; this
-        emits an ordinary body, so a callback can call it."""
+        emits an ordinary body, so a callback can call it.
+
+        `static=True` emits a PURE utility function instead -- Renode's own
+        static helpers (BitHelper, Misc, ...) touch no peripheral state, so
+        there is no (bank, st) to bind and the fn takes only its C# parameters.
+        See `emit_utility_file`."""
         # Do not let a previously emitted method's ref/out context leak into a
         # method that returns early while resolving its signature.
         self._by_ref_params = set()
@@ -1145,7 +1183,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                     f"Rust mapping")
                 return []
 
-        extra = ""
+        params: list[str] = []
         by_ref: set[str] = set()
         for pname, ptype, is_out, is_ref in self.con.execute(
                 "SELECT name, type, is_out, is_ref FROM parameter "
@@ -1163,7 +1201,8 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 rt = self.language.get("interface_traits", {}).get(
                     "by_ref", "&mut {inner}").format(inner=rt)
                 by_ref.add(pn)
-            extra += f", {pn}: {rt}"
+            params.append(f"{pn}: {rt}")
+        extra = (", " + ", ".join(params)) if (params and not static) else ", ".join(params)
 
         # ParameterReference needs to distinguish a C# value from the Rust
         # reference used to carry it.  This is method-local context, just like
@@ -1233,6 +1272,27 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                 f"{method_name}: withheld, body still contains a gap marker "
                 f"({marker[0][:60]})")
             return []
+        if static:
+            body = self.rewrite_static(body)
+            # A `readonly` (not `const`) static field is never folded by
+            # const_field.py, and there is no `self`/`st` here for it to bind
+            # to -- `self.max_value` compiles for no receiver that exists.
+            # `accessed_mutable_statics` does not catch this: it deliberately
+            # treats `readonly` as safe initialization-only storage, which is
+            # true for an ordinary instance method (rewrite_this sends it to
+            # `st.field`, and the unknown-state check below withholds it) but
+            # this method has no `st` to send it to at all.
+            leftover = sorted({m for m in re.findall(
+                r"\bself\.([a-z_][a-z0-9_]*)", "\n".join(body))})
+            if leftover:
+                self.gaps.append(
+                    f"{method_name}: withheld, references static field(s) with "
+                    f"no Rust storage: {', '.join(leftover)}")
+                return []
+            decl = self.language.get("static_methods", {}).get(
+                "decl", "pub fn {name}({extra}) -> {ret}")
+            return [decl.format(name=self.fn_name(method_name), extra=extra, ret=ret) + " {",
+                    *body, "}"]
         body = self.rewrite_this(body)
         unknown = sorted({m for m in re.findall(
             r"\bst\.([a-z_][a-z0-9_]*)", "\n".join(body))
@@ -1262,6 +1322,112 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                         "fn {name}(bank: &Bank<State>, st: &mut State{extra}) -> {ret}")
         return [decl.format(name=self.fn_name(method_name), extra=extra, ret=ret) + " {",
                 *body, "}"]
+
+    def emit_utility_file(self, type_name: str) -> str:
+        """A module of free fns for a pure-static C# utility class.
+
+        BitHelper, Misc, DebugHelper and their kind take arguments and return
+        a value; they never touch a peripheral's registers, so this has no
+        Bank/State/Fields at all -- the whole file is `emit_peripheral_method`
+        run with `static=True` for every bodied static method the type
+        declares. A caller elsewhere resolves to these functions directly; see
+        the cross-module branch in emitter/lang/invocation.py.
+        """
+        self.take_type_warnings()
+        self._sub_fields = {}
+        self._state_names = set()
+        self._state_types = {}
+        self._sized_state = set()
+        self._offset_enum_names = set()
+        self._enum_names = self.enum_names(type_name)
+        self._enum_rust_names = {n: n for n in self._enum_names}
+        self._current_type = type_name
+        self._callbacks = []
+        self._emitted_fns = set()
+        self.gaps = []
+
+        names = [r[0] for r in self.con.execute(
+            "SELECT mb.name FROM member mb JOIN method m ON m.member_id=mb.id "
+            "JOIN type t ON t.id=mb.type_id WHERE t.name=? AND mb.kind='method' "
+            "AND m.has_body=1 AND mb.is_static=1 ORDER BY mb.name", (type_name,))]
+        own_fns = {self.fn_name(n) for n in names}
+
+        emitted: dict[str, str] = {}
+        method_gaps: list[str] = []
+        for nm in names:
+            self.gaps = []
+            self._emitted_fns = set(emitted)
+            lines = self.emit_peripheral_method(type_name, nm, static=True)
+            method_gaps.extend(self.gaps)
+            if lines:
+                emitted[self.fn_name(nm)] = "\n".join(lines)
+
+        # Same withheld-peer fixpoint as emit_file, but a peer call here is a
+        # bare `name(args)` -- there is no `(bank, st` marker to key off, so a
+        # call is a peer one exactly when its name is one of this type's OWN
+        # functions.
+        while True:
+            casualties = {n for n, src in emitted.items()
+                          if any(re.search(rf"(?<![\w.]){re.escape(c)}\(", src)
+                                 for c in own_fns if c not in emitted and c != n)}
+            if not casualties:
+                break
+            for n in sorted(casualties):
+                missing = sorted(
+                    c for c in own_fns
+                    if c not in emitted and c != n
+                    and re.search(rf"(?<![\w.]){re.escape(c)}\(", emitted[n]))
+                method_gaps.append(
+                    f"{n}: withheld, calls withheld method(s): {', '.join(missing)}")
+                del emitted[n]
+
+        gaps = sorted(set(method_gaps))
+        L: list[str] = []
+        a = L.append
+        a(f"//! Free functions for `{type_name}`, GENERATED from the corpus.")
+        a("//!")
+        a("//! Do not edit: `scripts/check_generated.py` fails the commit if this")
+        a("//! file differs from converter output. To change it, change the rules")
+        a("//! in `rulesdb/rules/` or the C# it is derived from.")
+        if gaps:
+            a("//!")
+            a("//! GAPS the converter reports rather than guessing:")
+            for g in gaps:
+                a(f"//!   - {g}")
+        a("")
+        for k in sorted(emitted):
+            a(emitted[k])
+            a("")
+        return "\n".join(L).rstrip() + "\n"
+
+    def utility_module_functions(self, type_name: str) -> set[str] | None:
+        """Fn names `type_name`'s utility module actually emits, or `None`.
+
+        `None` means `type_name` is not a recognised utility module at all --
+        the generic language-layer withhold in invocation.py is still correct
+        for it. A recognised module's OWN withheld methods (a `Throw`, a call
+        into a further-unresolved helper, ...) are not in the returned set
+        either, for the same reason: resolving a call to a function that did
+        not actually emit would reference a Rust item that does not exist.
+
+        Computed on a throwaway `Emitter` sharing this one's `con`/`rules_dir`
+        rather than on `self`, because `emit_utility_file` resets `self`'s own
+        in-progress state (`_state_names`, `_sub_fields`, ...) -- calling it on
+        `self` mid-emission of a DIFFERENT type would corrupt that emission.
+        """
+        if type_name in self._utility_fn_cache:
+            return self._utility_fn_cache[type_name]
+        if self._utility_owner_names is None:
+            from register_owners import utility_owners
+            self._utility_owner_names = set(utility_owners(self.con, self._rules_dir))
+        if type_name not in self._utility_owner_names:
+            self._utility_fn_cache[type_name] = None
+            return None
+        scratch = Emitter(self.con, self.log, self._rules_dir)
+        text = scratch.emit_utility_file(type_name)
+        fns = set(re.findall(r"(?m)^pub fn ([a-z_][a-z0-9_]*)\(", text))
+        self._utility_fn_cache[type_name] = fns
+        return fns
 
     def emit_method(self, type_name: str, method_name: str) -> list[str]:
         row = self.con.execute("""

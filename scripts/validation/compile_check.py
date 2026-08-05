@@ -81,6 +81,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 
 import emit_pool
+from emitter.core import module_name as _module_name
 
 
 def repo_root() -> Path:
@@ -94,7 +95,7 @@ CLEAN_SET = Path("docs") / "status" / "compile_clean_set.json"
 
 def module_name(type_name: str) -> str:
     """The crate module a C# type is emitted as. One definition, used by all."""
-    return "".join(c if c.isalnum() else "_" for c in type_name).lower()
+    return _module_name(type_name)
 
 
 def load_clean_set(root: Path, log: logging.Logger) -> set[str] | None:
@@ -225,6 +226,26 @@ def emit_all(root: Path, db: Path, log: logging.Logger,
         mod = module_name(r.name)
         (crate / "src" / f"{mod}.rs").write_text(r.text)
         mods.append((mod, len(r.text.splitlines())))
+
+    # Free-function utility modules (BitHelper, Misc, ...) a peripheral's
+    # cross-module calls resolve into (emitter/plugins/utility_calls.py).
+    # Always emitted, in both tiers: a working-set peripheral can still call
+    # into one, and skipping it here would leave that reference dangling in
+    # the fast tier's own crate.
+    from register_owners import utility_owners
+    from emit import Emitter
+    tu = time.monotonic()
+    quiet = logging.getLogger("compile_check.quiet")
+    if not quiet.handlers:
+        quiet.addHandler(logging.NullHandler())
+    for t in utility_owners(con):
+        em = Emitter(con, quiet)
+        text = em.emit_utility_file(t)
+        mod = module_name(t)
+        (crate / "src" / f"{mod}.rs").write_text(text)
+        mods.append((mod, len(text.splitlines())))
+    timing.info("emitted utility module(s) in %.1fs",
+               time.monotonic() - tu)
 
     (crate / "src" / "lib.rs").write_text(
         "//! Scratch crate: every module the converter can emit, compiled\n"
