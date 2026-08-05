@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-06T01:36:00+10:00 from `4362d4b` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-06T02:16:49+10:00 from `64dbbb2` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -10,7 +10,7 @@ averaged 1.87 validation instances each.
 
 | metric | value | target | status |
 |---|---:|---:|---|
-| **compile-clean modules (the gate)** | 617 | ratchet, may only grow | PASS |
+| **compile-clean modules (the gate)** | 658 | ratchet, may only grow | PASS |
 | platform floor (peripherals reachable end-to-end) | 48 / 65 | 65 | 74% |
 | modules clean *and* drivable | 298 / 687 | — | 43% |
 | oracle trace replay: peripherals at 0 divergence | 3 / 8 | 8 | partial |
@@ -99,7 +99,7 @@ Genuine stop points. A failed gate means stop, not retry.
 
 | gate | status | evidence |
 |---|---|---|
-| **two-tier compile gate** — modules with 0 rustc errors | 617 (ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md](docs/decisions/two-tier-compile-gate.md) |
+| **two-tier compile gate** — modules with 0 rustc errors | 658 (ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md](docs/decisions/two-tier-compile-gate.md) |
 | **the floor that runs** — peripherals reachable end-to-end | 48 / 65 | [docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md) |
 
 ### Historical (Phase 0/1)

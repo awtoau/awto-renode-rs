@@ -37,4 +37,12 @@ def conditional_access(em, oid):
     """Always claims, and always records a gap -- it never emits real code."""
     gap = em.language.get("statements", {}).get("ConditionalAccess", {})
     em.gaps.append("conditional access `?.` needs nullability analysis")
+    # The normalisation pass rewrites the common `x?.Foo();` shape to a
+    # guard before it ever reaches here (see module docstring), but not
+    # every statement-position `?.` matches that shape -- and reached from
+    # `stmt_expression.py`'s plain form, the marker is a bare statement
+    # (`/* GAP: ?. */;`), which is valid Rust. Only an expression-position
+    # one is not, so only that one counts as unhandled.
+    if not getattr(em, "_stmt_position", False):
+        em.unhandled["expr:ConditionalAccess"] = em.unhandled.get("expr:ConditionalAccess", 0) + 1
     return gap.get("emit", "/* GAP: ?. */")

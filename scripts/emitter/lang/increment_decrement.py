@@ -21,4 +21,8 @@ def increment_decrement(em, oid):
     em.gaps.append(
         f"{kind.lower()} in expression position: prefix/postfix "
         f"difference is observable there (see language rule `increment`)")
+    # This marker can land in a condition/index/scrutinee, where a comment is
+    # not a valid expression -- count it so the enclosing method is withheld
+    # rather than emitting invalid syntax.
+    em.unhandled[f"expr:{kind}"] = em.unhandled.get(f"expr:{kind}", 0) + 1
     return f"/* GAP: {kind} in expression position */"

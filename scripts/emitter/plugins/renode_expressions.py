@@ -161,6 +161,13 @@ class RenodeExpressions:
                 spec = self.project.get("peripheral_methods", {}).get("base_call", {})
                 self.gaps.append(spec.get("gap", "base call to {name}").format(
                     name=mname, type=decl))
+                # `base.Foo();` as a bare statement is valid Rust as a
+                # comment-statement; only an expression-position base call
+                # (a condition, index, scrutinee, ...) is not -- see the
+                # same `_stmt_position` check in invocation.py.
+                if not getattr(self, "_stmt_position", False):
+                    self.unhandled["expr:BaseClassCall"] = (
+                        self.unhandled.get("expr:BaseClassCall", 0) + 1)
                 return "/* GAP: base-class call */"
 
         return None
