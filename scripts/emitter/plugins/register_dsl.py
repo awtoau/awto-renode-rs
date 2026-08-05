@@ -982,7 +982,22 @@ class RegisterDsl:
             base, _b, _t = self._raw_offset(oid, form)
             value = self.const_eval(arg, self.local_consts(oid, env)) if arg else None
             if value is not None:
-                return self.offset_name(base, value) or base, value, None
+                named = self.offset_name(base, value)
+                if named is not None:
+                    return named, value, None
+                # No enum member names THIS iteration's discriminant: the
+                # loop computes an array slot at runtime
+                # (`Registers.ListRegister_0 + i`) and only slot 0 has its
+                # own name. Falling back to `base` unconditionally gave every
+                # iteration the SAME name -- one Rust constant and one set of
+                # provider/writer functions for what the C# declares as N
+                # distinct registers, so iterations 1..N-1 silently collided
+                # into iteration 0's address and iteration 0's function names
+                # collided with themselves N times (E0428). The environment
+                # IS what distinguishes one iteration from the next, so it
+                # disambiguates the name too.
+                suffix = "_".join(str(v) for _, v in sorted(env.items()))
+                return (f"{base}_{suffix}" if base else None), value, None
         return self._raw_offset(oid, form)
 
     def _raw_offset(self, oid: int, form: dict) -> tuple[str | None, int | None, str | None]:
@@ -1455,7 +1470,20 @@ class RegisterDsl:
         This previously had its OWN `.Define(` search, so when register discovery
         became rule-driven the layout found six registers and the offset module
         found none -- generating code that referenced constants it had not
-        emitted. One discovery path, used by both."""
+        emitted. One discovery path, used by both.
+
+        `emit_file` calls this BEFORE it sets `_current_type` for the file
+        being emitted, to compute the offset enum's name ahead of the
+        declarations that need it. `find_registers` names a loop-replicated
+        register through `offset_name`, which reads `_current_type` to scope
+        its enum lookup -- unset (or still the PREVIOUS file's), it found no
+        member for any iteration, so every one of them earned a name no C#
+        enum contains, this file's real offset enum was no longer a superset
+        of anything, and the whole `mod reg` list this function does not even
+        return -- the OTHER constants `emit_file` adds from the same enum --
+        silently emitted none. Restored after, so a nested call (a sub-block's
+        own `register_offsets`, mid-`emit_registers`) cannot leak its type into
+        the caller's."""
         row = self.con.execute("""
             SELECT m.member_id FROM method m
             JOIN member mb ON mb.id = m.member_id
@@ -1463,6 +1491,11 @@ class RegisterDsl:
             WHERE t.name = ? AND mb.name = ?""", (type_name, method_name)).fetchone()
         if not row:
             return []
-        seen = {name: off for name, off, *_rest in self.find_registers(row[0])
-                if name}
+        prev_type = self._current_type
+        self._current_type = type_name
+        try:
+            seen = {name: off for name, off, *_rest in self.find_registers(row[0])
+                    if name}
+        finally:
+            self._current_type = prev_type
         return sorted(seen.items(), key=lambda kv: kv[1])
