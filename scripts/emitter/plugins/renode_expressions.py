@@ -15,6 +15,8 @@ the language layer.
 
 from __future__ import annotations
 
+import json
+
 from emitter.core import snake
 from emitter.plugins.register_dsl import to_const
 
@@ -47,6 +49,28 @@ class RenodeExpressions:
             parts = symbol.split("(")[0].split(".")
             if len(parts) >= 2 and parts[-2] in self._offset_enum_names:
                 return f"reg::{to_const(parts[-1])}"
+        # A loop variable a lambda captured folds to this iteration's value,
+        # the same way a register-offset index already does (index_expr) --
+        # once the callback is a free fn the C# variable is gone, and only its
+        # per-iteration value ever meant anything here.
+        if kind == "LocalReference" and self._loop_env:
+            name = None
+            if detail:
+                try:
+                    name = json.loads(detail).get("local")
+                except json.JSONDecodeError:
+                    name = None
+            if not name and symbol:
+                name = symbol.split()[-1]
+            v = self._loop_env.get(name) if name else None
+            if isinstance(v, int):
+                return str(v)
+        # A call on a local bound to a lambda: see local_closure_body for why
+        # the generic Option-field template guesses wrong for this receiver.
+        if kind == "Invocation":
+            closure = self.local_closure_body(all_kids)
+            if closure is not None:
+                return closure
         # Project idioms first: they are more specific than the language rules.
         for rule in self.expressions:
             if rule["kind"] != kind:
