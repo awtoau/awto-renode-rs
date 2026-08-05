@@ -45,7 +45,7 @@ def repo_root() -> Path:
 ROOT = repo_root()
 sys.path.insert(0, str(ROOT / "scripts" / "core"))
 
-import emit  # noqa: E402
+import csharp_emitter as emit  # noqa: E402
 
 
 def rules_with_negatives(rules_dir: Path) -> list[dict]:

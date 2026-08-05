@@ -277,7 +277,7 @@ def probe_infrastructure(root: Path, db: Path,
             continue
         path, loc, members = row
         proc = subprocess.run(
-            [sys.executable, "scripts/core/emit.py", "--type", csharp,
+            [sys.executable, "scripts/core/csharp_emitter.py", "--type", csharp,
              "--method", method, "--file", "probe"],
             cwd=root, capture_output=True, text=True)
         if proc.returncode != 0:

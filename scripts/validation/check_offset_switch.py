@@ -38,7 +38,7 @@ ROOT = repo_root()
 sys.path.insert(0, str(ROOT / "scripts" / "core"))
 sys.path.insert(0, str(ROOT / "scripts" / "analysis"))
 
-import emit  # noqa: E402
+import csharp_emitter as emit  # noqa: E402
 from census_handrolled_registers import dsl_users, memory_mapped  # noqa: E402
 
 

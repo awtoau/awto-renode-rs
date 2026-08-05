@@ -2,7 +2,7 @@
 
 CORPUS LAYER. Everything here knows what a register, a bank, an offset enum and
 a fluent combinator chain are, so none of it is generic C#. It lived in
-`scripts/emit.py` beside the driver, which meant the boundary between "knows
+`scripts/core/csharp_emitter.py` beside the driver, which meant the boundary between "knows
 about Renode" and "orchestrates" was a convention rather than a file --
 `scripts/check_layering.py` can only enforce the boundary where the boundary is
 a directory.
@@ -164,7 +164,7 @@ class RegisterDsl:
         """A call on a local bound to a lambda, inlined at the call site.
 
         A register callback is emitted as a standalone top-level Rust fn, never
-        a Rust closure (`emit_lambda`'s "free fn" in `scripts/core/emit.py`), so
+        a Rust closure (`emit_lambda`'s "free fn" in `scripts/core/csharp_emitter.py`), so
         `Func<T> virtualInterrupt = () => ...; ... virtualInterrupt()` reaches
         the callback with nothing named `virtual_interrupt` in scope -- the
         local's DECLARATION is the C# closure, and invoking it is only ever

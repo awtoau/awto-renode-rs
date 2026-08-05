@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A C# construct the converter drops must produce a GAP. Four kinds, exactly.
 
-The project's own rule is that a path emitting nothing must say why. `emit.py`
+The project's own rule is that a path emitting nothing must say why. `csharp_emitter.py`
 enforces it for the paths it wraps in `core.must_explain`. This checks the
 paths it does not wrap, by cross-referencing the CORPUS against the EMITTED
 TEXT rather than asking the emitter what it thinks it did.
@@ -14,7 +14,7 @@ nothing. This covers four classes that are each ENUMERABLE FROM THE CORPUS and
 each individually decidable from the emitted text. A partial check that states
 its boundary beats a broad one that quietly misses:
 
-  1. CONSTRUCTORS. `member.kind='ctor'` with a body. `scripts/emit.py` contains
+  1. CONSTRUCTORS. `member.kind='ctor'` with a body. `scripts/core/csharp_emitter.py` contains
      no reference to `.ctor` at all -- its member query is `kind='method'` --
      and no gap anywhere mentions a constructor. `NVIC`'s ctor writes 16
      fields; the emitted `State` derives `Default`, so every one of them that
@@ -438,7 +438,7 @@ def self_test(log) -> int:
     # The real Emitter's name mapping, over the fixture. `fn_name` reads only
     # the rules, so the fixture connection is enough -- and using the real one
     # means the self-test exercises the same code path as the run.
-    from emit import Emitter
+    from csharp_emitter import Emitter
     fn_name = Emitter(_fixture(False), quiet).fn_name
 
     clean = check_module(_fixture(False), mod, bits_clean, mapped, [], quiet,
@@ -524,7 +524,7 @@ def main() -> int:
         return 1
 
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    from emit import Emitter
+    from csharp_emitter import Emitter
     quiet = logging.getLogger("quiet")
     quiet.handlers.clear()
     quiet.addHandler(logging.NullHandler())

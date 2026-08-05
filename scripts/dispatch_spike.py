@@ -556,7 +556,7 @@ def main() -> int:
              data["visibility"]["lines_that_would_change"])
 
     if not args.report:
-        import emit as _emit
+        import csharp_emitter as _emit
         quiet = logging.getLogger("dispatch_spike.emit")
         quiet.addHandler(logging.NullHandler())
         quiet.propagate = False

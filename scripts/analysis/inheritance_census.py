@@ -407,9 +407,9 @@ class Census:
         try:
             import logging as _logging
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
-            import emit as _emit
+            import csharp_emitter as _emit
         except Exception as exc:                      # noqa: BLE001
-            return dict(ran=False, why=f"could not import emit.py: {exc}")
+            return dict(ran=False, why=f"could not import csharp_emitter.py: {exc}")
         quiet = _logging.getLogger("inheritance_census.emit")
         quiet.addHandler(_logging.NullHandler())
         quiet.propagate = False

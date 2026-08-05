@@ -175,7 +175,7 @@ is not running, and running is not matching.
 
 > **The tier machinery described below does not run.** `rule`, `rule_instance`,
 > `rule_match`, `rule_negative`, `pattern_cluster` and `translation` are all **0
-> rows**. Hand-authored JSON rule files read directly by `scripts/core/emit.py`
+> rows**. Hand-authored JSON rule files read directly by `scripts/core/csharp_emitter.py`
 > replaced that pipeline. The triggers in `rulesdb/schema.sql` are real code that
 > currently guards nothing, and the two-tier guarantee is not in force. Kept here
 > as a design worth reviving or deleting on purpose — not as a description of

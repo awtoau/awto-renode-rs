@@ -15,19 +15,19 @@ A handful of top-level entry points (`dev.py`, `gates.py`, `regenerate.py`,
 don't fit one category and stay at `scripts/` directly. `dev.py describe`
 discovers commands from every one of these directories, so a script's kind on
 the CLI and its physical directory can differ (`check_generated.py` lives in
-`core/` because `emit.py` itself imports it, but is still a `validation` gate
+`core/` because `csharp_emitter.py` itself imports it, but is still a `validation` gate
 by kind).
 
 ## Entry point and converter machinery (`core/`)
 
 - `dev.py`: canonical command registry and workflow entry point.
-- `core/emit.py`, `core/emit_pool.py`: converter and deterministic process pool.
+- `core/csharp_emitter.py`, `core/emit_pool.py`: converter and deterministic process pool.
 - `rules.py`: rule-engine storage and promotion logic.
 - `core/register_owners.py`, `core/emitted_modules.py`: shared structural
   queries used by multiple checks and reports.
 - `core/parse_repl.py`: `.repl` parser, derives `docs/status/platform.json`.
 - `core/check_generated.py`: the `GENERATED` list and the byte-identical diff
-  check; lives in `core/` (not `validation/`) because `emit.py` imports it
+  check; lives in `core/` (not `validation/`) because `csharp_emitter.py` imports it
   directly.
 - `regenerate.py`: rewrites every converter-owned generated file.
 - `gates.py`: bounded-CPU validation orchestrator.

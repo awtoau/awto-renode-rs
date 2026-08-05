@@ -100,7 +100,7 @@ wrong code is invisible to every check of that kind.
    what makes the layer boundary mean something.
 
 3. **Corpus separation.** A second corpus needs its own database and an explicit
-   selection. Today `scripts/core/emit.py` picks its corpus with
+   selection. Today `scripts/core/csharp_emitter.py` picks its corpus with
    `SELECT id FROM corpus_run LIMIT 1`, correct only because exactly one row
    exists.
 

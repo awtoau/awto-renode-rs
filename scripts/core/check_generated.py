@@ -51,38 +51,38 @@ from pathlib import Path
 # byte-for-byte rather than by convention.
 GENERATED: list[tuple[str, list[str]]] = [
     ("src/renode-stm32/src/uart_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32_UART", "--method", "DefineRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32_UART", "--method", "DefineRegisters",
       "--file", "uart_registers"]),
     ("src/renode-stm32/src/gpio_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32_GPIOPort", "--method", "CreateRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32_GPIOPort", "--method", "CreateRegisters",
       "--file", "gpio_registers"]),
     ("src/renode-stm32/src/syscfg_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32_SYSCFG", "--method", "CreateRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32_SYSCFG", "--method", "CreateRegisters",
       "--file", "syscfg_registers"]),
     ("src/renode-stm32/src/exti_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32F4_EXTI", "--method", "DefineRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32F4_EXTI", "--method", "DefineRegisters",
       "--file", "exti_registers"]),
     ("src/renode-stm32/src/adc_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32_ADC", "--method", "DefineRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32_ADC", "--method", "DefineRegisters",
       "--file", "adc_registers"]),
     ("src/renode-stm32/src/dma_registers.rs",
-     ["scripts/core/emit.py", "--type", "STM32DMA", "--method", "DefineRegisters",
+     ["scripts/core/csharp_emitter.py", "--type", "STM32DMA", "--method", "DefineRegisters",
       "--file", "dma_registers"]),
     ("src/renode-stm32/src/can_registers.rs",
-     ["scripts/core/emit.py", "--type", "STMCAN", "--method",
+     ["scripts/core/csharp_emitter.py", "--type", "STMCAN", "--method",
       "AddressIsWithinFilterRegistersArea", "--file", "can_registers"]),
     # Not keyed on a type: the corpus decides which interfaces appear, and one
     # that cannot be expressed completely is withheld and named in the header.
     # A hand edit here would be a trait asserting membership the C# does not.
     ("src/renode-stm32/src/interfaces.rs",
-     ["scripts/core/emit.py", "--interfaces"]),
+     ["scripts/core/csharp_emitter.py", "--interfaces"]),
     # Also keyed on no type: the trait spans the modules above, so it is a
     # function of ALL of them and moves whenever any one does. It reads this
     # list to know which, and regenerates each in memory rather than reading the
     # committed file -- otherwise a stale peripheral on disk would reshape the
     # trait and the two checks would disagree about which is wrong.
     ("src/renode-stm32/src/dispatch.rs",
-     ["scripts/core/emit.py", "--dispatch"]),
+     ["scripts/core/csharp_emitter.py", "--dispatch"]),
 ]
 
 # Peripheral sources that must EVENTUALLY be generated. Their presence here is

@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # for `emitter`
 
-from emit import Emitter  # noqa: E402
+from csharp_emitter import Emitter  # noqa: E402
 from emitted_modules import parse, repo_root, setup_log  # noqa: E402
 from emitter.plugins.register_dsl import to_const  # noqa: E402
 from register_owners import owners  # noqa: E402

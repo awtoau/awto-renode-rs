@@ -34,7 +34,7 @@ convention. What stays here -- `emit_file`, `emit_peripheral_method`,
 `state_fields`, `rewrite_this`, `base_chain` -- is orchestration, which reads
 both layers by definition.
 
-Run:  python3 scripts/emit.py --type STM32_UART --method DefineRegisters
+Run:  python3 scripts/core/csharp_emitter.py --type STM32_UART --method DefineRegisters
 Log:  ./tmp/logs/emit.log
 """
 
@@ -174,7 +174,8 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
     NOT_RULES = ("family", "layer", "note", "known_transpiler_bugs_fixed")
 
     def __init__(self, con: sqlite3.Connection, log: logging.Logger,
-                 rules_dir: Path | None = None):
+                 rules_dir: Path | None = None,
+                 utility_fn_table: dict[str, set[str]] | None = None):
         self.con = con
         self.log = log
         self.unhandled: dict[str, int] = {}
@@ -183,6 +184,11 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self.rules = load_rules(self._rules_dir)
         self._utility_owner_names: set[str] | None = None
         self._utility_fn_cache: dict[str, set[str] | None] = {}
+        # Precomputed once for every utility type and handed in by a caller
+        # (emit_pool's worker init) that is about to emit MANY types against
+        # the same corpus -- see utility_module_functions below. `None` here
+        # means "no table was handed in", not "computed as empty".
+        self._utility_fn_table = utility_fn_table
         self._flag_fields: set[str] = set()
         self._callbacks: list[str] = []
         self._emitted_fns: set[str] = set()
@@ -223,7 +229,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
                  .get("callback_signatures", {}).items() if isinstance(v, dict)})
         self.expressions = load_expressions(rd)
         # Project rules, read by state_struct and peripheral_methods. Previously
-        # read but never assigned: emit.py worked only where a caller happened
+        # read but never assigned: csharp_emitter.py worked only where a caller happened
         # to set it by hand.
         # EVERY key from a project-layer document, not a named allowlist. The
         # allowlist that used to be here was a silent-no-op generator: a rule
@@ -1414,7 +1420,15 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         rather than on `self`, because `emit_utility_file` resets `self`'s own
         in-progress state (`_state_names`, `_sub_fields`, ...) -- calling it on
         `self` mid-emission of a DIFFERENT type would corrupt that emission.
+
+        If a table was handed in at construction (see `emit_pool`, which
+        builds one Emitter per TASK -- one per type, potentially hundreds per
+        run), it is used directly instead: every caller type asking about the
+        same utility type would otherwise redo this type's full emission from
+        scratch, once per task that happens to reference it.
         """
+        if self._utility_fn_table is not None:
+            return self._utility_fn_table.get(type_name)
         if type_name in self._utility_fn_cache:
             return self._utility_fn_cache[type_name]
         if self._utility_owner_names is None:
@@ -1454,6 +1468,28 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
             if line:
                 out.append(line)
         return out
+
+
+def compute_utility_fn_table(con: sqlite3.Connection,
+                             log: logging.Logger,
+                             rules_dir: Path | None = None
+                             ) -> dict[str, set[str]]:
+    """Every utility type's emitted fn names, computed once for a whole run.
+
+    `utility_module_functions` above did this per calling type, lazily and
+    uncached across process boundaries -- so a parallel run under emit_pool
+    redid BitHelper's whole emission once per worker per task that happened
+    to reference it, not once. This computes it exactly `len(utility_owners)`
+    times regardless of how many tasks or workers reference the result, and
+    the caller hands the table to every worker (see emit_pool._init_worker).
+    """
+    from register_owners import utility_owners
+    table: dict[str, set[str]] = {}
+    for name in utility_owners(con, rules_dir):
+        scratch = Emitter(con, log, rules_dir)
+        text = scratch.emit_utility_file(name)
+        table[name] = set(re.findall(r"(?m)^pub fn ([a-z_][a-z0-9_]*)\(", text))
+    return table
 
 
 def dispatch_targets(em: "Emitter") -> list[dict]:
@@ -1498,7 +1534,7 @@ def main() -> int:
     # A DEFECT IN THE C# is data (rulesdb/rules/bug_rules.json) and switchable.
     # FIDELITY IS THE DEFAULT and this flag is the only way off it: the oracle
     # certifies equivalence with the C#, so a corrected output is a FAILED
-    # output and must never be what a plain `emit.py` produces. Switching is
+    # output and must never be what a plain `csharp_emitter.py` produces. Switching is
     # therefore an argument at the call site, never an edit to the data --
     # nobody can leave a rule switched by forgetting to put a file back.
     ap.add_argument("--conformance", action="append", default=[],

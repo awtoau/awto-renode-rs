@@ -129,7 +129,7 @@ def repo_root() -> Path:
 
 def form_symbols(rules_dir: Path | None = None) -> list[str]:
     """The `symbol_contains` of every register form, from the rules data."""
-    from emit import load_register_forms
+    from csharp_emitter import load_register_forms
     rd = rules_dir or repo_root() / "rulesdb" / "rules"
     return sorted({f["symbol_contains"] for f in load_register_forms(rd)
                    if f.get("symbol_contains")})
@@ -188,7 +188,7 @@ def combinator_counts(con: sqlite3.Connection, member_ids: Iterable[int],
     ids = sorted(member_ids)
     if not ids:
         return {}
-    from emit import Emitter
+    from csharp_emitter import Emitter
     quiet = logging.getLogger("register_owners.quiet")
     quiet.handlers.clear()
     quiet.addHandler(logging.NullHandler())
@@ -254,7 +254,7 @@ def combinator_provider_types(con: sqlite3.Connection,
     quiet = logging.getLogger("register_owners.quiet")
     quiet.handlers.clear()
     quiet.addHandler(logging.NullHandler())
-    from emit import Emitter
+    from csharp_emitter import Emitter
     em = Emitter(con, quiet, rules_dir)
     names = set()
     for prov in em.project.get("combinator_providers", {}).get("providers", []):

@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
-from emit import Emitter  # noqa: E402
+from csharp_emitter import Emitter  # noqa: E402
 
 # (C# type, C# method, Rust file, the fn holding the layout)
 TARGETS = {

@@ -98,7 +98,7 @@ def main() -> int:
     # the converter can already type is not "unknown ownership", it is a value
     # or a callback slot. Two tables would drift.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
-    from emit import Emitter
+    from csharp_emitter import Emitter
     quiet = logging.getLogger("prescan_quiet")
     quiet.addHandler(logging.NullHandler())
     em = Emitter(sqlite3.connect(f"file:{root / args.db}?mode=ro", uri=True), quiet)

@@ -54,7 +54,7 @@ ROOT = repo_root()
 sys.path.insert(0, str(ROOT / "scripts" / "core"))
 sys.path.insert(0, str(ROOT / "scripts"))  # for `emitter`
 
-import emit  # noqa: E402
+import csharp_emitter as emit  # noqa: E402
 from emitter.lang.postcondition import PostconditionViolation, check  # noqa: E402
 
 # What a slot becomes for the TEMPLATE check. An identifier: no brackets and no

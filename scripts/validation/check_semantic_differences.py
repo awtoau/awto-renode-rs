@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # for `emitter`
 
-from emit import Emitter  # noqa: E402
+from csharp_emitter import Emitter  # noqa: E402
 from emitter.lang.mutable_static import accessed_mutable_statics  # noqa: E402
 from semantic_differences_census import measure  # noqa: E402
 

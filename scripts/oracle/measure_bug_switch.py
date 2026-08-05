@@ -18,7 +18,7 @@ wrong code is invisible until something runs it.
 WHAT IT DOES
 ------------
 For each stanza:
-  1. regenerate its module with `emit.py` -- once plain, once with
+  1. regenerate its module with `csharp_emitter.py` -- once plain, once with
      `--conformance ID`
   2. report whether the two differ at all, and how
   3. replay every trace that maps to the stanza's C# type against BOTH, and

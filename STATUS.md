@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-06T00:46:50+10:00 from `3c9d8d3` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-06T01:36:00+10:00 from `4362d4b` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -18,7 +18,7 @@ averaged 1.87 validation instances each.
 > **The `rule` / `rule_instance` / `pattern_cluster` / `translation` SQL tables are
 > 0 rows by design, not by defect.** The tree-matcher/cluster-mining pipeline those
 > tables were built for (see `docs/rulesdb-design.md`) was superseded by
-> hand-authored JSON rule files read directly by `scripts/core/emit.py` — see
+> hand-authored JSON rule files read directly by `scripts/core/csharp_emitter.py` — see
 > [docs/rule-engine-readiness.md](docs/rule-engine-readiness.md) and
 > [docs/decisions/remove-the-cut.md](docs/decisions/remove-the-cut.md). A scorecard
 > that reported `instances per rule` and `patches outstanding` from those tables

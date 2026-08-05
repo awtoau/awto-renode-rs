@@ -147,9 +147,9 @@ def main() -> int:
         log.error("while proving nothing.")
         return 1
 
-    scripts = ["gap_census.py", "compile_check.py"]
+    scripts = ["analysis/gap_census.py", "validation/compile_check.py"]
     if args.only:
-        scripts = [s for s in scripts if s.startswith(args.only)]
+        scripts = [s for s in scripts if s.split("/")[-1].startswith(args.only)]
         if not scripts:
             log.error("--only %s matches no census script", args.only)
             return 1
@@ -160,7 +160,7 @@ def main() -> int:
         log.info("")
         log.info("%s", script)
         log.info("%s", "-" * 72)
-        extra = cap if script == "gap_census.py" else []
+        extra = cap if script == "analysis/gap_census.py" else []
 
         serial, t_serial = run(root, script, [*extra, "-j1"], log)
         log.info("%-46s %6.1fs", "-j1 (serial, no pool)", t_serial)

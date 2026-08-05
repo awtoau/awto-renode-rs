@@ -122,6 +122,14 @@ class Emitted(NamedTuple):
 # re-pickled with every one of 569 tasks.
 _DB_URI: str | None = None
 
+# Every utility type's emitted fn names, computed ONCE by emit_many (see
+# emit.compute_utility_fn_table) and handed to every worker here -- so a
+# worker's Emitter never redoes BitHelper's whole emission per task that
+# happens to call into it. `None` means "not computed" (e.g. a caller of
+# _init_worker/_emit_one outside emit_many), in which case Emitter falls back
+# to its own per-instance lazy scratch emission, unchanged.
+_UTILITY_FN_TABLE: dict[str, set[str]] | None = None
+
 
 def process_context() -> multiprocessing.context.BaseContext:
     """Use a pool start method that works inside the repository sandbox.
@@ -135,12 +143,14 @@ def process_context() -> multiprocessing.context.BaseContext:
     return multiprocessing.get_context("fork" if os.name == "posix" else "spawn")
 
 
-def _init_worker(db_uri: str) -> None:
-    global _DB_URI
+def _init_worker(db_uri: str,
+                 utility_fn_table: dict[str, set[str]] | None = None) -> None:
+    global _DB_URI, _UTILITY_FN_TABLE
     _DB_URI = db_uri
+    _UTILITY_FN_TABLE = utility_fn_table
     # Import here so the cost is paid once per worker rather than per task, and
     # so a worker that cannot import fails at startup rather than 569 times.
-    import emit  # noqa: F401
+    import csharp_emitter as emit  # noqa: F401
 
 
 def _quiet_log() -> logging.Logger:
@@ -158,11 +168,12 @@ def _quiet_log() -> logging.Logger:
 def _emit_one(task: tuple[str, str, str]) -> Emitted:
     """Emit one type in a worker. Returns; never raises, never writes."""
     name, method, tag = task
-    from emit import Emitter
+    from csharp_emitter import Emitter
     t0 = time.monotonic()
     c0 = time.process_time()
     try:
-        em = Emitter(sqlite3.connect(_DB_URI, uri=True), _quiet_log())
+        em = Emitter(sqlite3.connect(_DB_URI, uri=True), _quiet_log(),
+                    utility_fn_table=_UTILITY_FN_TABLE)
         # The serial drivers swallowed emitter chatter on stderr; keep doing
         # that, or 31 workers interleave it into an unreadable mess.
         with contextlib.redirect_stderr(io.StringIO()):
@@ -184,7 +195,7 @@ def _probe_one(name: str) -> tuple[str, list[str]]:
     probe independent of every other, which is the property the parallel
     version needs and the serial version only happened to have.
     """
-    from emit import Emitter
+    from csharp_emitter import Emitter
     from emitter.plugins.sub_blocks import sub_blocks
     em = Emitter(sqlite3.connect(_DB_URI, uri=True), _quiet_log())
     with contextlib.redirect_stderr(io.StringIO()):
@@ -243,8 +254,19 @@ def emit_many(db: Path, tasks: Sequence[tuple[str, str, str]], jobs: int,
         return []
     db_uri = f"file:{db}?mode=ro"
 
+    # Computed once here, regardless of `jobs`, and handed to every worker --
+    # see emit.compute_utility_fn_table. Doing this unconditionally (rather
+    # than only when a task might need it) keeps -j1 and the parallel path on
+    # the exact same code path, which is what the determinism proof compares.
+    con = sqlite3.connect(db_uri, uri=True)
+    try:
+        from csharp_emitter import compute_utility_fn_table
+        utility_fn_table = compute_utility_fn_table(con, _quiet_log())
+    finally:
+        con.close()
+
     if jobs <= 1:
-        _init_worker(db_uri)
+        _init_worker(db_uri, utility_fn_table)
         return [_emit_one(t) for t in tasks]
 
     order = range(len(tasks))
@@ -264,7 +286,7 @@ def emit_many(db: Path, tasks: Sequence[tuple[str, str, str]], jobs: int,
     results: list[Emitted | None] = [None] * len(tasks)
     with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx,
                              initializer=_init_worker,
-                             initargs=(db_uri,)) as pool:
+                             initargs=(db_uri, utility_fn_table)) as pool:
         # chunksize=1: one shared queue, each worker takes the next task when
         # it goes idle. Static chunking would bind slow E-core workers to a
         # fixed slice and idle the P-cores at the tail.

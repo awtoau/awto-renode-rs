@@ -55,7 +55,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # for `emitter`
 
-import emit as _emit                                        # noqa: E402
+import csharp_emitter as _emit                              # noqa: E402
 from emitter.lang.dispatch_trait import dispatch_target     # noqa: E402
 
 

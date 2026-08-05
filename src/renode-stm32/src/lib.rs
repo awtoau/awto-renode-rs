@@ -10,7 +10,7 @@
 // rustc can see that statically and does not, by default. Denying it turns
 // that class into a build failure -- the cheapest of the four bugs that
 // "compiled cleanly and were wrong" to have prevented, and the only one a lint
-// could have caught at all. Overload collapse (emit.py) can still produce it,
+// could have caught at all. Overload collapse (csharp_emitter.py) can still produce it,
 // so this is a live guard, not a historical one.
 #![deny(unconditional_recursion)]
 

@@ -35,7 +35,7 @@ ROOT = repo_root()
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "core"))
 
-import emit  # noqa: E402
+import csharp_emitter as emit  # noqa: E402
 # FieldMode rendering lives with the register DSL, not with the driver -- it is
 # a Renode type, so it moved into the plugin. Importing it from `emit` raised
 # AttributeError the moment it moved, which is how this call was found.

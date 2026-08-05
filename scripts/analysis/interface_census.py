@@ -8,7 +8,7 @@ the converter's source, which is how it stayed an opinion.
 
 This makes it a MEASUREMENT, and derives it from the converter itself: the
 per-member analysis here is `Emitter.interface_report()`, the same call
-`scripts/emit.py --interfaces` emits from. The published table therefore cannot
+`scripts/core/csharp_emitter.py --interfaces` emits from. The published table therefore cannot
 disagree with what the converter does -- a second, hand-kept list of blockers
 would drift the first time a mapping landed.
 
@@ -158,7 +158,7 @@ def main() -> int:
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
 
-    from emit import Emitter
+    from csharp_emitter import Emitter
     con = sqlite3.connect(f"file:{root / args.db}?mode=ro", uri=True)
     em = Emitter(con, log)
     report = em.interface_report()

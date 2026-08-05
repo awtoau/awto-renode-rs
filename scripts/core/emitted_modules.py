@@ -398,7 +398,7 @@ def selector_rows(con: sqlite3.Connection) -> list[tuple[str, str]]:
 
 def emit_all(db: Path, log: logging.Logger) -> list[Module]:
     """Emit and parse every module the converter can produce."""
-    from emit import Emitter
+    from csharp_emitter import Emitter
     from emitter.plugins.sub_blocks import sub_blocks
 
     quiet = logging.getLogger("quiet")

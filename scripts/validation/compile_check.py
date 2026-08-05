@@ -233,7 +233,7 @@ def emit_all(root: Path, db: Path, log: logging.Logger,
     # into one, and skipping it here would leave that reference dangling in
     # the fast tier's own crate.
     from register_owners import utility_owners
-    from emit import Emitter
+    from csharp_emitter import Emitter
     tu = time.monotonic()
     quiet = logging.getLogger("compile_check.quiet")
     if not quiet.handlers:

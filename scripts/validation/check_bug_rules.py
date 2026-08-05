@@ -34,7 +34,7 @@ did, so the four are checked rather than reviewed:
   authority    a citation, not a claim. A disagreement with no third source is
                a SUSPICION and belongs in `rejected`, not here.
   mode         must be `fidelity` in committed data. Conformance is a
-               deliberate act at the call site (`emit.py --conformance ID`),
+               deliberate act at the call site (`csharp_emitter.py --conformance ID`),
                never a state the repository can be left in.
   switch_impact  MEASURED, by scripts/measure_bug_switch.py. A bug rule whose
                switch-impact is unknown is not finished -- that is the field
@@ -250,7 +250,7 @@ def validate(root: Path, stanzas: list[dict], docs: dict, text: str,
                        f"in committed data. The oracle certifies equivalence "
                        f"with the C#, so a corrected output is a FAILED "
                        f"output. Switch at the call site: "
-                       f"emit.py --conformance {sid}")
+                       f"csharp_emitter.py --conformance {sid}")
         if not s.get("why_this_mode"):
             bad.append(f"{sid}: no `why_this_mode` -- the default is the one "
                        f"field a reader is most likely to want to overturn")

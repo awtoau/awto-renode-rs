@@ -14,14 +14,14 @@ Run:  python3 scripts/check_refactor.py --record   # before
       python3 scripts/check_refactor.py            # after, exits 1 on any diff
 Log:  ./tmp/logs/check_refactor.log
 
-The nine `emit.py` runs go in parallel; the two censuses stay SEQUENTIAL,
+The nine `csharp_emitter.py` runs go in parallel; the two censuses stay SEQUENTIAL,
 because each of them now saturates every core on its own and running them
 together would only make each wait for the other. The censuses dominate this
 script's wall-clock, and they were made parallel internally -- see
 scripts/emit_pool.py.
 
 Parallel here is safe for a reason worth stating: each job is a separate
-`emit.py` process writing nothing but its own stdout, results are keyed by
+`csharp_emitter.py` process writing nothing but its own stdout, results are keyed by
 artefact name, and the comparison below iterates `sorted(current)`. Nothing
 reads a completion order.
 """
@@ -72,7 +72,7 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
     out: dict[str, str] = {}
     bad: list[str] = []
 
-    emit = str(root / "scripts" / "emit.py")
+    emit = str(root / "scripts" / "core" / "csharp_emitter.py")
     # (artefact name, argv). The trait module is keyed on no type: the corpus
     # decides which interfaces appear in it, so a mapping change moves it
     # without moving any peripheral. The dispatch module is a function of EVERY
@@ -89,7 +89,7 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
         return subprocess.run(job[1], capture_output=True, text=True, cwd=root)
 
     # `map` yields in JOB order, not completion order, so `bad` reads the same
-    # either way. Each job is one `emit.py` process; threads only wait on them.
+    # either way. Each job is one `csharp_emitter.py` process; threads only wait on them.
     with ThreadPoolExecutor(max_workers=min(len(jobs),
                                             os.cpu_count() or 8)) as pool:
         runs = list(pool.map(run, jobs))
@@ -97,7 +97,7 @@ def produce(root: Path) -> tuple[dict[str, str], list[str]]:
     for (name, _argv), r in zip(jobs, runs):
         stem = name.removesuffix(".rs")
         if r.returncode != 0:
-            bad.append(f"{stem}: emit.py exited {r.returncode}: "
+            bad.append(f"{stem}: csharp_emitter.py exited {r.returncode}: "
                        f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else '(no stderr)'}")
             out[name] = f"EMIT FAILED ({r.returncode})\n{r.stderr}"
             continue

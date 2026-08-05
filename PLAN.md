@@ -268,7 +268,7 @@ That fork earned itself.
 
 Roslyn is not our transpiler. It is our *parser*, and it is a mature production
 compiler API. Our transpiler is `frontend/RenodeIngest` plus
-`scripts/core/emit.py`, which we own outright — there is nothing to fork, and
+`scripts/core/csharp_emitter.py`, which we own outright — there is nothing to fork, and
 generic bugs are fixed at source there already.
 
 The measured position: **six ingest gaps so far, zero of them Roslyn

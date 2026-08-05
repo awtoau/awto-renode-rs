@@ -10,7 +10,7 @@ A **hand-authored, rule-driven emitter**.
 
 - Rules live as data in `rulesdb/rules/*.json`, split by layer: `csharp_core.json`
   is generic C#, the rest are corpus idioms.
-- `scripts/emit.py` reads them and emits a peripheral when pointed at one.
+- `scripts/core/csharp_emitter.py` reads them and emits a peripheral when pointed at one.
 - Constructs it cannot handle are **withheld and reported by name**, never
   stubbed.
 - `scripts/check_generated.py` proves the output is reproducible from rules

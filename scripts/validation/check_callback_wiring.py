@@ -36,7 +36,7 @@ ALSO: `FieldMode::default()` AS A TRANSLATION
 ---------------------------------------------
 `FieldMode::default()` is `FieldMode::empty()` -- a field that answers neither
 reads nor writes. `with_reserved` passes it deliberately, and those are
-excluded here. Anywhere else it is `render_mode()` in scripts/emit.py falling
+excluded here. Anywhere else it is `render_mode()` in scripts/core/csharp_emitter.py falling
 off the end of its table:
 
     parts = [name for bit, name in sorted(FIELD_MODE.items()) if v & bit]
