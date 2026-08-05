@@ -1,6 +1,6 @@
 # renode-rs — scorecard
 
-Generated 2026-08-06T00:23:17+10:00 from `c050e6e` by `scripts/scorecard.py`. **Do not edit by hand.**
+Generated 2026-08-06T00:41:37+10:00 from `20b2992` by `scripts/scorecard.py`. **Do not edit by hand.**
 
 Leading with the metrics that detect drift, not the ones that flatter it —
 "files translated" is exactly what looked healthy in `linux-rs` while its rules
@@ -10,7 +10,7 @@ averaged 1.87 validation instances each.
 
 | metric | value | target | status |
 |---|---:|---:|---|
-| **compile-clean modules (the gate)** | 283 | ratchet, may only grow | PASS |
+| **compile-clean modules (the gate)** | 617 | ratchet, may only grow | PASS |
 | platform floor (peripherals reachable end-to-end) | 27 / 65 | 65 | 42% |
 | modules clean *and* drivable | 173 / 599 | — | 29% |
 | oracle trace replay: peripherals at 0 divergence | 3 / 8 | 8 | partial |
@@ -99,7 +99,7 @@ Genuine stop points. A failed gate means stop, not retry.
 
 | gate | status | evidence |
 |---|---|---|
-| **two-tier compile gate** — modules with 0 rustc errors | 283 (ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md](docs/decisions/two-tier-compile-gate.md) |
+| **two-tier compile gate** — modules with 0 rustc errors | 617 (ratchet, may only grow) | [docs/decisions/two-tier-compile-gate.md](docs/decisions/two-tier-compile-gate.md) |
 | **the floor that runs** — peripherals reachable end-to-end | 27 / 65 | [docs/decisions/the-floor-that-runs.md](docs/decisions/the-floor-that-runs.md) |
 
 ### Historical (Phase 0/1)
@@ -236,7 +236,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 
 ## Issues
 
-65 open, 9 closed, 74 total. Full list: [github.com/awtoau/awto-renode-rs/issues](https://github.com/awtoau/awto-renode-rs/issues).
+61 open, 14 closed, 75 total. Full list: [github.com/awtoau/awto-renode-rs/issues](https://github.com/awtoau/awto-renode-rs/issues).
 
 | phase | open | closed |
 |---|---:|---:|
@@ -248,7 +248,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | phase-5 | 7 | 0 |
 | phase-6 | 2 | 0 |
 | phase-7 | 3 | 0 |
-| unphased | 31 | 9 |
+| unphased | 27 | 14 |
 
 **By label** (an issue may carry more than one; counts are not additive to the total above):
 
@@ -257,7 +257,7 @@ hybrid host was ~50% from core migration; pinned it is ±2%.
 | `P0` | 1 — [#61](https://github.com/awtoau/awto-renode-rs/issues/61) |
 | `blocked-decision` | 3 — [#38](https://github.com/awtoau/awto-renode-rs/issues/38), [#39](https://github.com/awtoau/awto-renode-rs/issues/39), [#41](https://github.com/awtoau/awto-renode-rs/issues/41) |
 | `blocked-on-split` | 5 — [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), [#50](https://github.com/awtoau/awto-renode-rs/issues/50) |
-| `bug` | 2 — [#64](https://github.com/awtoau/awto-renode-rs/issues/64), [#69](https://github.com/awtoau/awto-renode-rs/issues/69) |
+| `bug` | 3 — [#64](https://github.com/awtoau/awto-renode-rs/issues/64), [#69](https://github.com/awtoau/awto-renode-rs/issues/69), [#75](https://github.com/awtoau/awto-renode-rs/issues/75) |
 | `code` | 8 — [#46](https://github.com/awtoau/awto-renode-rs/issues/46), [#47](https://github.com/awtoau/awto-renode-rs/issues/47), [#48](https://github.com/awtoau/awto-renode-rs/issues/48), [#49](https://github.com/awtoau/awto-renode-rs/issues/49), [#50](https://github.com/awtoau/awto-renode-rs/issues/50), [#54](https://github.com/awtoau/awto-renode-rs/issues/54), [#55](https://github.com/awtoau/awto-renode-rs/issues/55), [#63](https://github.com/awtoau/awto-renode-rs/issues/63) |
 | `decision` | 11 — [#8](https://github.com/awtoau/awto-renode-rs/issues/8), [#9](https://github.com/awtoau/awto-renode-rs/issues/9), [#10](https://github.com/awtoau/awto-renode-rs/issues/10), [#29](https://github.com/awtoau/awto-renode-rs/issues/29), [#50](https://github.com/awtoau/awto-renode-rs/issues/50), [#51](https://github.com/awtoau/awto-renode-rs/issues/51), [#52](https://github.com/awtoau/awto-renode-rs/issues/52), [#56](https://github.com/awtoau/awto-renode-rs/issues/56), [#57](https://github.com/awtoau/awto-renode-rs/issues/57), [#60](https://github.com/awtoau/awto-renode-rs/issues/60), [#74](https://github.com/awtoau/awto-renode-rs/issues/74) |
 | `deferred` | 2 — [#4](https://github.com/awtoau/awto-renode-rs/issues/4), [#5](https://github.com/awtoau/awto-renode-rs/issues/5) |
