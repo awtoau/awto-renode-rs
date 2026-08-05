@@ -120,7 +120,7 @@ port removes.**
    counter can be a shared memory location Rust reads with a plain load, making
    it *no call at all*. C# pays P/Invoke marshalling and a GC transition per
    access.
-2. **Time sync collapses under D3.** Single-threaded, the handle state machine
+2. **Time sync collapses with one thread per emulator.** The handle state machine
    becomes `virtual_time += delta` and one deadline comparison.
 3. **No allocation on the access path.** Measured: allocation + GC is **12.4%**
    of C# Renode's profile, and locking a further **11.1%** — ~30% of runtime is
@@ -142,13 +142,19 @@ This rule is stated up front because it constrains the translation: where the C#
 computes a value through clock-source indirection, the Rust computes it directly,
 and that is a **declared deviation** to be recorded, not a silent improvement.
 
-### The measurement obligation
+### The measurement obligation — **answered, yes**
 
-None of the above is proven, and the plan must not assume it. **Phase 0 carries a
-performance spike (#P1) that is a genuine gate**: profile C# Renode on the LSI
-case to get the real split between tlib execution, the managed boundary, the time
-framework, address decode and register dispatch; then microbenchmark the same
-MMIO path in a throwaway Rust prototype.
+> **Settled.** "Is the Rust path to a hardware register actually faster than
+> C#'s?" was run as a gate before the design was locked, and it passed. See
+> [docs/perf-spike.md](docs/perf-spike.md) and issue #3. The paragraphs below
+> are kept because they record what was asked and why a negative answer had to
+> be allowed to stand.
+
+None of the above was proven when the plan was written, and the plan must not
+assume it. **Phase 0 carries a performance spike that is a genuine gate**:
+profile C# Renode on the LSI case to get the real split between tlib execution,
+the managed boundary, the time framework, address decode and register dispatch;
+then microbenchmark the same MMIO path in a throwaway Rust prototype.
 
 If the Rust MMIO path is not dramatically faster in that spike, the performance
 motivation evaporates and this becomes a safety-only project — which materially
@@ -228,7 +234,8 @@ This is the single most important scoping fact in the plan, and it cuts two ways
 **Phase 1 decision: FFI to tlib, unchanged.** Renode reaches it through P/Invoke;
 Rust reaches it through `extern "C"`, which is strictly simpler.
 
-**But tlib is not a good long-term answer, and that is tracked separately (#P2).**
+**But tlib is not a good long-term answer, and "should the borrowed C CPU be
+replaced with Rust?" is tracked as its own open question.**
 Its ARM translator carries Fabrice Bellard (2003, 2008), CodeSourcery (2005–2007)
 and OpenedHand (2007) copyrights — QEMU 0.9/1.0-era TCG — and the entire 227k-line
 tree contains **one test file**, which tests a hash table. There is no
@@ -237,13 +244,14 @@ JIT, so instruction semantics are code that *emits* host code, and you cannot
 unit-test an instruction without running generated machine code.
 
 The decisive question is whether instruction dispatch is even on the critical
-path. If the #P1 profile says the cost is the MMIO path rather than execution,
+path. If the performance profile says the cost is the MMIO path rather than
+execution,
 then the JIT buys little and costs a great deal in opacity — and a plain Rust
 Thumb-2 interpreter, one testable pure function per instruction, becomes the
 better trade. Cortex-M is a small, regular ISA and Renode manages only ~50 MIPS
 with a JIT today.
 
-Also worth stating because it applies whichever way #P2 lands: we have the
+Also worth stating because it applies whichever way that lands: we have the
 physical STM32F427 and SWD tooling, so **random-instruction differential testing
 against real silicon** is available to this project. That is the gold-standard
 way to validate a CPU model, and it would be the first real test coverage tlib
@@ -305,31 +313,45 @@ framework is worth building on rather than porting onto.
   `foreach` becomes iterators, LINQ becomes iterator chains) but semantics,
   side-effect order and error behaviour must not change.
 
-## The four declared deviations
+## The four whole-program decisions
 
-These are the whole-program decisions that cannot be made per-file. They are made
-explicitly, up front, with the reasoning recorded.
+These cannot be made per-file, so they are made once, up front, with the
+reasoning recorded.
 
-**They are reversible defaults, not commitments.** Once the rule pipeline exists
-(Phases 1–3), the Rust is a *build artifact*: D2 is fully rule-expressible, D1 and
-D4 largely so, and changing one is a rule edit plus a regenerate rather than a
-rewrite. Better still, alternatives can be **generated as variants and
-benchmarked against the same oracle** rather than argued about — which is what
-`translation.rule_versions` exists to make addressable.
+They used to be called D1–D4, and those labels went opaque — a code is not a
+name. Each now says what it does. The old label is kept in the heading only so
+older documents and issues still resolve; it carries no meaning and new writing
+should not use it.
+
+| in one line | old label |
+|---|---|
+| Shared objects are reference-counted, and never freed | D1 |
+| A peripheral's register bits live in one flat array | D2 |
+| One thread per emulator | D3 |
+| Recoverable errors become return values | D4 |
+
+**They are reversible defaults, not commitments.** Once the rule pipeline exists,
+the Rust is a *build artifact*: the register-array decision is fully
+rule-expressible, the object-graph and error-handling ones largely so, and
+changing one is a rule edit plus a regenerate rather than a rewrite. Better
+still, alternatives can be **generated as variants and benchmarked against the
+same oracle** rather than argued about.
 
 So: pick what the evidence favours now, and treat the alternatives as experiments
-to run later. The exception is **D3**, which reaches into hand-written core
-infrastructure and is therefore only partly regenerable — it stays the one
-genuinely expensive decision, and the one worth most scrutiny before Phase 3.
+to run later. The exception is **one thread per emulator**, which reaches into
+hand-written core infrastructure and is therefore only partly regenerable — it
+stays the one genuinely expensive decision, and the one worth most scrutiny.
 
-### D1 — Object graph: `Rc<RefCell<T>>`, cycles leaked
+### Shared objects are reference-counted, and never freed *(was D1)*
 
-Every C# reference-typed field becomes `Rc<RefCell<T>>` (or
-`Option<Rc<RefCell<T>>>` where C# permits null). Renode's graph is cyclic by
-construction — the machine owns peripherals, peripherals hold `IMachine`
-back-references, GPIO cross-links both ways — so reference cycles are
-unavoidable and **leaking them is correct**: the machine is built once and lives
-for the process, which then exits.
+Renode's objects point at each other in loops — the machine owns its
+peripherals, each peripheral holds a reference back to the machine, GPIO lines
+cross-link both ways. Reference counting cannot free a loop, so nothing is ever
+freed. That is the right answer here: an emulator builds its machine once and
+runs until the process exits.
+
+In Rust terms: every C# reference-typed field becomes `Rc<RefCell<T>>`, or
+`Option<Rc<RefCell<T>>>` where C# permits null.
 
 *Rejected alternative:* arena + index handles. Better in every way except
 faithfulness, and it is a whole-program refactor. It is the **named Stage-3
@@ -342,13 +364,16 @@ necessarily a C# bug — it can be legitimate re-entrancy that C# tolerates. Thi
 needs a borrow discipline decided in Phase 0 (likely: never hold a borrow across
 a bus call), and it is the highest-risk item in the plan.
 
-### D2 — Register fields: `Cell` in a contiguous arena, handle is a typed index
+### A peripheral's register bits live in one flat array *(was D2)*
 
-`out IFlagRegisterField receiverEnabled` in a fluent chain gives the peripheral a
-handle into storage the register collection also owns. The obvious literal
-mapping is one `Rc<RefCell<_>>` per field — and it is **the wrong choice, for
-performance reasons that dominate this project** (see "Performance is a
-first-class goal" above).
+All of a peripheral's register bits sit in one flat array of plain cells, and a
+"field" is an index into that array rather than an object of its own.
+
+The C# gives the peripheral a handle into storage the register collection also
+owns (`out IFlagRegisterField receiverEnabled` in a fluent chain). The obvious
+literal mapping is one heap-allocated, individually borrow-checked object per
+field — and it is **the wrong choice, for performance reasons that dominate this
+project** (see "Performance is a first-class goal" above).
 
 Register fields are *all* `Copy` scalars: `IValueRegisterField` is a `ulong`,
 `IFlagRegisterField` a `bool`, `IEnumRegisterField<T>` a small enum. That is
@@ -380,13 +405,16 @@ the real mechanism is the borrow-flag read-modify-write. Full numbers:
 **This costs nothing in faithfulness.** The DSL is the abstraction boundary —
 peripherals never touch storage directly, they go through field handles — so the
 translated peripheral code reads the same either way. Same semantics, better
-layout, and it removes D1's re-entrancy hazard from the single most numerous
+layout, and it removes the borrow-panic hazard from the single most numerous
 object in the system.
 
 This is the highest-value single rule in the DB: it covers every `out` parameter
 in every `With*` call across the entire corpus.
 
-### D3 — Threading: single-threaded *within* an instance, parallel *across* instances
+### One thread per emulator *(was D3)*
+
+One emulator runs on one thread. Parallelism comes from running many emulators
+side by side, not from splitting one up.
 
 Renode is multithreaded — `TimeSourceBase` (1041 lines), `TimeHandle` (935),
 `SlaveTimeSource`, `MasterTimeSource`; roughly 2k lines of the 6,277-line time
@@ -412,14 +440,18 @@ performance-led, not just simplicity-led:
 running 16 emulators on 16 cores. Embarrassingly parallel, no shared state, and a
 far bigger win for test wall-clock than anything intra-instance. That needs the
 machine to be either `Send` (movable to a worker thread) or process-isolated;
-processes work today and are the fallback, but note that D1's `Rc` blocks `Send`
-while D2's arena permits it — a further reason the arena direction matters.
+processes work today and are the fallback, but note that reference counting
+blocks `Send` while the flat register array permits it — a further reason the
+array direction matters.
 
 This is the one place the plan knowingly departs from "faithful", and it is
-recorded as such. It should be **re-validated against the Phase-0 profile**
-(#P1) rather than assumed.
+recorded as such. It should be **re-validated against the performance profile**
+rather than assumed.
 
-### D4 — Exceptions → `Result`, panics for the fatal
+### Recoverable errors become return values *(was D4)*
+
+What C# expects you to catch becomes a value the caller must check. What C#
+treats as a crash stays a crash.
 
 Renode's `RecoverableException` / `ConstructionException` become
 `Result<T, RenodeError>` threaded with `?`. What C# treats as fatal
@@ -429,11 +461,12 @@ process — in Rust that construct does not compile, which is the point.
 
 ## The remaining C#→Rust mappings
 
-Mechanical once D1–D4 are fixed. These become the initial rule DB:
+Mechanical once the four decisions above are fixed. These become the initial
+rule DB:
 
 | C# construct | Rust, literal-first |
 |---|---|
-| `class` instance | `Rc<RefCell<T>>` (D1) |
+| `class` instance | `Rc<RefCell<T>>` — reference-counted, never freed |
 | Inheritance (`BasicDoubleWordPeripheral`) | Composition: base as a struct field + trait with default methods. Measured trivial — the base is 49 lines and provides `RegistersCollection` plus three forwarding methods, not real polymorphism |
 | `virtual`/`abstract` | Trait objects (`Rc<RefCell<dyn Peripheral>>`) |
 | Properties | Getter/setter methods |
@@ -441,7 +474,7 @@ Mechanical once D1–D4 are fixed. These become the initial rule DB:
 | `null` | `Option<T>` |
 | LINQ | Iterator chains (`.Where`→`.filter`, `.Select`→`.map`, `.Any`→`.any`, `.ToList()`→`.collect()`) — deferred-execution semantics match |
 | Generics + constraints | Rust generics + trait bounds; `where T : new()` → `Default` |
-| `lock(obj)` | `Mutex` plus `// SYNC(measure)` while D3 is unresolved; do not remove until contention/hold-time measurements from a running workload support that decision (#52) |
+| `lock(obj)` | `Mutex` plus `// SYNC(measure)` while the threading decision is unresolved; do not remove until contention/hold-time measurements from a running workload support that decision (#52) |
 | `enum : long` register offsets | `const` or `#[repr(u64)] enum` |
 | Reflection (`RegisterMapper(this.GetType())`, `.repl` loading, monitor binding) | **Not translated.** Hand-written compile-time registry — the class-1 "stays hand-written forever" bucket |
 | `[Transient]` / Migrant serialisation | Dropped in Phase 1; save/restore is out of scope |
@@ -462,7 +495,8 @@ Renode v1.16.1, commit `dc52b24c`.
 **In corpus — core infrastructure (~12–15k lines after cuts):**
 
 Register DSL 2,538 · `GPIO` 154 · base peripheral classes ~560 · time framework
-6,277 (less ~2k thread machinery under D3) · `Peripherals/Bus` 9,832 (less
+6,277 (less ~2k thread machinery, dropped by the one-thread decision) ·
+`Peripherals/Bus` 9,832 (less
 `SVDParser`, `SymbolLookup`, `Symbol` — all debug-only, ~2.9k) · selected
 machine plumbing from `Main/Core`.
 
@@ -526,7 +560,7 @@ run in lockstep.
 5. **CLI test drive** — `help`, `otp`, `info`, the auto-discovered command smoke
    sweep, and the CAN ISO-TP path, all already proven under C# Renode.
 6. **Human review** — mandatory for anything touching the time framework, IRQ
-   delivery ordering, or the D1/D3 borrow-and-threading decisions, regardless of
+   delivery ordering, or the borrowing and threading decisions, regardless of
    tiers 1–5.
 
 Tier 2 deserves emphasis: capturing an access trace from C# Renode is a small
@@ -537,7 +571,7 @@ a test-driven one with an exact pass/fail.
 
 ### Phase 0 — environment, decisions, and the performance gate
 
-Exit: D1–D4 settled, oracle tier 2 exists, tlib FFI proven, **and the
+Exit: the four decisions settled, oracle tier 2 exists, tlib FFI proven, **and the
 performance premise validated or killed**.
 
 - Reproduce the known-good C# baseline boot to a prompt. This is the reference;
@@ -550,8 +584,8 @@ performance premise validated or killed**.
   peripheral.
 - Stand up the Rust workspace, tlib FFI binding, and prove a "do-nothing" machine
   links and runs against tlib.
-- **Settle D1–D4 with a written verdict each**, especially D3 (threading) and the
-  D1 borrow discipline.
+- **Settle the four decisions with a written verdict each**, especially threading
+  and the borrow discipline that goes with reference counting.
 - Prior-art sweep: C#→Rust translators beyond toy scale; existing Rust
   deterministic-emulator frameworks worth building on.
 
@@ -618,7 +652,7 @@ Full schema and process defences: **[docs/rulesdb-design.md](docs/rulesdb-design
 
 ### Phase 5 — boot (exit: firmware reaches the shell prompt in Rust)
 
-- Port the machine, sysbus, GPIO routing, NVIC, time framework (D3), and
+- Port the machine, sysbus, GPIO routing, NVIC, time framework (one thread), and
   `MappedMemory`.
 - Port the project's custom peripherals (flash controller, CRC, shell I/O, UART
   peer, CAN peer).
@@ -635,19 +669,20 @@ Full schema and process defences: **[docs/rulesdb-design.md](docs/rulesdb-design
 
 ### Phase 7 — the optimisation pass (exit criteria set from Phase 6 data)
 
-Only now, and only against a clean differential record. Note that D2 already
-took the largest layout win up front, so this phase is about what the Phase-6
-profile actually shows rather than a predetermined list:
+Only now, and only against a clean differential record. Note that the flat
+register array already took the largest layout win up front, so this phase is
+about what the Phase-6 profile actually shows rather than a predetermined list:
 
 - **Stage-3 lift for the coarse object graph**: `Rc<RefCell<T>>` → arena +
-  `PeripheralId` indices (D1's named successor). This is the change that also
+  `PeripheralId` indices, the named successor to reference counting. This is
+  the change that also
   makes a machine `Send`, enabling N-instance test parallelism on threads rather
   than processes.
 - **Address decode**: flat page table indexed by `address >> 12`, or a compiled
   `match` over the fixed platform's ranges, replacing dictionary lookup.
 - Push lazy evaluation further wherever the profile shows scheduled work that
   could be deadline-driven.
-- Revisit D3 against real data.
+- Revisit the one-thread decision against real data.
 - Only *then* consider tlib translation via `awtoau/c2rust`, if at all — and note
   it would destroy the tier-3 oracle's exactness by making the CPU differ between
   the two sides.
@@ -685,7 +720,7 @@ transformation**, not only statement-level substitution. Changing an object mode
 means restructuring types (inheritance → composition, GC graph → indexed
 storage), which is not a local rewrite over expressions. The schema permits it;
 the emitter must be built for it from the start, because retrofitting it is an
-engine rewrite. Recorded as a constraint on #R6.
+engine rewrite. Recorded as a constraint on the rule engine.
 
 Consequences if this path is ever taken: peripherals Renode models badly can be
 generated from vendor SVD or reference manuals into the same pipeline; the four
@@ -742,9 +777,9 @@ the method. Generalising comes after the proof, not before it.
 | Risk | Mitigation |
 |---|---|
 | **The performance premise is wrong** — Rust's MMIO path is not materially faster | Phase-0 spike is a **gate**, run before the design is locked. A negative result reduces this to a safety-only project and that verdict must be allowed to stand |
-| **`RefCell` re-entrancy panics** | Phase-0 borrow discipline: never hold a borrow across a sysbus call. D2's `Cell` arena removes the hazard entirely for register fields, which are the numerous case. Tier-3 lockstep finds the rest at an exact instruction |
-| Cache-hostile data layout locks in early and is expensive to undo | **Largely deflated once the pipeline exists** — D2 is fully rule-expressible, so changing it is one rule edit plus a regenerate. Decided up front anyway because the DSL abstraction boundary must be respected from file one |
-| D3 (single-threaded) proves wrong | Decided explicitly in Phase 0 against the profile, not assumed. **The most expensive deviation to reverse**, because it touches hand-written core infrastructure and is therefore only partly regenerable |
+| **Borrow panics at runtime** | Phase-0 borrow discipline: never hold a borrow across a sysbus call. The flat register array removes the hazard entirely for register fields, which are the numerous case. Tier-3 lockstep finds the rest at an exact instruction |
+| Cache-hostile data layout locks in early and is expensive to undo | **Largely deflated once the pipeline exists** — the register-array decision is fully rule-expressible, so changing it is one rule edit plus a regenerate. Decided up front anyway because the DSL abstraction boundary must be respected from file one |
+| One thread per emulator proves wrong | Decided explicitly in Phase 0 against the profile, not assumed. **The most expensive decision to reverse**, because it touches hand-written core infrastructure and is therefore only partly regenerable |
 | **Hand patches accumulate**, silently destroying the regeneration capability | `n_patches` is a CI-gated metric that must trend to zero. Every hand-edited file is a hole in the ability to regenerate, and regeneration is the project's main asset — see [docs/rulesdb-design.md](docs/rulesdb-design.md) |
 | Rule thesis false for C# | Phase-1 gate on peripheral two, before any frontend is built |
 | Roslyn frontend is a bigger build than expected | Phase 1 hand-translates without it; the frontend is only justified once the DSL and rules exist |

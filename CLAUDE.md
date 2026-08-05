@@ -2,9 +2,22 @@
 
 Load chain: this file → the global awto agent rules → embedded rules.
 
-Read [PLAN.md](PLAN.md) before touching anything. The four declared deviations
-(D1–D4) are whole-program decisions; do not make a per-file choice that
-contradicts one, and do not silently revisit one — reopen the decision issue.
+Read [PLAN.md](PLAN.md) before touching anything. Four decisions are made once
+for the whole program — shared objects are reference-counted and never freed; a
+peripheral's register bits live in one flat array; one thread per emulator;
+recoverable errors become return values. Do not make a per-file choice that
+contradicts one, and do not silently revisit one — reopen the decision.
+
+**Write in plain words.** The letter-codes this project started with (D1–D4, P1,
+P2, R3, R6) went opaque within weeks, including to the person who wrote them. A
+code is not a name. Say what a thing does; if an old label must appear, put it in
+brackets as a redirect and never as the primary reference.
+
+**These rules are provisional.** They are what the project thought it needed at
+the start, and several describe machinery that no longer runs. Argue from
+evidence — a measurement, or an incident this project actually had — not from
+this file. Where a rule below is backed by something that happened, the incident
+is stated with it; where it is an inherited assumption, it says so.
 
 ## Canonical development entry point
 
@@ -156,22 +169,25 @@ That is exactly how the invented `.with_reserved(9, 23)` survived a
 oracle is trace replay, and it reaches the peripherals that have recorded
 traces — 8 of them — not the corpus.
 
-So the rule DB has **two validated tiers**, enforced by triggers in
-`rulesdb/schema.sql`, not by review:
+**And nothing else has ever been run.** 283 modules compile clean; outside those
+8 peripherals, not one has been executed and compared against anything. Compiling
+is not running, and running is not matching.
 
-| tier | threshold | guarantee |
-|---|---|---|
-| `general` | ≥3 instances **anywhere** in the corpus | emits on real code; correctness unknown |
-| `committed` | ≥3 instances with **`oracle_tier > 0`** | a trace checked the output |
+> **The tier machinery described below does not run.** `rule`, `rule_instance`,
+> `rule_match`, `rule_negative`, `pattern_cluster` and `translation` are all **0
+> rows**. Hand-authored JSON rule files read directly by `scripts/core/emit.py`
+> replaced that pipeline. The triggers in `rulesdb/schema.sql` are real code that
+> currently guards nothing, and the two-tier guarantee is not in force. Kept here
+> as a design worth reviving or deleting on purpose — not as a description of
+> today.
 
-`rule_commit_threshold` counts only `rule_instance.oracle_tier > 0` — whether
-anything checked the output, never which files were ingested.
-`scripts/check_commit_tier.py` proves the key it replaced would have accepted a
-rule no trace ever saw.
+The design was **two validated tiers**, enforced by triggers rather than review:
+`general` at ≥3 instances anywhere in the corpus (emits on real code, correctness
+unknown), `committed` at ≥3 instances a trace actually checked.
 
-**Metrics report the tiers separately.** Coverage and instances-per-rule mean
-"validated", never "emitted". Blur the two and the headline metric quietly
-becomes a measure of how much we produced rather than how much works.
+The idea that survives regardless of the mechanism: **never report "emitted" as
+if it meant "validated"**. Blur those and the headline number becomes a measure
+of how much was produced rather than how much works.
 
 **A bigger corpus means more gaps, and that is correct.** The converter always
 could not emit those constructs; it was simply never asked. Do not "fix" a gap
@@ -193,33 +209,43 @@ thrown, because `partial void Foo();` is neither abstract nor extern.
   what makes the leverage measurement unavailable — and the hand-picked subset
   that used to be permitted is the one this rule now forbids.
 
-### A rule is not a rule until it has three validated instances
+### Hand edits destroy the ability to regenerate
 
-- `rule.status` cannot reach `committed` while
-  `COUNT(rule_instance) < min_instances_required` (default 3). Enforced in the
-  tool, not in review.
-- Below the threshold it is recorded as a **`patch`**. Patches are a
-  CI-gated metric that must trend to zero. A file-specific hand edit is evidence
-  the generic process is incomplete — record it as such, do not launder it.
-- **Why zero patches actually matters**: rules are the source code, and the Rust
-  is a build artifact. A hand-edited file is one that **will not regenerate** —
-  so with 5% patched, a rule-set A/B moves only 95% of the codebase and the
-  comparison is quietly contaminated. Patches are not process debt, they are
-  holes in the ability to regenerate, and that ability is the main asset. A
-  landed translation must be recreatable from the C# source plus committed rules
-  and scripts alone.
-- **The LLM is invoked once per unmatched *cluster*, never per function.** A
-  per-function invocation path must not exist in the tool. This is the entire
-  cost argument.
-- Every rule carries `rule_negative` entries — shapes it must *not* match. A rule
-  that over-matches is worse than one that under-matches, because the oracle may
-  not catch it.
+This one is not inherited — it is the point of the whole exercise.
 
-### The headline metric is instances-per-rule
+Rules are the source code and the Rust is a build artifact. A hand-edited file is
+one that **will not regenerate**, so at 5% hand-edited a rule-set A/B moves only
+95% of the codebase and the comparison is quietly contaminated. Hand edits are
+not process debt, they are holes in the main asset. A landed translation must be
+recreatable from the C# source plus committed rules and scripts alone.
 
-Not files translated. A fall toward 1 means the process has drifted into
-per-file work, and it must be visible the week it starts. `linux-rs` reached
-1.87 while "38 TUs translated" still looked healthy.
+A rule should also record the shapes it must *not* match. A rule that
+over-matches is worse than one that under-matches, because nothing may catch it.
+
+### Inherited from linux-rs, and not currently measured
+
+Recorded so they are revisited deliberately rather than half-followed:
+
+- **Three validated instances before a rule counts.** The threshold was borrowed,
+  never tested here, and the table it was enforced in has 0 rows.
+- **Instances-per-rule as the headline metric.** `linux-rs` reached 1.87 while
+  "38 TUs translated" still looked healthy, which is a real warning — but with no
+  rule rows the number does not exist here, and the scorecard says so.
+- **The LLM is invoked once per unmatched cluster, never per function.** This was
+  the entire cost argument, and it depended on the clustering that was abandoned.
+  Whatever replaces it needs its own cost argument.
+
+### What is actually blocking the converter is mostly C#, not Renode
+
+Of the 4,714 gaps with a named root cause, **69% are the plain C# language and
+base class library** — static calls, `throw`, default values, `using`, `decimal`
+— and 31% are Renode's own types. Measured by
+`scripts/analysis/classify_gaps.py`.
+
+Both are found the same way, by a peripheral failing to emit, and both are
+confirmed fixed the same way, by that peripheral emitting again. So the cheap,
+generic class is being debugged through the slowest loop available. See
+[docs/decisions/csharp-and-renode-are-two-problems.md](docs/decisions/csharp-and-renode-are-two-problems.md).
 
 ### Parallelism is a design constraint
 
