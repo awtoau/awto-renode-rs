@@ -102,20 +102,32 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True).stdout
 
 
-def series(log: logging.Logger) -> list[tuple[str, str, int, int, int]]:
-    """(sha, subject, generated lines, reported gaps, divergences) oldest first.
+def series(log: logging.Logger) -> list[tuple[str, str, int, int, int, str, bool]]:
+    """(sha, subject, generated lines, reported gaps, divergences, commit date,
+    changed) oldest first.
 
     Divergences are None-free: a commit before the replay harness existed has no
     measurement, and carrying the next commit's number backwards would invent
     one. Those commits report -1 and the plot starts the line where the data
-    starts."""
-    revs = git("log", "--reverse", "--format=%H\t%s").strip().splitlines()
-    out: list[tuple[str, str, int, int, int]] = []
+    starts. Date is the committer date, ISO 8601 with UTC offset -- not
+    author date, since a rebase/cherry-pick can leave the author date
+    unrelated to when this repo actually saw the change.
+
+    `changed` is False when every GENERATED blob is byte-identical to the
+    previous row's -- lines/gaps repeating a run of commits is not a bug, it
+    means those commits (tooling, docs, a rename) never touched a tracked
+    file, and the table says so instead of just showing the same three
+    numbers again with no explanation."""
+    revs = git("log", "--reverse", "--format=%H\t%cI\t%s").strip().splitlines()
+    out: list[tuple[str, str, int, int, int, str, bool]] = []
+    prev_blobs: dict[str, str] | None = None
     for line in revs:
-        sha, _, subject = line.partition("\t")
+        sha, date, subject = line.split("\t", 2)
         lines = gaps = 0
+        blobs: dict[str, str] = {}
         for path in GENERATED:
             blob = git("show", f"{sha}:{path}")
+            blobs[path] = blob
             if not blob:
                 continue
             lines += len(blob.splitlines())
@@ -124,7 +136,9 @@ def series(log: logging.Logger) -> list[tuple[str, str, int, int, int]]:
         hits = RATCHET.findall(harness) if harness else []
         div = sum(int(n) for _t, n in hits) if hits else -1
         if lines:
-            out.append((sha[:7], subject, lines, gaps, div))
+            changed = prev_blobs is None or blobs != prev_blobs
+            out.append((sha[:7], subject, lines, gaps, div, date, changed))
+            prev_blobs = blobs
     measured = [p for p in out if p[4] >= 0]
     log.info("%d commit(s) carry generated output, %d carry a replay measurement",
              len(out), len(measured))
@@ -200,13 +214,14 @@ def svg(points: list[tuple[str, str, int, int, int]]) -> str:
 </svg>'''
 
 
-def compile_series(log: logging.Logger) -> list[tuple[str, str, int]]:
-    """(sha, subject, clean module count), oldest first, one point per commit
-    that touched the file -- most commits in between don't move this number."""
-    revs = git("log", "--reverse", "--format=%H\t%s", "--", CLEAN_SET).strip().splitlines()
-    out: list[tuple[str, str, int]] = []
+def compile_series(log: logging.Logger) -> list[tuple[str, str, int, str]]:
+    """(sha, subject, clean module count, commit date), oldest first, one point
+    per commit that touched the file -- most commits in between don't move
+    this number. Date is the committer date, ISO 8601 with UTC offset."""
+    revs = git("log", "--reverse", "--format=%H\t%cI\t%s", "--", CLEAN_SET).strip().splitlines()
+    out: list[tuple[str, str, int, str]] = []
     for line in revs:
-        sha, _, subject = line.partition("\t")
+        sha, date, subject = line.split("\t", 2)
         blob = git("show", f"{sha}:{CLEAN_SET}")
         if not blob:
             continue
@@ -217,7 +232,7 @@ def compile_series(log: logging.Logger) -> list[tuple[str, str, int]]:
         modules = data.get("modules") or data.get("clean") or []
         if not isinstance(modules, list):
             continue
-        out.append((sha[:7], subject, len(modules)))
+        out.append((sha[:7], subject, len(modules), date))
     log.info("%d commit(s) touched %s", len(out), CLEAN_SET)
     return out
 
@@ -285,7 +300,10 @@ def main() -> int:
     pts = series(log)
     chart = svg(pts)
     rows = "".join(
-        f"<tr><td class=m>{escape(p[0])}</td><td>{escape(p[1][:78])}</td>"
+        f"<tr{'' if p[6] else ' class=unchanged'}><td class=m>{escape(p[0])}</td>"
+        f"<td class=m>{escape(p[5][:19])}</td>"
+        f"<td>{escape(p[1][:78])}"
+        f"{'' if p[6] else ' <span class=note>(no generated-file change)</span>'}</td>"
         f"<td class=n>{p[2]}</td><td class=n>{p[3]}</td>"
         f"<td class=n>{p[4] if p[4] >= 0 else '&mdash;'}</td></tr>"
         for p in reversed(pts))
@@ -293,7 +311,8 @@ def main() -> int:
     cpts = compile_series(log)
     cchart = compile_svg(cpts)
     crows = "".join(
-        f"<tr><td class=m>{escape(p[0])}</td><td>{escape(p[1][:78])}</td>"
+        f"<tr><td class=m>{escape(p[0])}</td><td class=m>{escape(p[3][:19])}</td>"
+        f"<td>{escape(p[1][:78])}</td>"
         f"<td class=n>{p[2]}</td></tr>"
         for p in reversed(cpts))
 
@@ -306,6 +325,8 @@ def main() -> int:
  .n{{text-align:right;font-variant-numeric:tabular-nums}}
  .m{{font-family:ui-monospace,monospace;opacity:.7}}
  h2{{margin-top:2.5rem}}
+ tr.unchanged{{opacity:.55}}
+ .note{{font-style:italic;opacity:.8}}
  @media(prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6edf3}}}}
 </style>
 <h1>Converter progress</h1>
@@ -316,7 +337,7 @@ Read them together: lines falling while gaps hold steady is usually the
 converter <em>withholding</em> output it should never have emitted. Trace
 divergences are the only line of the three that measures correctness.</p>
 {chart}
-<table><tr><th>commit</th><th>subject</th><th class=n>lines</th><th class=n>gaps</th><th class=n>divergences</th></tr>
+<table><tr><th>commit</th><th>date</th><th>subject</th><th class=n>lines</th><th class=n>gaps</th><th class=n>divergences</th></tr>
 {rows}</table>
 
 <h2>Compile-clean-module gate</h2>
@@ -327,7 +348,7 @@ measurement with no historical record -- see
 <code>docs/decisions/two-tier-compile-gate.md</code> -- so it is not graphed
 here as a series, only reported as today's snapshot below.</p>
 {cchart}
-<table><tr><th>commit</th><th>subject</th><th class=n>clean modules</th></tr>
+<table><tr><th>commit</th><th>date</th><th>subject</th><th class=n>clean modules</th></tr>
 {crows}</table>""")
 
     log.info("")
