@@ -191,6 +191,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self._utility_fn_table = utility_fn_table
         self._flag_fields: set[str] = set()
         self._callbacks: list[str] = []
+        self._callback_fn_names: set[str] = set()
         self._emitted_fns: set[str] = set()
         self._state_names: set[str] = set()
         self._current_type: str | None = None
@@ -607,6 +608,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self._sub_fields = {s["field"]: s for s in subs}
         state, state_gaps = self.state_fields(type_name)
         self._callbacks = []
+        self._callback_fn_names = set()
         # Peripheral methods first: a callback may call one, and the converter
         # only emits a callback whose dependencies exist.
         methods: list[str] = []
@@ -1349,6 +1351,7 @@ class Emitter(OffsetSwitchRegisters, RegisterDsl, RenodeExpressions, Expressions
         self._enum_rust_names = {n: n for n in self._enum_names}
         self._current_type = type_name
         self._callbacks = []
+        self._callback_fn_names = set()
         self._emitted_fns = set()
         self.gaps = []
 

@@ -189,13 +189,31 @@ class OffsetSwitchRegisters:
                     if value is None:
                         ok = False
                         break
-                    name = (operands[0][2] or "").split(".")[-1] or None
+                    name = self._osr_label_name(operands[0])
                     labels.append((value, name, case[0]))
                 if not ok:
                     break
             if ok:
                 out.extend(labels)
         return out
+
+    def _osr_label_name(self, operand: tuple) -> str | None:
+        """The enum member a case label names, through a cast if present.
+
+        `case (long)Offset.Scratch:` folds to a constant on the `Conversion`
+        node, not the `FieldReference` beneath it -- but the conversion's own
+        symbol is `Conversion.IsImplicit` recorded as the literal string
+        "Implicit"/"Explicit", read here as though it were the label's name.
+        Every label under the same cast kind collided into that one name
+        (E0428)."""
+        cid, kind, sym, _const, _typ = operand
+        if kind == "FieldReference":
+            return (sym or "").split(".")[-1] or None
+        if kind == "Conversion":
+            kids = self.children(cid)
+            if kids:
+                return self._osr_label_name(kids[0])
+        return None
 
     def _osr_mentions_param(self, oid: int, param: str) -> bool:
         """Is the switch subject the offset parameter, cast or not."""

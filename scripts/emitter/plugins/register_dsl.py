@@ -496,6 +496,18 @@ class RegisterDsl:
                     else naming.get("template", "{reg}_{pos}_{kind}"))
             fname = tmpl.format(reg=snake(self._current_reg or "reg"),
                                 pos=env["pos"], kind=alias)
+            if fname in self._callback_fn_names:
+                # Two DIFFERENT register-defining call sites can share one C#
+                # name -- a shared enum member reused across a peripheral's
+                # sibling register collections (LiteSDCard's reader and writer
+                # DMA banks both declare `DmaDone`) is not a naming mistake in
+                # the source, but one Rust fn per name collides (E0428) once
+                # both banks fold into a single flat file.
+                n = 2
+                while f"{fname}_{n}" in self._callback_fn_names:
+                    n += 1
+                fname = f"{fname}_{n}"
+            self._callback_fn_names.add(fname)
             # The callback's SHAPE may differ from the field-level one: a
             # register-level write callback takes (old, new) and no field
             # index, so the rule names which signature applies.
