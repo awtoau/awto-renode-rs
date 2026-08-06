@@ -21,13 +21,19 @@ That hypothesis is correct, it is now measured, and it changes the review.
 
 ## The measurement that changed the verdict
 
-`scripts/analysis/classify_gaps.py`, over the gap census. Of the 4,714 gaps with
-a named root cause:
+`scripts/analysis/classify_gaps.py`, over the gap census. Regenerate before
+quoting — the figures below are a snapshot, and the live numbers are in
+`docs/status/gap_split.json`. Of the 4,604 gaps with a named root cause
+(2026-08-06):
 
 | | gaps | share |
 |---|---:|---:|
-| plain C# — the language and base class library | 3,273 | **69%** |
+| plain C# — the language and base class library | 3,163 | **69%** |
 | Renode's own types and base classes | 1,441 | 31% |
+
+The ratio is the durable part. It was 69/31 the day before, over a different
+gap total and a different converter, while the compile-clean count more than
+doubled underneath it.
 
 See [docs/decisions/csharp-and-renode-are-two-problems.md](decisions/csharp-and-renode-are-two-problems.md).
 
@@ -66,7 +72,7 @@ Unchanged:
 | item | verdict |
 |---|---|
 | Database-first ingestion | already done, and stricter here — no code path may read a `.cs` file |
-| Non-blocking progress, partial output | already done as the gap system: 26,084 gaps, 0 converter crashes |
+| Non-blocking progress, partial output | already done as the gap system: 27,673 gaps, 0 converter crashes |
 | Incremental rebuilds, caching, parallelism | already required, plus a constraint the proposal lacks: byte-identical output at 1 and 32 workers |
 | PostgreSQL | not justified by a measured problem; the workload is read-heavy fan-out over an immutable snapshot |
 | Migrating the database (its §6) | **category error** — the database regenerates from source in about a minute. There is nothing to migrate; the rebuild is the migration |
@@ -75,9 +81,10 @@ Unchanged:
 
 ## On that last point, with numbers
 
-283 modules compile clean. Outside the 8 peripherals with recorded traces,
-**none of them has ever been executed**. Compiling is not running, and running is
-not matching.
+617 modules compile clean, up from 283 the day before. Outside the 8 peripherals
+with recorded traces, **none of them has ever been executed**. Compiling is not
+running, and running is not matching — and the faster that first number grows,
+the more it is measuring production rather than correctness.
 
 Judged by the proposal's acceptance criteria this project is nearly finished.
 Judged by behaviour it is 3 of 8 peripherals at zero divergence and one file
