@@ -85,3 +85,8 @@ on the supported `dev.py` command surface. See its README. No `one_off_test/`
 directory is currently warranted: the apparent candidates are maintained
 negative controls or evidence generators, and moving them there would hide
 their continuing role.
+
+Historical and decision documents may still link to files under `debris/`.
+Those references are useful provenance and do not make the referenced script a
+supported command. Classification is based on the current workflow and inputs,
+not on whether a path appears in documentation.
